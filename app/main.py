@@ -52,6 +52,19 @@ app.include_router(pipeline.router)
 app.include_router(compare.router)
 
 
+@app.get("/")
+async def root():
+    return {
+        "service": "sift-api",
+        "version": "0.1.0",
+        "endpoints": {
+            "health": "GET /health",
+            "pipeline": "POST /pipeline/refresh",
+            "compare": "POST /analyze/compare",
+        },
+    }
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
     db_connected = False

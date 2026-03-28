@@ -103,7 +103,7 @@ class TestFeedConfig:
 
     def test_feed_count(self):
         total = sum(len(feeds) for feeds in FEEDS.values())
-        assert total == 29
+        assert total == 56
 
     def test_feeds_are_tuples(self):
         for category, feeds in FEEDS.items():
