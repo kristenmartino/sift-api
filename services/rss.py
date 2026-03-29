@@ -171,7 +171,7 @@ def parse_feed(data: bytes, source_name: str, category: str) -> list[RSSArticle]
         pub_date = _parse_date(entry)
 
         # Extract image from RSS media tags
-        image_url = _extract_image_url(entry)
+        image_url = _upgrade_image_url(_extract_image_url(entry))
 
         # Get raw content for summarization
         raw_content = ""
@@ -195,22 +195,41 @@ def parse_feed(data: bytes, source_name: str, category: str) -> list[RSSArticle]
     return articles
 
 
+MIN_IMAGE_WIDTH = 300  # Drop thumbnails smaller than this
+
+
 def _extract_image_url(entry) -> str | None:
-    """Extract image URL from RSS media tags, checking in priority order."""
-    # 1. media:content
+    """Extract the best image URL from RSS media tags.
+
+    Picks the largest media:content by width, skips thumbnails below
+    MIN_IMAGE_WIDTH, and falls back through media:thumbnail and enclosures.
+    """
+    # 1. media:content — pick the widest image
     media_content = entry.get("media_content", [])
     if media_content:
+        best_url = None
+        best_width = 0
         for media in media_content:
             url = media.get("url", "")
             media_type = media.get("type", "")
-            if url and (not media_type or media_type.startswith("image/")):
-                return url
+            if not url or (media_type and not media_type.startswith("image/")):
+                continue
+            width = int(media.get("width", 0) or 0)
+            if width >= best_width:
+                best_url = url
+                best_width = width
+        if best_url and best_width >= MIN_IMAGE_WIDTH:
+            return best_url
+        if best_url and best_width == 0:
+            return best_url  # No width info — keep it, let frontend decide
 
-    # 2. media:thumbnail
+    # 2. media:thumbnail — skip if too small
     media_thumbnail = entry.get("media_thumbnail", [])
     if media_thumbnail:
-        url = media_thumbnail[0].get("url", "")
-        if url:
+        thumb = media_thumbnail[0]
+        url = thumb.get("url", "")
+        width = int(thumb.get("width", 0) or 0)
+        if url and (width >= MIN_IMAGE_WIDTH or width == 0):
             return url
 
     # 3. enclosure
@@ -224,6 +243,19 @@ def _extract_image_url(entry) -> str | None:
                     return url
 
     return None
+
+
+def _upgrade_image_url(url: str | None) -> str | None:
+    """Upgrade known thumbnail URLs to higher resolution versions."""
+    if not url:
+        return None
+    # Phys.org: /tmb/ → /800/
+    if "scx1.b-cdn.net" in url and "/tmb/" in url:
+        return url.replace("/tmb/", "/800/")
+    # BBC: /standard/240/ → /standard/800/
+    if "ichef.bbci.co.uk" in url and "/standard/240/" in url:
+        return url.replace("/standard/240/", "/standard/800/")
+    return url
 
 
 def _parse_date(entry) -> datetime | None:
