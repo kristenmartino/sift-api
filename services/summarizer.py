@@ -14,29 +14,34 @@ logger = logging.getLogger("sift-api.summarizer")
 BATCH_SIZE = 5
 MODEL = "claude-haiku-4-5-20251001"
 
+VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health"}
 
-async def summarize_articles(articles: list[RSSArticle]) -> dict[str, str]:
+
+async def summarize_articles(articles: list[RSSArticle]) -> dict[str, dict]:
     """
-    Summarize articles in batches using Claude Haiku.
-    Returns a dict mapping source_url to AI-generated summary.
+    Summarize and classify articles in batches using Claude Haiku.
+    Returns a dict mapping source_url to {"summary": str, "category": str}.
     """
     if not articles:
         return {}
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    results: dict[str, str] = {}
+    results: dict[str, dict] = {}
 
     for i in range(0, len(articles), BATCH_SIZE):
         batch = articles[i : i + BATCH_SIZE]
         try:
-            summaries = await _summarize_batch(client, batch)
-            results.update(summaries)
+            batch_results = await _summarize_batch(client, batch)
+            results.update(batch_results)
         except Exception as e:
             logger.error("Summarization failed for batch %d: %s", i // BATCH_SIZE, e)
             # Fall back to raw content for this batch
             for article in batch:
                 if article.raw_content:
-                    results[article.source_url] = _truncate(article.raw_content, 200)
+                    results[article.source_url] = {
+                        "summary": _truncate(article.raw_content, 200),
+                        "category": "top",
+                    }
 
     logger.info("Summarized %d/%d articles", len(results), len(articles))
     return results
@@ -45,8 +50,8 @@ async def summarize_articles(articles: list[RSSArticle]) -> dict[str, str]:
 async def _summarize_batch(
     client: anthropic.AsyncAnthropic,
     batch: list[RSSArticle],
-) -> dict[str, str]:
-    """Send a batch of articles to Claude Haiku and parse summaries."""
+) -> dict[str, dict]:
+    """Send a batch of articles to Claude Haiku and parse summaries + categories."""
     prompt = _build_prompt(batch)
 
     response = await client.messages.create(
@@ -64,7 +69,7 @@ async def _summarize_batch(
 
 
 def _build_prompt(batch: list[RSSArticle]) -> str:
-    """Build the summarization prompt for a batch of articles."""
+    """Build the summarization + classification prompt for a batch of articles."""
     articles_text = ""
     for i, article in enumerate(batch, 1):
         content = article.raw_content or article.title
@@ -75,35 +80,52 @@ def _build_prompt(batch: list[RSSArticle]) -> str:
 
     return f"""Summarize each of the following news articles in 1-2 concise sentences. Focus on the key facts and why the story matters.
 
+Also classify each article into exactly ONE category:
+- "top" — only for major breaking news or cross-cutting stories that transcend a single topic
+- "technology" — tech industry, software, hardware, AI, cybersecurity, social media
+- "business" — markets, finance, economics, corporate news, startups, trade
+- "science" — research, discoveries, space, physics, biology, climate science
+- "energy" — power grid, renewables, oil & gas, EVs, energy policy, utilities
+- "world" — international affairs, geopolitics, diplomacy, foreign policy
+- "health" — medicine, public health, pharma, healthcare policy, disease
+
+Most articles should go into a specific topic category. Only use "top" for truly major stories.
+
 {articles_text}
 
 Return a JSON array with one object per article, in the same order:
-[{{"index": 1, "summary": "1-2 sentence summary"}}, ...]
+[{{"index": 1, "summary": "1-2 sentence summary", "category": "technology"}}, ...]
 
 Return ONLY the JSON array, no other text."""
 
 
-def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, str]:
-    """Parse Claude's response into a url->summary mapping."""
-    results: dict[str, str] = {}
+def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
+    """Parse Claude's response into a url -> {summary, category} mapping."""
+    results: dict[str, dict] = {}
 
     parsed = _extract_json_array(text)
     if parsed:
         for item in parsed:
             idx = item.get("index")
             summary = item.get("summary", "")
+            category = item.get("category", "top")
+            if category not in VALID_CATEGORIES:
+                category = "top"
             if isinstance(idx, int) and 1 <= idx <= len(batch) and summary:
-                results[batch[idx - 1].source_url] = summary
+                results[batch[idx - 1].source_url] = {
+                    "summary": summary,
+                    "category": category,
+                }
     else:
         logger.warning("Failed to parse summary JSON, using raw text fallback")
-        # If JSON parsing fails, try to use the raw text as a single summary
-        # This handles edge cases where Claude doesn't follow the format
         lines = [line.strip() for line in text.strip().split("\n") if line.strip()]
         for i, line in enumerate(lines[: len(batch)]):
-            # Remove leading numbering like "1." or "1:"
             line = re.sub(r"^\d+[\.\):\-]\s*", "", line)
             if line:
-                results[batch[i].source_url] = line
+                results[batch[i].source_url] = {
+                    "summary": line,
+                    "category": "top",
+                }
 
     return results
 

@@ -7,9 +7,6 @@ from pydantic import BaseModel
 # --- Pipeline ---
 
 class PipelineRequest(BaseModel):
-    categories: list[str] = [
-        "top", "technology", "business", "science", "energy", "world", "health"
-    ]
     force: bool = False
 
 
@@ -24,7 +21,15 @@ class PipelineResponse(BaseModel):
     duration_ms: int
 
 
-# --- Comparison (stub) ---
+# --- Comparison ---
+
+class Claim(BaseModel):
+    claim: str
+    agreement: str  # "unanimous", "majority", "disputed", "unique"
+    sources: list[str] = []
+    sources_for: list[str] = []
+    sources_against: list[str] = []
+
 
 class CompareRequest(BaseModel):
     topic: str
@@ -56,5 +61,5 @@ class RSSArticle(BaseModel):
     source_name: str
     published_date: datetime | None = None
     image_url: str | None = None
-    category: str
+    category: str = ""  # Empty until AI classifies during summarization
     raw_content: str = ""  # RSS description/content, used for summarization input

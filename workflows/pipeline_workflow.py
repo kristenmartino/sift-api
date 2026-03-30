@@ -9,13 +9,14 @@ from app.models import RSSArticle, CategoryResult
 
 logger = logging.getLogger("sift-api.pipeline")
 
+ALL_CATEGORIES = ["top", "technology", "business", "science", "energy", "world", "health"]
+
 
 class PipelineState(TypedDict):
-    categories: list[str]
     force: bool
     articles: list[RSSArticle]
     new_articles: list[RSSArticle]
-    summaries: dict[str, str]       # source_url -> summary
+    summaries: dict[str, dict]       # source_url -> {"summary": str, "category": str}
     embeddings: dict[str, list[float]]  # source_url -> vector
     results: dict[str, CategoryResult]
     errors: list[str]
@@ -24,11 +25,11 @@ class PipelineState(TypedDict):
 # --- Node functions ---
 
 async def fetch_rss_node(state: PipelineState) -> dict:
-    """Fetch RSS feeds for all requested categories."""
+    """Fetch all RSS feeds."""
     from services.rss import fetch_feeds
 
     try:
-        articles = await fetch_feeds(state["categories"])
+        articles = await fetch_feeds()
         logger.info("fetch_rss: got %d articles", len(articles))
         return {"articles": articles}
     except Exception as e:
@@ -62,28 +63,42 @@ async def deduplicate_node(state: PipelineState) -> dict:
 
 
 async def summarize_node(state: PipelineState) -> dict:
-    """Batch-summarize new articles using Claude Haiku."""
+    """Batch-summarize and classify new articles using Claude Haiku."""
     from services.summarizer import summarize_articles
 
     new_articles = state.get("new_articles", [])
     if not new_articles:
         logger.info("summarize: no new articles to summarize")
-        return {"summaries": {}}
+        return {"summaries": {}, "new_articles": []}
 
     try:
         summaries = await summarize_articles(new_articles)
-        logger.info("summarize: generated %d summaries", len(summaries))
-        return {"summaries": summaries}
+        logger.info("summarize: generated %d summaries with categories", len(summaries))
+
+        # Apply AI-assigned categories back to each article
+        for article in new_articles:
+            result = summaries.get(article.source_url)
+            if result:
+                article.category = result["category"]
+            else:
+                article.category = "top"  # fallback
+
+        return {"summaries": summaries, "new_articles": new_articles}
     except Exception as e:
         logger.error("summarize failed: %s", e)
-        # Fall back to raw RSS content as summaries
-        fallback = {}
+        # Fall back to raw RSS content as summaries, default to "top" category
+        fallback: dict[str, dict] = {}
         for article in new_articles:
+            article.category = "top"
             if article.raw_content:
                 words = article.raw_content.split()
-                fallback[article.source_url] = " ".join(words[:50])
+                fallback[article.source_url] = {
+                    "summary": " ".join(words[:50]),
+                    "category": "top",
+                }
         return {
             "summaries": fallback,
+            "new_articles": new_articles,
             "errors": state.get("errors", []) + [f"summarize: {e}"],
         }
 
@@ -102,7 +117,8 @@ async def embed_node(state: PipelineState) -> dict:
     # Build embedding input: title + summary (or raw content)
     texts = []
     for article in new_articles:
-        summary = summaries.get(article.source_url, article.raw_content)
+        result = summaries.get(article.source_url)
+        summary = result["summary"] if result else article.raw_content
         texts.append(f"{article.title}. {summary}")
 
     try:
@@ -136,19 +152,21 @@ async def store_node(state: PipelineState) -> dict:
     # Count by category for results
     all_by_cat: dict[str, int] = {}
     for a in all_articles:
-        all_by_cat[a.category] = all_by_cat.get(a.category, 0) + 1
+        cat = a.category or "top"
+        all_by_cat[cat] = all_by_cat.get(cat, 0) + 1
 
     new_by_cat: dict[str, list[RSSArticle]] = {}
     for a in new_articles:
-        new_by_cat.setdefault(a.category, []).append(a)
+        cat = a.category or "top"
+        new_by_cat.setdefault(cat, []).append(a)
 
     results: dict[str, CategoryResult] = {}
-    for cat in state["categories"]:
+    for cat in ALL_CATEGORIES:
         new_count = len(new_by_cat.get(cat, []))
         total_fetched = all_by_cat.get(cat, 0)
         results[cat] = CategoryResult(
             new_articles=new_count,
-            skipped=total_fetched - new_count,
+            skipped=max(0, total_fetched - new_count),
             errors=0,
         )
 
@@ -156,7 +174,9 @@ async def store_node(state: PipelineState) -> dict:
     stored = 0
     for article in new_articles:
         article_id = stable_hash(article.source_url + article.title)
-        summary = summaries.get(article.source_url, "")
+        result = summaries.get(article.source_url)
+        summary = result["summary"] if result else ""
+        category = article.category or "top"
         embedding = embeddings.get(article.source_url)
         read_time = max(1, len(summary.split()) // 200 + 1) if summary else 1
 
@@ -173,6 +193,7 @@ async def store_node(state: PipelineState) -> dict:
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10)
                 ON CONFLICT (source_url) DO UPDATE SET
                     summary = EXCLUDED.summary,
+                    category = EXCLUDED.category,
                     embedding = EXCLUDED.embedding,
                     updated_at = NOW()
                 """,
@@ -182,7 +203,7 @@ async def store_node(state: PipelineState) -> dict:
                 article.source_url,
                 article.source_name,
                 article.image_url,
-                article.category,
+                category,
                 article.published_date,
                 embedding_str,
                 read_time,
@@ -190,14 +211,14 @@ async def store_node(state: PipelineState) -> dict:
             stored += 1
         except Exception as e:
             logger.error("Failed to store article %s: %s", article.source_url, e)
-            if article.category in results:
-                results[article.category].errors += 1
+            if category in results:
+                results[category].errors += 1
 
-    # Update pipeline_state for each category
-    for cat in state["categories"]:
+    # Update pipeline_state for ALL categories
+    for cat in ALL_CATEGORIES:
         try:
             count = await pool.fetchval(
-                "SELECT COUNT(*) FROM articles WHERE category = $1", cat,
+                "SELECT COUNT(*) FROM articles WHERE category = $1 AND from_search = false", cat,
             )
             await pool.execute(
                 """
