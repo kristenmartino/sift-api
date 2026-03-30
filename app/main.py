@@ -42,6 +42,7 @@ app.add_middleware(
         "http://localhost:3000",
         "https://siftnews.ai",
         "https://www.siftnews.ai",
+        "https://siftnews.kristenmartino.ai",
     ],
     allow_credentials=True,
     allow_methods=["*"],

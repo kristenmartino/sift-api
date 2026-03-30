@@ -6,7 +6,6 @@ to stay within free tier limits (3 RPM, 10K TPM).
 
 import asyncio
 import logging
-import time
 
 import httpx
 

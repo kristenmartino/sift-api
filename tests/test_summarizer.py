@@ -58,12 +58,14 @@ class TestParseSummaries:
     def test_valid_json_response(self):
         batch = [_make_article(1), _make_article(2)]
         text = json.dumps([
-            {"index": 1, "summary": "Summary one"},
-            {"index": 2, "summary": "Summary two"},
+            {"index": 1, "summary": "Summary one", "category": "technology"},
+            {"index": 2, "summary": "Summary two", "category": "business"},
         ])
         results = _parse_summaries(text, batch)
-        assert results["https://example.com/article-1"] == "Summary one"
-        assert results["https://example.com/article-2"] == "Summary two"
+        assert results["https://example.com/article-1"]["summary"] == "Summary one"
+        assert results["https://example.com/article-1"]["category"] == "technology"
+        assert results["https://example.com/article-2"]["summary"] == "Summary two"
+        assert results["https://example.com/article-2"]["category"] == "business"
 
     def test_out_of_range_index_ignored(self):
         batch = [_make_article(1)]

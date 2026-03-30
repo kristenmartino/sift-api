@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -21,7 +21,7 @@ class TestPipelineAuth:
         """Missing X-Pipeline-Key header returns 422."""
         response = client.post(
             "/pipeline/refresh",
-            json={"categories": ["technology"]},
+            json={},
         )
         assert response.status_code == 422
 
@@ -29,27 +29,16 @@ class TestPipelineAuth:
         """Wrong API key returns 401."""
         response = client.post(
             "/pipeline/refresh",
-            json={"categories": ["technology"]},
+            json={},
             headers={"X-Pipeline-Key": "wrong-key"},
         )
         assert response.status_code == 401
-
-    def test_invalid_category_returns_400(self, client):
-        """Invalid category name returns 400."""
-        response = client.post(
-            "/pipeline/refresh",
-            json={"categories": ["invalid_category"]},
-            headers={"X-Pipeline-Key": "dev-key"},
-        )
-        assert response.status_code == 400
-        assert "invalid_category" in response.json()["detail"]
 
 
 class TestPipelineExecution:
     def test_successful_pipeline(self, client):
         """Pipeline runs and returns results."""
         mock_result = {
-            "categories": ["technology"],
             "force": False,
             "articles": [],
             "new_articles": [],
@@ -68,7 +57,7 @@ class TestPipelineExecution:
         ):
             response = client.post(
                 "/pipeline/refresh",
-                json={"categories": ["technology"]},
+                json={},
                 headers={"X-Pipeline-Key": "dev-key"},
             )
             assert response.status_code == 200
@@ -77,8 +66,8 @@ class TestPipelineExecution:
             assert data["results"]["technology"]["new_articles"] == 5
             assert "duration_ms" in data
 
-    def test_default_categories(self, client):
-        """Request with no categories uses all 7 defaults."""
+    def test_default_run(self, client):
+        """Request with empty body runs the full pipeline."""
         mock_result = {
             "results": {},
             "errors": [],

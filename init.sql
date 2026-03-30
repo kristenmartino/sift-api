@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS articles (
     published_date TIMESTAMPTZ,
     embedding VECTOR(512),
     read_time INTEGER DEFAULT 1,
+    from_search BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
