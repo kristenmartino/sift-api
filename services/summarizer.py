@@ -14,7 +14,7 @@ logger = logging.getLogger("sift-api.summarizer")
 BATCH_SIZE = 5
 MODEL = "claude-haiku-4-5-20251001"
 
-VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health"}
+VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
 
 
 async def summarize_articles(articles: list[RSSArticle]) -> dict[str, dict]:
@@ -83,11 +83,14 @@ def _build_prompt(batch: list[RSSArticle]) -> str:
 Also classify each article into exactly ONE category:
 - "top" — only for major breaking news or cross-cutting stories that transcend a single topic
 - "technology" — tech industry, software, hardware, AI, cybersecurity, social media
-- "business" — markets, finance, economics, corporate news, startups, trade
+- "business" — Wall Street, stock market, earnings reports, M&A, IPOs, venture capital, interest rates, Federal Reserve, banking, employment data, GDP, inflation, corporate strategy, trade policy. NOT consumer product launches, pop culture brands, or retail sales events
 - "science" — research, discoveries, space, physics, biology, climate science
 - "energy" — power grid, renewables, oil & gas, EVs, energy policy, utilities
 - "world" — international affairs, geopolitics, diplomacy, foreign policy
 - "health" — medicine, public health, pharma, healthcare policy, disease
+- "politics" — elections, legislation, political parties, Congress, campaigns, government policy
+- "sports" — professional sports, college sports, Olympics, player trades, game results
+- "entertainment" — movies, TV, music, celebrities, streaming, awards, pop culture, consumer product launches, brand collaborations, viral consumer trends
 
 Most articles should go into a specific topic category. Only use "top" for truly major stories.
 
