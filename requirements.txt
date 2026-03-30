@@ -10,3 +10,4 @@ httpx>=0.28.0
 eval-type-backport>=0.2.0
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
+ruff>=0.8.0

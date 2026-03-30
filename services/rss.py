@@ -206,7 +206,7 @@ async def _fetch_single_feed(
             resp = await client.get(
                 feed_url,
                 timeout=FETCH_TIMEOUT,
-                headers={"User-Agent": "Sift/2.0 (+https://siftnews.ai)"},
+                headers={"User-Agent": "Sift/2.0 (+https://siftnews.kristenmartino.ai)"},
                 follow_redirects=True,
             )
             resp.raise_for_status()
