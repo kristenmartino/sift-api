@@ -23,7 +23,7 @@ async def _scheduled_refresh():
     while True:
         try:
             logger.info("Scheduled refresh starting")
-            from workflows.pipeline_workflow import pipeline as pl
+            from app.routers.pipeline import pipeline as pl
             result = await pl.ainvoke({"force": False})
             errors = result.get("errors", [])
             results = result.get("results", {})
