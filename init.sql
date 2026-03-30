@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS articles (
     image_url TEXT,
     category TEXT NOT NULL,
     published_date TIMESTAMPTZ,
-    embedding VECTOR(1024),
+    embedding VECTOR(512),
     read_time INTEGER DEFAULT 1,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -23,9 +23,9 @@ CREATE INDEX IF NOT EXISTS idx_articles_category_date
     ON articles(category, published_date DESC);
 
 -- Note: IVFFlat index requires rows to exist for training.
--- Create it after initial data load:
+-- Run after initial data load:
 -- CREATE INDEX idx_articles_embedding ON articles
---     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+--     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 20);
 
 -- Custom topics: user-defined search topics with embeddings
 CREATE TABLE IF NOT EXISTS custom_topics (
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS custom_topics (
     user_id TEXT NOT NULL,
     name TEXT NOT NULL,
     query TEXT NOT NULL,
-    embedding VECTOR(1024),
+    embedding VECTOR(512),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, name)
 );
