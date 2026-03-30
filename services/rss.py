@@ -13,79 +13,119 @@ from app.models import RSSArticle
 
 logger = logging.getLogger("sift-api.rss")
 
-# All 28 RSS feeds organized by category (from TECHNICAL_SPEC.md)
-FEEDS: dict[str, list[tuple[str, str]]] = {
-    "top": [
-        ("AP News", "https://apnews.com/index.rss"),
-        ("Reuters", "https://www.reuters.com/rssFeed/topNews"),
-        ("NPR", "https://feeds.npr.org/1001/rss.xml"),
-        ("BBC", "http://feeds.bbci.co.uk/news/rss.xml"),
-        ("Axios", "https://api.axios.com/feed/"),
-        ("The Hill", "https://thehill.com/news/feed/"),
-        ("Politico", "https://rss.politico.com/politics-news.xml"),
-        ("PBS NewsHour", "https://www.pbs.org/newshour/feeds/rss/headlines"),
-    ],
-    "technology": [
-        ("TechCrunch", "https://techcrunch.com/feed/"),
-        ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"),
-        ("The Verge", "https://www.theverge.com/rss/index.xml"),
-        ("Wired", "https://www.wired.com/feed/rss"),
-        ("MIT Tech Review", "https://www.technologyreview.com/feed/"),
-        ("Hacker News", "https://hnrss.org/frontpage?points=50"),
-        ("Engadget", "https://www.engadget.com/rss.xml"),
-        ("ZDNet", "https://www.zdnet.com/news/rss.xml"),
-        ("The Register", "https://www.theregister.com/headlines.atom"),
-        ("IEEE Spectrum", "https://spectrum.ieee.org/feeds/feed.rss"),
-        ("VentureBeat", "https://venturebeat.com/feed/"),
-    ],
-    "business": [
-        ("CNBC", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
-        ("MarketWatch", "https://www.marketwatch.com/rss/topstories"),
-        ("Reuters Business", "https://www.reuters.com/rssFeed/businessNews"),
-        ("Financial Times", "https://www.ft.com/rss/home"),
-        ("The Economist", "https://www.economist.com/finance-and-economics/rss.xml"),
-        ("Fortune", "https://fortune.com/feed/fortune-feeds/?id=3230629"),
-        ("Business Insider", "https://feeds2.feedburner.com/businessinsider"),
-        ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
-    ],
-    "science": [
-        ("Nature", "https://www.nature.com/nature.rss"),
-        ("Science (AAAS)", "https://www.science.org/rss/news_current.xml"),
-        ("Phys.org", "https://phys.org/rss-feed/"),
-        ("New Scientist", "https://www.newscientist.com/feed/home/"),
-        ("Scientific American", "http://rss.sciam.com/ScientificAmericanGlobal"),
-        ("Live Science", "https://www.livescience.com/feeds.xml"),
-        ("Space.com", "https://www.space.com/feeds.xml"),
-        ("ArXiv AI", "https://rss.arxiv.org/rss/cs.AI"),
-    ],
-    "energy": [
-        ("Utility Dive", "https://www.utilitydive.com/feeds/news/"),
-        ("Solar Power World", "https://www.solarpowerworldonline.com/feed/"),
-        ("Renewable Energy World", "https://www.renewableenergyworld.com/feed/"),
-        ("E&E News", "https://www.eenews.net/feed/"),
-        ("Canary Media", "https://www.canarymedia.com/rss.rss"),
-        ("CleanTechnica", "https://cleantechnica.com/feed/"),
-        ("Electrek", "https://electrek.co/feed/"),
-    ],
-    "world": [
-        ("BBC World", "http://feeds.bbci.co.uk/news/world/rss.xml"),
-        ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
-        ("The Guardian", "https://www.theguardian.com/world/rss"),
-        ("DW News", "https://rss.dw.com/rss/en/top"),
-        ("France 24", "https://www.france24.com/en/rss"),
-        ("NPR World", "https://feeds.npr.org/1004/rss.xml"),
-        ("Foreign Policy", "https://foreignpolicy.com/feed/"),
-    ],
-    "health": [
-        ("STAT News", "https://www.statnews.com/feed/"),
-        ("NPR Health", "https://feeds.npr.org/1128/rss.xml"),
-        ("WHO", "https://www.who.int/rss-feeds/news-english.xml"),
-        ("Health Affairs", "https://www.healthaffairs.org/action/showFeed?type=etoc&feed=rss&jc=hlthaff"),
-        ("KFF Health News", "https://kffhealthnews.org/feed/"),
-        ("Fierce Healthcare", "https://www.fiercehealthcare.com/rss/xml"),
-        ("CDC MMWR", "https://tools.cdc.gov/api/v2/resources/media/342778.rss"),
-    ],
-}
+# All RSS feeds — category is assigned by AI during summarization
+FEEDS: list[tuple[str, str]] = [
+    # ── General / Wire services ──────────────────────────
+    ("AP News", "https://apnews.com/world-news.rss"),
+    ("Reuters", "https://openrss.org/feed/www.reuters.com"),
+    ("NPR", "https://feeds.npr.org/1001/rss.xml"),
+    ("BBC", "http://feeds.bbci.co.uk/news/rss.xml"),
+    ("Axios", "https://api.axios.com/feed/"),
+    ("The Hill", "https://thehill.com/news/feed/"),
+    ("Politico", "https://rss.politico.com/politics-news.xml"),
+    ("PBS NewsHour", "https://www.pbs.org/newshour/feeds/rss/headlines"),
+    ("The Guardian US", "https://www.theguardian.com/us-news/rss"),
+    ("USA Today", "http://rss.usatoday.com/usatoday-newstopstories"),
+    ("ABC News", "https://abcnews.go.com/abcnews/topstories"),
+    ("CBS News", "https://www.cbsnews.com/latest/rss/main"),
+    ("New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"),
+    ("Washington Post", "https://feeds.washingtonpost.com/rss/national"),
+    # ── Technology ───────────────────────────────────────
+    ("TechCrunch", "https://techcrunch.com/feed/"),
+    ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"),
+    ("The Verge", "https://www.theverge.com/rss/index.xml"),
+    ("Wired", "https://www.wired.com/feed/rss"),
+    ("MIT Tech Review", "https://www.technologyreview.com/feed/"),
+    ("Hacker News", "https://hnrss.org/frontpage?points=50"),
+    ("Engadget", "https://www.engadget.com/rss.xml"),
+    ("ZDNet", "https://www.zdnet.com/news/rss.xml"),
+    ("The Register", "https://www.theregister.com/headlines.atom"),
+    ("IEEE Spectrum", "https://spectrum.ieee.org/feeds/feed.rss"),
+    ("VentureBeat", "https://venturebeat.com/feed/"),
+    ("9to5Mac", "https://9to5mac.com/feed/"),
+    ("9to5Google", "https://9to5google.com/feed/"),
+    ("Android Central", "https://www.androidcentral.com/feed"),
+    ("Tom's Hardware", "https://www.tomshardware.com/feeds/all"),
+    ("TechMeme", "https://www.techmeme.com/feed.xml"),
+    ("Decrypt", "https://decrypt.co/feed"),
+    # ── Business & Finance ───────────────────────────────
+    ("CNBC", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+    ("MarketWatch", "https://www.marketwatch.com/rss/topstories"),
+    ("Reuters Business", "https://openrss.org/feed/www.reuters.com/business"),
+    ("Financial Times", "https://www.ft.com/rss/home"),
+    ("The Economist", "https://www.economist.com/finance-and-economics/rss.xml"),
+    ("Fortune", "https://fortune.com/feed/fortune-feeds/?id=3230629"),
+    ("Business Insider", "https://feeds2.feedburner.com/businessinsider"),
+    ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
+    ("Bloomberg", "https://feeds.bloomberg.com/markets/news.rss"),
+    ("Quartz", "https://qz.com/feed"),
+    ("Forbes", "https://www.forbes.com/innovation/feed2"),
+    # ── Science ──────────────────────────────────────────
+    ("Nature", "https://www.nature.com/nature.rss"),
+    ("Science (AAAS)", "https://www.science.org/rss/news_current.xml"),
+    ("Phys.org", "https://phys.org/rss-feed/"),
+    ("New Scientist", "https://www.newscientist.com/feed/home/"),
+    ("Scientific American", "http://rss.sciam.com/ScientificAmerican-Global"),
+    ("Live Science", "https://www.livescience.com/feeds.xml"),
+    ("Space.com", "https://www.space.com/feeds.xml"),
+    ("ArXiv AI", "https://rss.arxiv.org/rss/cs.AI"),
+    ("NASA", "https://www.nasa.gov/rss/dyn/breaking_news.rss"),
+    ("Smithsonian", "https://www.smithsonianmag.com/rss/science-nature/"),
+    ("Quanta Magazine", "https://api.quantamagazine.org/feed/"),
+    ("ScienceDaily", "https://www.sciencedaily.com/rss/all.xml"),
+    ("Science News", "https://www.sciencenews.org/feed"),
+    ("Undark", "https://undark.org/feed/"),
+    ("Medical Xpress", "https://medicalxpress.com/rss-feed/"),
+    # ── Energy & Climate ─────────────────────────────────
+    ("Utility Dive", "https://www.utilitydive.com/feeds/news/"),
+    ("Solar Power World", "https://www.solarpowerworldonline.com/feed/"),
+    ("Renewable Energy World", "https://www.renewableenergyworld.com/feed/"),
+    ("E&E News", "https://www.eenews.net/feed/"),
+    ("Canary Media", "https://www.canarymedia.com/rss.rss"),
+    ("CleanTechnica", "https://cleantechnica.com/feed/"),
+    ("Electrek", "https://electrek.co/feed/"),
+    ("Carbon Brief", "https://www.carbonbrief.org/feed"),
+    ("Greentech Media", "https://www.greentechmedia.com/feed"),
+    ("Energy Monitor", "https://www.energymonitor.ai/feed/"),
+    ("Grist", "https://grist.org/feed/"),
+    ("Inside Climate News", "https://insideclimatenews.org/feed/"),
+    # ── World & Geopolitics ──────────────────────────────
+    ("BBC World", "http://feeds.bbci.co.uk/news/world/rss.xml"),
+    ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
+    ("The Guardian World", "https://www.theguardian.com/world/rss"),
+    ("DW News", "https://rss.dw.com/rdf/rss-en-top"),
+    ("France 24", "https://www.france24.com/en/rss"),
+    ("NPR World", "https://feeds.npr.org/1004/rss.xml"),
+    ("Foreign Policy", "https://foreignpolicy.com/feed/"),
+    ("The Diplomat", "https://thediplomat.com/feed/"),
+    ("South China Morning Post", "https://www.scmp.com/rss/91/feed"),
+    ("Japan Times", "https://www.japantimes.co.jp/feed/"),
+    ("Reuters World", "https://openrss.org/feed/www.reuters.com/world"),
+    ("ABC Australia", "https://www.abc.net.au/news/feed/51120/rss.xml"),
+    ("Times of India", "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"),
+    ("Politico EU", "https://www.politico.eu/feed/"),
+    ("Defense One", "https://www.defenseone.com/rss/"),
+    ("The Intercept", "https://theintercept.com/feed/?rss"),
+    # ── Health & Medicine ────────────────────────────────
+    ("STAT News", "https://www.statnews.com/feed/"),
+    ("NPR Health", "https://feeds.npr.org/1128/rss.xml"),
+    ("WHO", "https://www.who.int/rss-feeds/news-english.xml"),
+    ("Health Affairs", "https://www.healthaffairs.org/action/showFeed?type=etoc&feed=rss&jc=hlthaff"),
+    ("Fierce Healthcare", "https://www.fiercehealthcare.com/rss/xml"),
+    ("CDC MMWR", "https://tools.cdc.gov/api/v2/resources/media/342778.rss"),
+    ("Medscape", "https://www.medscape.com/cx/rssfeeds/2700.xml"),
+    ("The BMJ", "https://www.bmj.com/rss/recent.xml"),
+    ("NIH News", "https://www.nih.gov/news-releases/feed.xml"),
+    ("The Lancet", "https://www.thelancet.com/rssfeed/lancet_current.xml"),
+    ("Healio", "https://www.healio.com/rss"),
+    # ── Additional general-interest ──────────────────────
+    ("Slate", "https://slate.com/feeds/all.rss"),
+    ("Vox", "https://www.vox.com/rss/index.xml"),
+    ("The Atlantic", "https://www.theatlantic.com/feed/all/"),
+    ("The Conversation", "https://theconversation.com/us/articles.atom"),
+    ("ProPublica", "https://www.propublica.org/feeds/propublica/main"),
+    ("Rest of World", "https://restofworld.org/feed/"),
+]
 
 MAX_ENTRIES_PER_FEED = 10
 FETCH_TIMEOUT = 10.0
@@ -110,13 +150,11 @@ def _base36(n: int) -> str:
     return result
 
 
-async def fetch_feeds(categories: list[str]) -> list[RSSArticle]:
-    """Fetch RSS feeds for the given categories in parallel."""
+async def fetch_feeds() -> list[RSSArticle]:
+    """Fetch all RSS feeds in parallel. Articles have category="" until AI classifies them."""
     tasks = []
-    for category in categories:
-        feeds = FEEDS.get(category, [])
-        for source_name, feed_url in feeds:
-            tasks.append(_fetch_single_feed(source_name, feed_url, category))
+    for source_name, feed_url in FEEDS:
+        tasks.append(_fetch_single_feed(source_name, feed_url))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -127,17 +165,13 @@ async def fetch_feeds(categories: list[str]) -> list[RSSArticle]:
             continue
         articles.extend(result)
 
-    logger.info(
-        "Fetched %d articles from %d feeds across %s",
-        len(articles), len(tasks), categories,
-    )
+    logger.info("Fetched %d articles from %d feeds", len(articles), len(tasks))
     return articles
 
 
 async def _fetch_single_feed(
     source_name: str,
     feed_url: str,
-    category: str,
 ) -> list[RSSArticle]:
     """Fetch and parse a single RSS feed."""
     async with httpx.AsyncClient() as client:
@@ -153,10 +187,10 @@ async def _fetch_single_feed(
             logger.warning("Failed to fetch %s (%s): %s", source_name, feed_url, e)
             return []
 
-    return parse_feed(resp.content, source_name, category)
+    return parse_feed(resp.content, source_name)
 
 
-def parse_feed(data: bytes, source_name: str, category: str) -> list[RSSArticle]:
+def parse_feed(data: bytes, source_name: str) -> list[RSSArticle]:
     """Parse RSS/Atom feed data into RSSArticle objects."""
     feed = feedparser.parse(data)
     articles = []
@@ -188,7 +222,6 @@ def parse_feed(data: bytes, source_name: str, category: str) -> list[RSSArticle]
             source_name=source_name,
             published_date=pub_date,
             image_url=image_url,
-            category=category,
             raw_content=raw_content,
         ))
 

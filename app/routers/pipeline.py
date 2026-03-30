@@ -6,14 +6,12 @@ import time
 from fastapi import APIRouter, Header, HTTPException
 
 from app.config import settings
-from app.models import PipelineRequest, PipelineResponse, CategoryResult
+from app.models import PipelineRequest, PipelineResponse
 from workflows.pipeline_workflow import build_pipeline_graph, PipelineState
 
 logger = logging.getLogger("sift-api.pipeline-router")
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
-
-VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health"}
 
 pipeline = build_pipeline_graph()
 
@@ -26,14 +24,9 @@ async def refresh_pipeline(
     if x_pipeline_key != settings.pipeline_api_key:
         raise HTTPException(status_code=401, detail="Invalid pipeline key")
 
-    invalid = set(request.categories) - VALID_CATEGORIES
-    if invalid:
-        raise HTTPException(status_code=400, detail=f"Invalid categories: {invalid}")
-
     start = time.time()
 
     initial_state: PipelineState = {
-        "categories": request.categories,
         "force": request.force,
         "articles": [],
         "new_articles": [],
