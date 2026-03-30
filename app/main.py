@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -13,6 +14,24 @@ from app.routers import pipeline, compare
 
 logger = logging.getLogger("sift-api")
 
+REFRESH_INTERVAL = 10 * 60  # 10 minutes
+
+
+async def _scheduled_refresh():
+    """Run pipeline refresh every 10 minutes in production."""
+    await asyncio.sleep(30)  # let the app fully start
+    while True:
+        try:
+            logger.info("Scheduled refresh starting")
+            from workflows.pipeline_workflow import pipeline as pl
+            result = await pl.ainvoke({"force": False})
+            errors = result.get("errors", [])
+            results = result.get("results", {})
+            logger.info("Scheduled refresh done: %s categories, %d errors", len(results), len(errors))
+        except Exception as e:
+            logger.error("Scheduled refresh failed: %s", e)
+        await asyncio.sleep(REFRESH_INTERVAL)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,8 +43,18 @@ async def lifespan(app: FastAPI):
         logger.info("Database pool initialized")
     except Exception as e:
         logger.warning("Failed to connect to database: %s", e)
+
+    # Start background scheduler in production
+    cron_task = None
+    if settings.environment == "production":
+        cron_task = asyncio.create_task(_scheduled_refresh())
+        logger.info("Scheduled refresh enabled (every %ds)", REFRESH_INTERVAL)
+
     yield
+
     # Shutdown
+    if cron_task:
+        cron_task.cancel()
     await close_pool()
     logger.info("sift-api shut down")
 
