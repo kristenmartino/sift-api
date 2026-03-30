@@ -16,7 +16,7 @@ BATCH_SIZE = 128  # Voyage AI max batch size
 async def embed_texts(texts: list[str]) -> list[list[float]]:
     """
     Embed a list of texts using Voyage AI voyage-3-lite.
-    Returns list of 1024-dim vectors in the same order as inputs.
+    Returns list of 512-dim vectors in the same order as inputs.
     """
     if not texts:
         return []
@@ -38,7 +38,7 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
         except Exception as e:
             logger.error("Embedding failed for batch %d: %s", i // BATCH_SIZE, e)
             # Return zero vectors as fallback for this batch
-            all_embeddings.extend([[0.0] * 1024 for _ in batch])
+            all_embeddings.extend([[0.0] * 512 for _ in batch])
 
-    logger.info("Embedded %d texts (%d-dim vectors)", len(all_embeddings), 1024)
+    logger.info("Embedded %d texts (%d-dim vectors)", len(all_embeddings), 512)
     return all_embeddings
