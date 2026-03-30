@@ -57,8 +57,9 @@ CREATE TABLE IF NOT EXISTS pipeline_state (
     error TEXT
 );
 
--- Seed pipeline_state with all 7 categories
+-- Seed pipeline_state with all 10 categories
 INSERT INTO pipeline_state (category) VALUES
     ('top'), ('technology'), ('business'), ('science'),
-    ('energy'), ('world'), ('health')
+    ('energy'), ('world'), ('health'), ('politics'),
+    ('sports'), ('entertainment')
 ON CONFLICT (category) DO NOTHING;
