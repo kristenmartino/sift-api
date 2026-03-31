@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -14,10 +13,6 @@ from app.models import HealthResponse
 from app.routers import pipeline, compare
 
 logger = logging.getLogger("sift-api")
-
-# Log PORT at import time for Railway debugging
-_port = os.environ.get("PORT", "NOT SET")
-print(f"[sift-api] PORT env var = {_port}", flush=True)
 
 REFRESH_INTERVAL = 30 * 60  # 30 minutes — reduced from 10 to stay within memory limits
 
@@ -48,10 +43,6 @@ async def lifespan(app: FastAPI):
         logger.info("Database pool initialized")
     except Exception as e:
         logger.warning("Failed to connect to database: %s", e)
-
-    # Log the actual PORT for Railway debugging
-    port = os.environ.get("PORT", "NOT SET")
-    logger.info("PORT env var = %s", port)
 
     # Start background scheduler in production
     cron_task = None
