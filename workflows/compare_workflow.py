@@ -14,6 +14,7 @@ from app.config import settings
 logger = logging.getLogger("sift-api.compare")
 
 MODEL = "claude-haiku-4-5-20251001"
+PER_SOURCE_TIMEOUT = 20  # seconds per source search
 
 
 class CompareState(TypedDict):
@@ -37,24 +38,27 @@ async def search_sources_node(state: CompareState) -> dict:
     async def search_one(source: str) -> tuple[str, str | None]:
         """Search a single source. Returns (source_name, result_text | None)."""
         try:
-            response = await client.messages.create(
-                model=MODEL,
-                max_tokens=2048,
-                tools=[{
-                    "type": "web_search_20250305",
-                    "name": "web_search",
-                    "max_uses": 3,
-                }],
-                messages=[{
-                    "role": "user",
-                    "content": (
-                        f'Search for recent news coverage from {source} about: "{topic}"\n\n'
-                        f"Summarize what {source} reports about this topic, including key facts, "
-                        f"figures, quotes, and their perspective or framing. "
-                        f"If you cannot find relevant coverage from {source}, say "
-                        f"'No relevant coverage found from {source}.'"
-                    ),
-                }],
+            response = await asyncio.wait_for(
+                client.messages.create(
+                    model=MODEL,
+                    max_tokens=2048,
+                    tools=[{
+                        "type": "web_search_20250305",
+                        "name": "web_search",
+                        "max_uses": 3,
+                    }],
+                    messages=[{
+                        "role": "user",
+                        "content": (
+                            f'Search for recent news coverage from {source} about: "{topic}"\n\n'
+                            f"Summarize what {source} reports about this topic, including key facts, "
+                            f"figures, quotes, and their perspective or framing. "
+                            f"If you cannot find relevant coverage from {source}, say "
+                            f"'No relevant coverage found from {source}.'"
+                        ),
+                    }],
+                ),
+                timeout=PER_SOURCE_TIMEOUT,
             )
 
             # Extract text blocks from response
@@ -70,6 +74,9 @@ async def search_sources_node(state: CompareState) -> dict:
             logger.info("search_sources: got %d chars from %s", len(result), source)
             return (source, result)
 
+        except asyncio.TimeoutError:
+            logger.warning("search_sources: timed out for %s after %ds", source, PER_SOURCE_TIMEOUT)
+            return (source, None)
         except Exception as e:
             logger.error("search_sources: failed for %s: %s", source, e)
             return (source, None)
