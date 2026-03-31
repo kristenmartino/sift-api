@@ -14,7 +14,7 @@ from app.routers import pipeline, compare
 
 logger = logging.getLogger("sift-api")
 
-REFRESH_INTERVAL = 30 * 60  # 30 minutes — reduced from 10 to stay within memory limits
+REFRESH_INTERVAL = 10 * 60  # 10 minutes
 
 
 async def _scheduled_refresh():
