@@ -13,7 +13,7 @@ from app.config import settings
 
 logger = logging.getLogger("sift-api.compare")
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-3-5-haiku-20241022"
 
 
 class CompareState(TypedDict):
