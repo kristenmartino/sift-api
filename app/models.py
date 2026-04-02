@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # --- Pipeline ---
@@ -32,8 +32,11 @@ class Claim(BaseModel):
 
 
 class CompareRequest(BaseModel):
-    topic: str
-    sources: list[str] = ["reuters", "bbc", "associated press"]
+    topic: str = Field(..., min_length=3, max_length=500)
+    sources: list[str] = Field(
+        default=["reuters", "bbc", "associated press"],
+        max_length=5,
+    )
 
 
 class CompareResponse(BaseModel):

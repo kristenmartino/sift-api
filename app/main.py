@@ -4,8 +4,13 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.db import init_pool, get_pool, close_pool
@@ -38,6 +43,11 @@ async def lifespan(app: FastAPI):
     # Startup
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
     logger.info("Starting sift-api (env=%s)", settings.environment)
+    if settings.pipeline_api_key in ("dev-key", "change-me-in-production", ""):
+        logger.warning(
+            "SECURITY: PIPELINE_API_KEY is set to a default/empty value. "
+            "Set a strong, unique key via the PIPELINE_API_KEY environment variable."
+        )
     try:
         await init_pool()
         logger.info("Database pool initialized")
@@ -59,11 +69,40 @@ async def lifespan(app: FastAPI):
     logger.info("sift-api shut down")
 
 
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="Sift API",
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Try again later."},
+    )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        if settings.environment == "production":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=63072000; includeSubDomains; preload"
+            )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -74,8 +113,8 @@ app.add_middleware(
         "https://siftnews.kristenmartino.ai",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Pipeline-Key"],
 )
 
 app.include_router(pipeline.router)
