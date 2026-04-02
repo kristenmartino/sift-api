@@ -33,6 +33,10 @@ class TestSecurityHeaders:
         response = client.get("/health")
         assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
 
+    def test_content_security_policy(self, client):
+        response = client.get("/health")
+        assert response.headers["Content-Security-Policy"] == "default-src 'none'; frame-ancestors 'none'"
+
     def test_hsts_not_in_development(self, client):
         """HSTS header should not be present in development."""
         response = client.get("/health")
