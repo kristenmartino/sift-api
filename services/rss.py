@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import calendar
 import ctypes
 import logging
 from datetime import datetime, timezone
@@ -119,7 +120,7 @@ FEEDS: list[tuple[str, str]] = [
     ("The Lancet", "https://www.thelancet.com/rssfeed/lancet_current.xml"),
     ("Healio", "https://www.healio.com/rss"),
     # ── Politics ────────────────────────────────────────
-    ("Politico", "https://rss.politico.com/congress.xml"),
+    ("Politico Congress", "https://rss.politico.com/congress.xml"),
     ("The Hill Politics", "https://thehill.com/homenews/feed/"),
     ("RealClearPolitics", "https://feeds.feedburner.com/realclearpolitics/qlMj"),
     ("FiveThirtyEight", "https://fivethirtyeight.com/features/feed/"),
@@ -324,8 +325,7 @@ def _parse_date(entry) -> datetime | None:
         parsed = entry.get(field)
         if parsed:
             try:
-                from time import mktime
-                return datetime.fromtimestamp(mktime(parsed), tz=timezone.utc)
+                return datetime.fromtimestamp(calendar.timegm(parsed), tz=timezone.utc)
             except Exception:
                 continue
 
@@ -333,7 +333,10 @@ def _parse_date(entry) -> datetime | None:
         raw = entry.get(field, "")
         if raw:
             try:
-                return parsedate_to_datetime(raw).replace(tzinfo=timezone.utc)
+                dt = parsedate_to_datetime(raw)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
             except Exception:
                 try:
                     return datetime.fromisoformat(raw.replace("Z", "+00:00"))

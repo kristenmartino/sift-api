@@ -29,7 +29,17 @@ async def _scheduled_refresh():
         try:
             logger.info("Scheduled refresh starting")
             from app.routers.pipeline import pipeline as pl
-            result = await pl.ainvoke({"force": False})
+            from workflows.pipeline_workflow import PipelineState
+            initial_state: PipelineState = {
+                "force": False,
+                "articles": [],
+                "new_articles": [],
+                "summaries": {},
+                "embeddings": {},
+                "results": {},
+                "errors": [],
+            }
+            result = await pl.ainvoke(initial_state)
             errors = result.get("errors", [])
             results = result.get("results", {})
             logger.info("Scheduled refresh done: %s categories, %d errors", len(results), len(errors))
