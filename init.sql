@@ -39,6 +39,13 @@ CREATE TABLE IF NOT EXISTS custom_topics (
     UNIQUE(user_id, name)
 );
 
+-- Row-Level Security: users can only access their own custom topics
+ALTER TABLE custom_topics ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY custom_topics_user_isolation ON custom_topics
+    USING (user_id = current_setting('app.current_user_id', true))
+    WITH CHECK (user_id = current_setting('app.current_user_id', true));
+
 -- Bookmarks: user-saved articles
 CREATE TABLE IF NOT EXISTS bookmarks (
     user_id TEXT NOT NULL,
@@ -46,6 +53,13 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (user_id, article_id)
 );
+
+-- Row-Level Security: users can only access their own bookmarks
+ALTER TABLE bookmarks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY bookmarks_user_isolation ON bookmarks
+    USING (user_id = current_setting('app.current_user_id', true))
+    WITH CHECK (user_id = current_setting('app.current_user_id', true));
 
 CREATE INDEX IF NOT EXISTS idx_bookmarks_user
     ON bookmarks(user_id, created_at DESC);
