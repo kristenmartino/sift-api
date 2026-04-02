@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import time
 
@@ -26,7 +27,7 @@ async def compare_sources(
     body: CompareRequest,
     x_pipeline_key: str = Header(...),
 ):
-    if x_pipeline_key != settings.pipeline_api_key:
+    if not hmac.compare_digest(x_pipeline_key, settings.pipeline_api_key):
         raise HTTPException(status_code=401, detail="Invalid pipeline key")
 
     if not body.topic or len(body.topic.strip()) < 3:
@@ -37,9 +38,20 @@ async def compare_sources(
 
     start = time.time()
 
+    # Deduplicate sources while preserving order
+    seen: set[str] = set()
+    unique_sources: list[str] = []
+    for s in body.sources:
+        key = s.lower().strip()
+        if key not in seen:
+            seen.add(key)
+            unique_sources.append(s)
+
+    sanitized_topic = body.topic.strip()
+
     initial_state: CompareState = {
-        "topic": body.topic.strip(),
-        "sources": body.sources,
+        "topic": sanitized_topic,
+        "sources": unique_sources,
         "search_results": {},
         "claims": [],
         "comparison": "",
@@ -67,10 +79,13 @@ async def compare_sources(
             detail="Could not generate comparison. The sources may not have relevant coverage.",
         )
 
+    # Report only the sources that were actually searched (present in search_results)
+    actually_checked = list(result.get("search_results", {}).keys()) or unique_sources
+
     return CompareResponse(
-        topic=body.topic,
+        topic=sanitized_topic,
         comparison=comparison,
-        sources_checked=body.sources,
+        sources_checked=actually_checked,
         claims=claims,
         duration_ms=duration_ms,
     )
