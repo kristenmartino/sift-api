@@ -16,6 +16,24 @@ logger = logging.getLogger("sift-api.compare")
 MODEL = "claude-haiku-4-5-20251001"
 PER_SOURCE_TIMEOUT = 20  # seconds per source search
 
+# Allowed source names — reject anything not on this list
+ALLOWED_SOURCES = {
+    "reuters", "bbc", "associated press", "ap news", "npr", "cnn", "fox news",
+    "nbc news", "abc news", "cbs news", "the new york times", "washington post",
+    "the guardian", "al jazeera", "politico", "the hill", "axios", "bloomberg",
+    "cnbc", "financial times", "the economist", "the wall street journal",
+    "techcrunch", "the verge", "wired", "ars technica", "nature", "science",
+}
+
+
+def _sanitize_text(text: str) -> str:
+    """Strip control characters and collapse whitespace to mitigate prompt injection."""
+    # Remove control characters except normal whitespace
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+    # Collapse multiple whitespace to single space
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
 
 class CompareState(TypedDict):
     topic: str
@@ -32,8 +50,17 @@ class CompareState(TypedDict):
 async def search_sources_node(state: CompareState) -> dict:
     """Search each source in parallel using Claude web_search."""
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    topic = state["topic"]
-    sources = state["sources"]
+    topic = _sanitize_text(state["topic"])
+    # Validate sources against allowlist; reject unknown names
+    sources = [
+        s for s in state["sources"]
+        if s.lower().strip() in ALLOWED_SOURCES
+    ]
+    if not sources:
+        return {
+            "search_results": {},
+            "errors": ["No valid sources provided"],
+        }
 
     async def search_one(source: str) -> tuple[str, str | None]:
         """Search a single source. Returns (source_name, result_text | None)."""
@@ -133,7 +160,7 @@ async def extract_and_compare_node(state: CompareState) -> dict:
         max_tokens=4096,
         messages=[{
             "role": "user",
-            "content": f"""Analyze the following news coverage of "{state['topic']}" from multiple sources.
+            "content": f"""Analyze the following news coverage of "{_sanitize_text(state['topic'])}" from multiple sources.
 
 {source_texts}
 

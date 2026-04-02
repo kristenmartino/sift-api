@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.models import PipelineRequest, PipelineResponse
@@ -11,14 +13,17 @@ from workflows.pipeline_workflow import build_pipeline_graph, PipelineState
 
 logger = logging.getLogger("sift-api.pipeline-router")
 
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
 pipeline = build_pipeline_graph()
 
 
 @router.post("/refresh", response_model=PipelineResponse)
+@limiter.limit("5/minute")
 async def refresh_pipeline(
-    request: PipelineRequest,
+    request: Request,
+    body: PipelineRequest,
     x_pipeline_key: str = Header(...),
 ):
     if x_pipeline_key != settings.pipeline_api_key:
@@ -27,7 +32,7 @@ async def refresh_pipeline(
     start = time.time()
 
     initial_state: PipelineState = {
-        "force": request.force,
+        "force": body.force,
         "articles": [],
         "new_articles": [],
         "summaries": {},
@@ -40,7 +45,7 @@ async def refresh_pipeline(
         result = await pipeline.ainvoke(initial_state)
     except Exception as e:
         logger.error("Pipeline failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {e}")
+        raise HTTPException(status_code=500, detail="Pipeline execution failed")
 
     duration_ms = int((time.time() - start) * 1000)
 
