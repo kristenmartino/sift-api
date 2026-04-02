@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import time
 
@@ -26,7 +27,7 @@ async def compare_sources(
     body: CompareRequest,
     x_pipeline_key: str = Header(...),
 ):
-    if x_pipeline_key != settings.pipeline_api_key:
+    if not hmac.compare_digest(x_pipeline_key, settings.pipeline_api_key):
         raise HTTPException(status_code=401, detail="Invalid pipeline key")
 
     if not body.topic or len(body.topic.strip()) < 3:

@@ -1,9 +1,15 @@
 .env
 .env.*
+.env.example
 .venv
 __pycache__
 .pytest_cache
+.mypy_cache
 .git
 .github
 docker-compose.yml
 tests
+backfill_embeddings.py
+README.md
+*.md
+.DS_Store

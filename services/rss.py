@@ -156,6 +156,7 @@ FEEDS: list[tuple[str, str]] = [
 
 MAX_ENTRIES_PER_FEED = 10
 FETCH_TIMEOUT = 10.0
+MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB per feed
 
 
 def stable_hash(s: str) -> str:
@@ -213,6 +214,13 @@ async def _fetch_single_feed(
         except Exception as e:
             logger.warning("Failed to fetch %s (%s): %s", source_name, feed_url, e)
             return []
+
+    if len(resp.content) > MAX_RESPONSE_BYTES:
+        logger.warning(
+            "Feed %s too large (%d bytes), skipping",
+            source_name, len(resp.content),
+        )
+        return []
 
     return parse_feed(resp.content, source_name)
 

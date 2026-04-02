@@ -35,6 +35,11 @@ def _sanitize_text(text: str) -> str:
     return cleaned
 
 
+def _sanitize_for_log(text: str) -> str:
+    """Replace newlines and control chars to prevent log injection/forging."""
+    return text.replace("\n", "\\n").replace("\r", "\\r")
+
+
 class CompareState(TypedDict):
     topic: str
     sources: list[str]
@@ -98,14 +103,14 @@ async def search_sources_node(state: CompareState) -> dict:
             if not result:
                 return (source, None)
 
-            logger.info("search_sources: got %d chars from %s", len(result), source)
+            logger.info("search_sources: got %d chars from %s", len(result), _sanitize_for_log(source))
             return (source, result)
 
         except asyncio.TimeoutError:
-            logger.warning("search_sources: timed out for %s after %ds", source, PER_SOURCE_TIMEOUT)
+            logger.warning("search_sources: timed out for %s after %ds", _sanitize_for_log(source), PER_SOURCE_TIMEOUT)
             return (source, None)
         except Exception as e:
-            logger.error("search_sources: failed for %s: %s", source, e)
+            logger.error("search_sources: failed for %s: %s", _sanitize_for_log(source), e)
             return (source, None)
 
     # Run all source searches in parallel
@@ -125,7 +130,7 @@ async def search_sources_node(state: CompareState) -> dict:
         if text and "no relevant coverage found" not in text.lower():
             search_results[source_name] = text
         else:
-            errors.append(f"No coverage found from {source_name}")
+            errors.append(f"No coverage found from {_sanitize_for_log(source_name)}")
 
     logger.info(
         "search_sources: got results from %d/%d sources",
