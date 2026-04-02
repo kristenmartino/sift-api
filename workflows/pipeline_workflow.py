@@ -149,26 +149,29 @@ async def store_node(state: PipelineState) -> dict:
 
     pool = await get_pool()
 
-    # Count by category for results
-    all_by_cat: dict[str, int] = {}
-    for a in all_articles:
-        cat = a.category or "top"
-        all_by_cat[cat] = all_by_cat.get(cat, 0) + 1
-
+    # Count new articles by category (categories are assigned during summarization)
     new_by_cat: dict[str, list[RSSArticle]] = {}
     for a in new_articles:
         cat = a.category or "top"
         new_by_cat.setdefault(cat, []).append(a)
 
+    # Skipped = total fetched - total new (categories aren't available for
+    # skipped articles since they never went through summarization, so we
+    # can only report the total skipped count, not per-category)
+    total_skipped = len(all_articles) - len(new_articles)
+
     results: dict[str, CategoryResult] = {}
     for cat in ALL_CATEGORIES:
         new_count = len(new_by_cat.get(cat, []))
-        total_fetched = all_by_cat.get(cat, 0)
         results[cat] = CategoryResult(
             new_articles=new_count,
-            skipped=max(0, total_fetched - new_count),
+            skipped=0,
             errors=0,
         )
+
+    # Attribute total skipped count to "top" as a summary figure
+    if total_skipped > 0:
+        results["top"].skipped = total_skipped
 
     # Upsert each new article
     stored = 0
