@@ -48,6 +48,21 @@ class CompareResponse(BaseModel):
     duration_ms: int
 
 
+# --- Stories ---
+
+class StoryFraming(BaseModel):
+    source_name: str
+    framing: str
+    tone: str
+
+
+class EntitySet(BaseModel):
+    people: list[str] = []
+    organizations: list[str] = []
+    locations: list[str] = []
+    event_description: str = ""
+
+
 # --- Health ---
 
 class HealthResponse(BaseModel):
