@@ -12,7 +12,7 @@ from app.models import RSSArticle
 logger = logging.getLogger("sift-api.summarizer")
 
 BATCH_SIZE = 5
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-haiku-4-5-20241022"
 
 VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
 
