@@ -4,23 +4,34 @@ import hmac
 import logging
 import time
 
+import asyncio
+
 from fastapi import APIRouter, Header, HTTPException, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.config import settings
+from app.dependencies import limiter
 from app.models import CompareRequest, CompareResponse
 from workflows.compare_workflow import build_compare_graph, CompareState
 
 logger = logging.getLogger("sift-api.compare-router")
 
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/analyze", tags=["compare"])
+
+COMPARE_TIMEOUT = 90  # seconds — max time for entire comparison workflow
 
 compare_graph = build_compare_graph()
 
 
-@router.post("/compare", response_model=CompareResponse)
+@router.post(
+    "/compare",
+    response_model=CompareResponse,
+    summary="Multi-source news comparison",
+    description=(
+        "Searches multiple news sources for coverage of a topic, extracts key claims, "
+        "and compares how sources agree or disagree. Supports up to 5 sources. "
+        "Rate limited to 10 requests per minute. May take up to 90 seconds."
+    ),
+)
 @limiter.limit("10/minute")
 async def compare_sources(
     request: Request,
@@ -59,10 +70,22 @@ async def compare_sources(
     }
 
     try:
-        result = await compare_graph.ainvoke(initial_state)
+        result = await asyncio.wait_for(
+            compare_graph.ainvoke(initial_state),
+            timeout=COMPARE_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.error("Compare workflow timed out after %ds", COMPARE_TIMEOUT)
+        raise HTTPException(
+            status_code=504,
+            detail={"detail": "Comparison timed out. Try fewer sources or a simpler topic.", "code": "COMPARISON_TIMEOUT"},
+        )
     except Exception as e:
         logger.error("Compare workflow failed: %s", e)
-        raise HTTPException(status_code=500, detail="Comparison failed")
+        raise HTTPException(
+            status_code=500,
+            detail={"detail": "Comparison failed", "code": "COMPARISON_FAILED"},
+        )
 
     duration_ms = int((time.time() - start) * 1000)
 
@@ -76,7 +99,10 @@ async def compare_sources(
     if not comparison and not claims:
         raise HTTPException(
             status_code=502,
-            detail="Could not generate comparison. The sources may not have relevant coverage.",
+            detail={
+                "detail": "Could not generate comparison. The sources may not have relevant coverage.",
+                "code": "NO_COVERAGE",
+            },
         )
 
     # Report only the sources that were actually searched (present in search_results)

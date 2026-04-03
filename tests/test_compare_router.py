@@ -108,5 +108,7 @@ class TestCompareErrorSanitization:
                 headers={"X-Pipeline-Key": "dev-key"},
             )
             assert response.status_code == 500
-            assert "secret" not in response.json()["detail"]
-            assert response.json()["detail"] == "Comparison failed"
+            detail = response.json()["detail"]
+            assert "secret" not in str(detail)
+            assert detail["detail"] == "Comparison failed"
+            assert detail["code"] == "COMPARISON_FAILED"

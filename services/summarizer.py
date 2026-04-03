@@ -25,7 +25,7 @@ async def summarize_articles(articles: list[RSSArticle]) -> dict[str, dict]:
     if not articles:
         return {}
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
     results: dict[str, dict] = {}
 
     for i in range(0, len(articles), BATCH_SIZE):

@@ -5,22 +5,29 @@ import logging
 import time
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.config import settings
+from app.dependencies import limiter
 from app.models import PipelineRequest, PipelineResponse
 from workflows.pipeline_workflow import build_pipeline_graph, PipelineState
 
 logger = logging.getLogger("sift-api.pipeline-router")
 
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
 pipeline = build_pipeline_graph()
 
 
-@router.post("/refresh", response_model=PipelineResponse)
+@router.post(
+    "/refresh",
+    response_model=PipelineResponse,
+    summary="Trigger RSS pipeline",
+    description=(
+        "Triggers the full content pipeline: fetch RSS feeds, deduplicate, "
+        "summarize with Claude, generate embeddings, and store in Postgres. "
+        "Rate limited to 5 requests per minute."
+    ),
+)
 @limiter.limit("5/minute")
 async def refresh_pipeline(
     request: Request,
@@ -46,7 +53,10 @@ async def refresh_pipeline(
         result = await pipeline.ainvoke(initial_state)
     except Exception as e:
         logger.error("Pipeline failed: %s", e)
-        raise HTTPException(status_code=500, detail="Pipeline execution failed")
+        raise HTTPException(
+            status_code=500,
+            detail={"detail": "Pipeline execution failed", "code": "PIPELINE_FAILED"},
+        )
 
     duration_ms = int((time.time() - start) * 1000)
 
@@ -56,5 +66,6 @@ async def refresh_pipeline(
 
     return PipelineResponse(
         results=result.get("results", {}),
+        total_skipped=result.get("total_skipped", 0),
         duration_ms=duration_ms,
     )
