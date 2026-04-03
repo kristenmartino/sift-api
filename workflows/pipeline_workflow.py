@@ -169,10 +169,6 @@ async def store_node(state: PipelineState) -> dict:
             errors=0,
         )
 
-    # Attribute total skipped count to "top" as a summary figure
-    if total_skipped > 0:
-        results["top"].skipped = total_skipped
-
     # Upsert each new article
     stored = 0
     for article in new_articles:
@@ -239,7 +235,7 @@ async def store_node(state: PipelineState) -> dict:
             logger.error("Failed to update pipeline_state for %s: %s", cat, e)
 
     logger.info("store: inserted %d articles", stored)
-    return {"results": results}
+    return {"results": results, "total_skipped": total_skipped}
 
 
 # --- Build the graph ---

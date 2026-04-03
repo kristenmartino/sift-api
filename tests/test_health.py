@@ -19,12 +19,12 @@ def client():
 
 class TestHealthEndpoint:
     def test_health_no_db(self, client):
-        """Health endpoint returns healthy even without DB."""
+        """Health endpoint returns degraded when DB is unavailable."""
         response = client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "healthy"
-        assert data["version"] == "0.1.0"
+        assert data["status"] == "degraded"
+        assert data["version"] == "1.0.0"
         assert data["db_connected"] is False
 
     def test_health_with_db(self):
