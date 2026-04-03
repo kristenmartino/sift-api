@@ -46,6 +46,7 @@ async def refresh_pipeline(
         "summaries": {},
         "embeddings": {},
         "results": {},
+        "total_skipped": 0,
         "errors": [],
     }
 
