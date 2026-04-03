@@ -13,7 +13,7 @@ from app.config import settings
 
 logger = logging.getLogger("sift-api.compare")
 
-MODEL = "claude-haiku-4-5-20241022"
+MODEL = "claude-haiku-4-5-20251001"
 PER_SOURCE_TIMEOUT = 20  # seconds per source search
 
 # Allowed source names — reject anything not on this list
