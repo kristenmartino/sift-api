@@ -39,6 +39,7 @@ async def _scheduled_refresh():
                 "summaries": {},
                 "embeddings": {},
                 "results": {},
+                "total_skipped": 0,
                 "errors": [],
             }
             result = await pl.ainvoke(initial_state)

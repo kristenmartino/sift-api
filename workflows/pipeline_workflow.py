@@ -19,6 +19,7 @@ class PipelineState(TypedDict):
     summaries: dict[str, dict]       # source_url -> {"summary": str, "category": str}
     embeddings: dict[str, list[float]]  # source_url -> vector
     results: dict[str, CategoryResult]
+    total_skipped: int
     errors: list[str]
 
 
