@@ -15,7 +15,11 @@ CREATE TABLE IF NOT EXISTS articles (
     published_date TIMESTAMPTZ,
     embedding VECTOR(512),
     read_time INTEGER DEFAULT 1,
-    from_search BOOLEAN NOT NULL DEFAULT false, -- TODO: set true when compare-discovered articles are persisted
+    from_search BOOLEAN NOT NULL DEFAULT false,
+    story_id TEXT,
+    entities JSONB DEFAULT '[]'::jsonb,
+    why_it_matters TEXT,
+    importance_score INTEGER,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -28,9 +32,31 @@ CREATE INDEX IF NOT EXISTS idx_articles_category_date
 -- CREATE INDEX idx_articles_embedding ON articles
 --     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 20);
 
--- TODO: Custom topics and bookmarks tables below are consumed by the
--- Next.js frontend via Neon/Supabase client. API endpoints for these
--- are planned for a future release.
+CREATE INDEX IF NOT EXISTS idx_articles_story_id
+    ON articles(story_id);
+
+-- Stories: grouped multi-source coverage of the same event
+CREATE TABLE IF NOT EXISTS stories (
+    id TEXT PRIMARY KEY,
+    headline TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    category TEXT NOT NULL,
+    framings JSONB DEFAULT '[]'::jsonb,
+    entities JSONB DEFAULT '[]'::jsonb,
+    article_count INTEGER DEFAULT 0,
+    representative_image_url TEXT,
+    published_date TIMESTAMPTZ,
+    synthesis_status TEXT DEFAULT 'pending',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_stories_category_date
+    ON stories(category, published_date DESC);
+
+-- Add FK after stories table exists
+ALTER TABLE articles ADD CONSTRAINT fk_articles_story
+    FOREIGN KEY (story_id) REFERENCES stories(id);
 
 -- Custom topics: user-defined search topics with embeddings
 CREATE TABLE IF NOT EXISTS custom_topics (

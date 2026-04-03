@@ -17,6 +17,8 @@ class PipelineState(TypedDict):
     articles: list[RSSArticle]
     new_articles: list[RSSArticle]
     summaries: dict[str, dict]       # source_url -> {"summary": str, "category": str}
+    contexts: dict[str, str]         # source_url -> "This matters because..."
+    importance_scores: dict[str, int]  # source_url -> 1-5
     embeddings: dict[str, list[float]]  # source_url -> vector
     results: dict[str, CategoryResult]
     total_skipped: int
@@ -104,6 +106,47 @@ async def summarize_node(state: PipelineState) -> dict:
         }
 
 
+async def context_node(state: PipelineState) -> dict:
+    """Generate 'why it matters' one-liners and importance scores using Claude Haiku."""
+    from services.context_generator import generate_context
+
+    new_articles = state.get("new_articles", [])
+    summaries = state.get("summaries", {})
+    if not new_articles:
+        logger.info("context: no new articles to generate context for")
+        return {"contexts": {}, "importance_scores": {}}
+
+    # Build input: title + summary for each article
+    articles_for_context = []
+    for article in new_articles:
+        result = summaries.get(article.source_url)
+        summary = result["summary"] if result else ""
+        if summary:
+            articles_for_context.append({
+                "source_url": article.source_url,
+                "title": article.title,
+                "summary": summary,
+            })
+
+    try:
+        raw = await generate_context(articles_for_context)
+        # Unpack: raw is {source_url: {"context": str, "score": int}}
+        contexts: dict[str, str] = {}
+        importance_scores: dict[str, int] = {}
+        for url, data in raw.items():
+            contexts[url] = data["context"]
+            importance_scores[url] = data["score"]
+        logger.info("context: generated %d context lines + scores", len(contexts))
+        return {"contexts": contexts, "importance_scores": importance_scores}
+    except Exception as e:
+        logger.error("context failed: %s", e)
+        return {
+            "contexts": {},
+            "importance_scores": {},
+            "errors": state.get("errors", []) + [f"context: {e}"],
+        }
+
+
 async def embed_node(state: PipelineState) -> dict:
     """Generate Voyage AI embeddings for new articles."""
     from services.embedder import embed_texts
@@ -145,6 +188,8 @@ async def store_node(state: PipelineState) -> dict:
 
     new_articles = state.get("new_articles", [])
     summaries = state.get("summaries", {})
+    contexts = state.get("contexts", {})
+    importance_scores = state.get("importance_scores", {})
     embeddings = state.get("embeddings", {})
     all_articles = state.get("articles", [])
 
@@ -177,6 +222,8 @@ async def store_node(state: PipelineState) -> dict:
         result = summaries.get(article.source_url)
         summary = result["summary"] if result else ""
         category = article.category or "top"
+        why_it_matters = contexts.get(article.source_url)
+        importance_score = importance_scores.get(article.source_url)
         embedding = embeddings.get(article.source_url)
         read_time = max(1, len(summary.split()) // 200 + 1) if summary else 1
 
@@ -189,12 +236,15 @@ async def store_node(state: PipelineState) -> dict:
             await pool.execute(
                 """
                 INSERT INTO articles (id, title, summary, source_url, source_name,
-                    image_url, category, published_date, embedding, read_time)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10)
+                    image_url, category, published_date, embedding, read_time,
+                    why_it_matters, importance_score)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12)
                 ON CONFLICT (source_url) DO UPDATE SET
                     summary = EXCLUDED.summary,
                     category = EXCLUDED.category,
                     embedding = EXCLUDED.embedding,
+                    why_it_matters = EXCLUDED.why_it_matters,
+                    importance_score = EXCLUDED.importance_score,
                     updated_at = NOW()
                 """,
                 article_id,
@@ -207,6 +257,8 @@ async def store_node(state: PipelineState) -> dict:
                 article.published_date,
                 embedding_str,
                 read_time,
+                why_it_matters,
+                importance_score,
             )
             stored += 1
         except Exception as e:
@@ -236,6 +288,18 @@ async def store_node(state: PipelineState) -> dict:
             logger.error("Failed to update pipeline_state for %s: %s", cat, e)
 
     logger.info("store: inserted %d articles", stored)
+
+    # Run story threading for categories that received new articles
+    from workflows.story_workflow import run_story_threading
+
+    categories_with_new = [cat for cat in new_by_cat if new_by_cat[cat]]
+    for cat in categories_with_new:
+        try:
+            await run_story_threading(cat)
+            logger.info("story threading completed for %s", cat)
+        except Exception as e:
+            logger.error("story threading failed for %s: %s", cat, e)
+
     return {"results": results, "total_skipped": total_skipped}
 
 
@@ -248,13 +312,15 @@ def build_pipeline_graph():
     graph.add_node("fetch_rss", fetch_rss_node)
     graph.add_node("deduplicate", deduplicate_node)
     graph.add_node("summarize", summarize_node)
+    graph.add_node("context", context_node)
     graph.add_node("embed", embed_node)
     graph.add_node("store", store_node)
 
     graph.set_entry_point("fetch_rss")
     graph.add_edge("fetch_rss", "deduplicate")
     graph.add_edge("deduplicate", "summarize")
-    graph.add_edge("summarize", "embed")
+    graph.add_edge("summarize", "context")
+    graph.add_edge("context", "embed")
     graph.add_edge("embed", "store")
     graph.add_edge("store", END)
 
