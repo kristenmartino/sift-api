@@ -18,6 +18,7 @@ class CategoryResult(BaseModel):
 
 class PipelineResponse(BaseModel):
     results: dict[str, CategoryResult]
+    total_skipped: int = 0
     duration_ms: int
 
 
@@ -43,7 +44,7 @@ class CompareResponse(BaseModel):
     topic: str
     comparison: str
     sources_checked: list[str]
-    claims: list[dict]
+    claims: list[Claim]
     duration_ms: int
 
 
@@ -54,6 +55,14 @@ class HealthResponse(BaseModel):
     version: str
     db_connected: bool
     last_pipeline_run: str | None
+    scheduler_running: bool | None = None
+
+
+# --- Errors ---
+
+class ErrorResponse(BaseModel):
+    detail: str
+    code: str
 
 
 # --- Internal: RSS article before summarization ---

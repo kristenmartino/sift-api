@@ -57,17 +57,22 @@ curl -X POST http://localhost:8000/pipeline/refresh \
 # Multi-source comparison
 curl -X POST http://localhost:8000/analyze/compare \
   -H "Content-Type: application/json" \
+  -H "X-Pipeline-Key: dev-key" \
   -d '{"topic": "Federal Reserve interest rate decision", "sources": ["reuters", "bbc", "associated press"]}'
 ```
 
 ## API
 
+All endpoints are available at both `/v1/...` (preferred) and legacy paths (for backwards compatibility).
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | Service info + available endpoints |
 | GET | `/health` | Health check + DB status + last pipeline run |
-| POST | `/pipeline/refresh` | Trigger RSS pipeline (auth required) |
-| POST | `/analyze/compare` | Multi-source comparison via LangGraph |
+| GET | `/docs` | Interactive API documentation (Swagger UI) |
+| GET | `/redoc` | Alternative API documentation (ReDoc) |
+| POST | `/v1/pipeline/refresh` | Trigger RSS pipeline (auth required) |
+| POST | `/v1/analyze/compare` | Multi-source comparison via LangGraph |
 
 ## Project structure
 
@@ -87,7 +92,7 @@ sift-api/
 ├── services/
 │   ├── rss.py               # 100+ RSS feeds, feedparser, image extraction
 │   ├── summarizer.py        # Claude Haiku 4.5 batch summarization
-│   ├── embedder.py          # Voyage AI embeddings (voyage-3-lite, 1024-dim)
+│   ├── embedder.py          # Voyage AI embeddings (voyage-3-lite, 512-dim)
 │   └── deduplicator.py      # Postgres dedup check
 ├── tests/
 ├── docker-compose.yml       # Postgres 16 + pgvector (local dev)

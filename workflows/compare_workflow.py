@@ -49,7 +49,7 @@ class CompareState(TypedDict):
 
 async def search_sources_node(state: CompareState) -> dict:
     """Search each source in parallel using Claude web_search."""
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
     topic = _sanitize_text(state["topic"])
     # Validate sources against allowlist; reject unknown names
     sources = [
@@ -146,7 +146,7 @@ async def extract_and_compare_node(state: CompareState) -> dict:
             "claims": [],
         }
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
 
     # Format source texts for the prompt
     source_texts = ""

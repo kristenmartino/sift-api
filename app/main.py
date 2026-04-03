@@ -2,22 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.db import init_pool, get_pool, close_pool
+from app.dependencies import limiter
 from app.models import HealthResponse
 from app.routers import pipeline, compare
 
 logger = logging.getLogger("sift-api")
+
+API_VERSION = "1.0.0"
 
 REFRESH_INTERVAL = 10 * 60  # 10 minutes
 
@@ -79,11 +81,14 @@ async def lifespan(app: FastAPI):
     logger.info("sift-api shut down")
 
 
-limiter = Limiter(key_func=get_remote_address)
-
 app = FastAPI(
     title="Sift API",
-    version="0.1.0",
+    version=API_VERSION,
+    description=(
+        "AI-curated news pipeline and multi-source comparison API for Sift. "
+        "Handles background content processing (RSS feeds, Claude summaries, "
+        "Voyage AI embeddings) and on-demand multi-source news comparison."
+    ),
     lifespan=lifespan,
 )
 
@@ -100,11 +105,17 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # Generate or echo request ID for tracing
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+
         response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        response.headers["Permissions-Policy"] = "()"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Language"] = "en"
         if settings.environment == "production":
             response.headers["Strict-Transport-Security"] = (
                 "max-age=63072000; includeSubDomains; preload"
@@ -127,24 +138,40 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-Pipeline-Key"],
 )
 
+# Versioned routes (preferred)
+app.include_router(pipeline.router, prefix="/v1")
+app.include_router(compare.router, prefix="/v1")
+
+# Legacy routes (backwards-compatible, migrate frontend then remove)
 app.include_router(pipeline.router)
 app.include_router(compare.router)
 
 
-@app.get("/")
+@app.get(
+    "/",
+    summary="Service info",
+    description="Returns service metadata and available API endpoints.",
+)
 async def root():
     return {
         "service": "sift-api",
-        "version": "0.1.0",
+        "version": API_VERSION,
         "endpoints": {
             "health": "GET /health",
-            "pipeline": "POST /pipeline/refresh",
-            "compare": "POST /analyze/compare",
+            "pipeline": "POST /v1/pipeline/refresh",
+            "compare": "POST /v1/analyze/compare",
+            "docs": "GET /docs",
+            "redoc": "GET /redoc",
         },
     }
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="Health check",
+    description="Returns service health, database connectivity, and last pipeline run timestamp.",
+)
 async def health():
     db_connected = False
     last_run = None
@@ -159,9 +186,15 @@ async def health():
             last_run = row["last_run"].isoformat()
     except Exception:
         pass
+
+    scheduler_running = (
+        settings.environment == "production" or None
+    )
+
     return HealthResponse(
-        status="healthy",
-        version="0.1.0",
+        status="healthy" if db_connected else "degraded",
+        version=API_VERSION,
         db_connected=db_connected,
         last_pipeline_run=last_run,
+        scheduler_running=scheduler_running if scheduler_running else None,
     )

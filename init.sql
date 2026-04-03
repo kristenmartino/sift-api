@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS articles (
     published_date TIMESTAMPTZ,
     embedding VECTOR(512),
     read_time INTEGER DEFAULT 1,
-    from_search BOOLEAN NOT NULL DEFAULT false,
+    from_search BOOLEAN NOT NULL DEFAULT false, -- TODO: set true when compare-discovered articles are persisted
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -27,6 +27,10 @@ CREATE INDEX IF NOT EXISTS idx_articles_category_date
 -- Run after initial data load:
 -- CREATE INDEX idx_articles_embedding ON articles
 --     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 20);
+
+-- TODO: Custom topics and bookmarks tables below are consumed by the
+-- Next.js frontend via Neon/Supabase client. API endpoints for these
+-- are planned for a future release.
 
 -- Custom topics: user-defined search topics with embeddings
 CREATE TABLE IF NOT EXISTS custom_topics (

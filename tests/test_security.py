@@ -25,9 +25,33 @@ class TestSecurityHeaders:
         response = client.get("/health")
         assert response.headers["X-Frame-Options"] == "DENY"
 
-    def test_x_xss_protection(self, client):
+    def test_content_security_policy(self, client):
         response = client.get("/health")
-        assert response.headers["X-XSS-Protection"] == "1; mode=block"
+        assert response.headers["Content-Security-Policy"] == "default-src 'none'; frame-ancestors 'none'"
+
+    def test_permissions_policy(self, client):
+        response = client.get("/health")
+        assert response.headers["Permissions-Policy"] == "()"
+
+    def test_content_language(self, client):
+        response = client.get("/health")
+        assert response.headers["Content-Language"] == "en"
+
+    def test_request_id_generated(self, client):
+        response = client.get("/health")
+        assert "X-Request-ID" in response.headers
+        # Should be a valid UUID
+        import uuid
+        uuid.UUID(response.headers["X-Request-ID"])
+
+    def test_request_id_echoed(self, client):
+        custom_id = "test-request-123"
+        response = client.get("/health", headers={"X-Request-ID": custom_id})
+        assert response.headers["X-Request-ID"] == custom_id
+
+    def test_no_deprecated_xss_protection(self, client):
+        response = client.get("/health")
+        assert "X-XSS-Protection" not in response.headers
 
     def test_referrer_policy(self, client):
         response = client.get("/health")
@@ -105,5 +129,8 @@ class TestPipelineErrorSanitization:
                             headers={"X-Pipeline-Key": "dev-key"},
                         )
                         assert response.status_code == 500
-                        assert "secret123" not in response.json()["detail"]
-                        assert response.json()["detail"] == "Pipeline execution failed"
+                        body = response.json()
+                        detail = body["detail"]
+                        assert "secret123" not in str(detail)
+                        assert detail["detail"] == "Pipeline execution failed"
+                        assert detail["code"] == "PIPELINE_FAILED"
