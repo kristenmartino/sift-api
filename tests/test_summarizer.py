@@ -7,6 +7,7 @@ from services.summarizer import (
     _build_prompt,
     _parse_summaries,
     _truncate,
+    is_insufficient_content,
 )
 from app.models import RSSArticle
 
@@ -110,6 +111,28 @@ class TestBuildPrompt:
         assert "<p>" not in prompt
         assert "<b>" not in prompt
         assert "Hello world" in prompt
+
+
+class TestIsInsufficientContent:
+    def test_exact_marker(self):
+        assert is_insufficient_content("INSUFFICIENT_CONTENT") is True
+
+    def test_phrase_match(self):
+        assert is_insufficient_content("Insufficient content to evaluate this article.") is True
+        assert is_insufficient_content("Unable to provide a summary due to limited text.") is True
+        assert is_insufficient_content("Cannot determine the topic of this article.") is True
+
+    def test_empty_and_none(self):
+        assert is_insufficient_content("") is True
+        assert is_insufficient_content(None) is True
+
+    def test_valid_summary(self):
+        assert is_insufficient_content("Congress passed a new spending bill today.") is False
+        assert is_insufficient_content("The stock market rose 2% on strong earnings reports.") is False
+
+    def test_case_insensitive(self):
+        assert is_insufficient_content("UNABLE TO PROVIDE a summary") is True
+        assert is_insufficient_content("Insufficient Content to evaluate") is True
 
 
 class TestTruncate:
