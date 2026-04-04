@@ -14,7 +14,7 @@ logger = logging.getLogger("sift-api.summarizer")
 BATCH_SIZE = 5
 MODEL = "claude-haiku-4-5-20251001"
 
-VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
+VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment", "fashion"}
 
 # Summaries matching these patterns indicate the AI could not meaningfully
 # evaluate the article content.  These articles should be excluded downstream.
@@ -108,12 +108,14 @@ Also classify each article into exactly ONE of these categories (no other catego
 - "politics" — elections, legislation, political parties, Congress, campaigns, government policy, political satire, Capitol Hill commentary, political columns
 - "sports" — professional sports, college sports, Olympics, player trades, game results
 - "entertainment" — movies, TV, music, celebrities, streaming, awards, pop culture, consumer product launches, brand collaborations, viral consumer trends
+- "fashion" — fashion industry, clothing, runway shows, designer brands, style trends, fashion weeks, luxury goods, apparel companies, beauty industry
 
 IMPORTANT classification rules:
-- Use the source name as a strong signal. For example, Roll Call, Politico, The Hill are political sources — articles from them are almost always "politics" or "business", never lifestyle categories.
-- You MUST only return one of the 10 categories listed above. Do NOT invent new categories like "fashion", "lifestyle", "food", etc.
+- Use the source name as a strong signal. For example, Roll Call, Politico, The Hill are political sources — articles from them are almost always "politics" or "business", never "fashion" or other lifestyle categories.
+- You MUST only return one of the 11 categories listed above. Do NOT invent new categories.
 - Most articles should go into a specific topic category. Only use "top" for truly major stories.
 - When article content is thin, rely on the source name and title to choose the best category.
+- "fashion" is ONLY for articles genuinely about the fashion/clothing/beauty industry. Political articles that mention markets, brands, or shopping metaphors are NOT fashion.
 
 {articles_text}
 

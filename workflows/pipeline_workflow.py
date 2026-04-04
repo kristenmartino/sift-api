@@ -9,7 +9,7 @@ from app.models import RSSArticle, CategoryResult
 
 logger = logging.getLogger("sift-api.pipeline")
 
-ALL_CATEGORIES = ["top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"]
+ALL_CATEGORIES = ["top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment", "fashion"]
 
 
 class PipelineState(TypedDict):
