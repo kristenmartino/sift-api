@@ -9,7 +9,7 @@ from app.models import RSSArticle, CategoryResult
 
 logger = logging.getLogger("sift-api.pipeline")
 
-ALL_CATEGORIES = ["top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"]
+ALL_CATEGORIES = ["top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment", "fashion"]
 
 
 class PipelineState(TypedDict):
@@ -67,7 +67,7 @@ async def deduplicate_node(state: PipelineState) -> dict:
 
 async def summarize_node(state: PipelineState) -> dict:
     """Batch-summarize and classify new articles using Claude Haiku."""
-    from services.summarizer import summarize_articles
+    from services.summarizer import summarize_articles, is_insufficient_content
 
     new_articles = state.get("new_articles", [])
     if not new_articles:
@@ -78,15 +78,34 @@ async def summarize_node(state: PipelineState) -> dict:
         summaries = await summarize_articles(new_articles)
         logger.info("summarize: generated %d summaries with categories", len(summaries))
 
-        # Apply AI-assigned categories back to each article
+        # Filter out articles whose summaries indicate insufficient content
+        filtered_articles = []
+        filtered_summaries: dict[str, dict] = {}
+        skipped_insufficient = 0
+
         for article in new_articles:
             result = summaries.get(article.source_url)
+            if result and is_insufficient_content(result["summary"]):
+                skipped_insufficient += 1
+                logger.info(
+                    "summarize: skipping article with insufficient content: %s",
+                    article.source_url,
+                )
+                continue
             if result:
                 article.category = result["category"]
+                filtered_summaries[article.source_url] = result
             else:
                 article.category = "top"  # fallback
+            filtered_articles.append(article)
 
-        return {"summaries": summaries, "new_articles": new_articles}
+        if skipped_insufficient:
+            logger.info(
+                "summarize: filtered out %d articles with insufficient content",
+                skipped_insufficient,
+            )
+
+        return {"summaries": filtered_summaries, "new_articles": filtered_articles}
     except Exception as e:
         logger.error("summarize failed: %s", e)
         # Fall back to raw RSS content as summaries, default to "top" category

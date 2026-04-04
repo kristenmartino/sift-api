@@ -14,7 +14,22 @@ logger = logging.getLogger("sift-api.summarizer")
 BATCH_SIZE = 5
 MODEL = "claude-haiku-4-5-20251001"
 
-VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
+VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment", "fashion"}
+
+# Summaries matching these patterns indicate the AI could not meaningfully
+# evaluate the article content.  These articles should be excluded downstream.
+_INSUFFICIENT_CONTENT_PHRASES = [
+    "insufficient content",
+    "unable to provide",
+    "unable to summarize",
+    "not enough information",
+    "not enough content",
+    "cannot be summarized",
+    "no content available",
+    "content unavailable",
+    "content not available",
+    "cannot determine",
+]
 
 
 async def summarize_articles(articles: list[RSSArticle]) -> dict[str, dict]:
@@ -80,19 +95,27 @@ def _build_prompt(batch: list[RSSArticle]) -> str:
 
     return f"""Summarize each of the following news articles in 1-2 concise sentences. Focus on the key facts and why the story matters.
 
-Also classify each article into exactly ONE category:
+If there is not enough content to write a meaningful summary, return the summary as exactly "INSUFFICIENT_CONTENT" (this exact string, nothing else).
+
+Also classify each article into exactly ONE of these categories (no other categories are allowed):
 - "top" — only for major breaking news or cross-cutting stories that transcend a single topic
 - "technology" — tech industry, software, hardware, AI, cybersecurity, social media
-- "business" — Wall Street, stock market, earnings reports, M&A, IPOs, venture capital, interest rates, Federal Reserve, banking, employment data, GDP, inflation, corporate strategy, trade policy. NOT consumer product launches, pop culture brands, or retail sales events
+- "business" — Wall Street, stock market, earnings reports, M&A, IPOs, venture capital, interest rates, Federal Reserve, banking, employment data, GDP, inflation, corporate strategy, trade policy, tariffs, markets. NOT consumer product launches, pop culture brands, or retail sales events
 - "science" — research, discoveries, space, physics, biology, climate science
 - "energy" — power grid, renewables, oil & gas, EVs, energy policy, utilities
 - "world" — international affairs, geopolitics, diplomacy, foreign policy
 - "health" — medicine, public health, pharma, healthcare policy, disease
-- "politics" — elections, legislation, political parties, Congress, campaigns, government policy
+- "politics" — elections, legislation, political parties, Congress, campaigns, government policy, political satire, Capitol Hill commentary, political columns
 - "sports" — professional sports, college sports, Olympics, player trades, game results
 - "entertainment" — movies, TV, music, celebrities, streaming, awards, pop culture, consumer product launches, brand collaborations, viral consumer trends
+- "fashion" — fashion industry, clothing, runway shows, designer brands, style trends, fashion weeks, luxury goods, apparel companies, beauty industry
 
-Most articles should go into a specific topic category. Only use "top" for truly major stories.
+IMPORTANT classification rules:
+- Use the source name as a strong signal. For example, Roll Call, Politico, The Hill are political sources — articles from them are almost always "politics" or "business", never "fashion" or other lifestyle categories.
+- You MUST only return one of the 11 categories listed above. Do NOT invent new categories.
+- Most articles should go into a specific topic category. Only use "top" for truly major stories.
+- When article content is thin, rely on the source name and title to choose the best category.
+- "fashion" is ONLY for articles genuinely about the fashion/clothing/beauty industry. Political articles that mention markets, brands, or shopping metaphors are NOT fashion.
 
 {articles_text}
 
@@ -169,6 +192,19 @@ def _extract_json_array(text: str) -> list[dict] | None:
             return items
 
     return None
+
+
+def is_insufficient_content(summary: str) -> bool:
+    """Return True if the summary indicates the AI could not meaningfully evaluate the article."""
+    if not summary:
+        return True
+    lower = summary.lower().strip()
+    if lower == "insufficient_content":
+        return True
+    for phrase in _INSUFFICIENT_CONTENT_PHRASES:
+        if phrase in lower:
+            return True
+    return False
 
 
 def _truncate(text: str, max_words: int) -> str:
