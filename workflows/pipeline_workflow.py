@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, END
@@ -10,6 +12,14 @@ from app.models import RSSArticle, CategoryResult
 logger = logging.getLogger("sift-api.pipeline")
 
 ALL_CATEGORIES = ["top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"]
+
+# Skip-guard knobs for story threading (Phase 5).
+# Threading is expensive (~39% of Anthropic spend) and re-clusters the full
+# 48h window of articles every run. If only a handful of new articles
+# arrived in a category since last run, the cluster result barely changes.
+# Skip unless: (a) enough new articles arrived, OR (b) too much time passed.
+MIN_NEW_ARTICLES_FOR_THREADING = 3
+MAX_THREADING_INTERVAL_SECONDS = 30 * 60  # 30 min
 
 
 class PipelineState(TypedDict):
@@ -289,11 +299,44 @@ async def store_node(state: PipelineState) -> dict:
 
     logger.info("store: inserted %d articles", stored)
 
-    # Run story threading for categories that received new articles
+    # Run story threading for categories that received new articles.
+    # Skip categories with <MIN_NEW_ARTICLES_FOR_THREADING new articles UNLESS
+    # more than MAX_THREADING_INTERVAL_SECONDS has elapsed since the last
+    # threading run for that category (uses stories.updated_at as the proxy).
     from workflows.story_workflow import run_story_threading
 
     categories_with_new = [cat for cat in new_by_cat if new_by_cat[cat]]
+    now_utc = datetime.now(timezone.utc)
+
     for cat in categories_with_new:
+        new_count = new_by_cat[cat]
+        should_skip = False
+        age_seconds: float | None = None
+
+        if new_count < MIN_NEW_ARTICLES_FOR_THREADING:
+            try:
+                last_threaded = await pool.fetchval(
+                    "SELECT MAX(updated_at) FROM stories WHERE category = $1", cat,
+                )
+            except Exception as e:
+                logger.error("Failed to read last threading time for %s: %s", cat, e)
+                last_threaded = None
+
+            if last_threaded is not None:
+                age_seconds = (now_utc - last_threaded).total_seconds()
+                if age_seconds < MAX_THREADING_INTERVAL_SECONDS:
+                    should_skip = True
+
+        if should_skip:
+            logger.info(json.dumps({
+                "event": "threading_skipped",
+                "category": cat,
+                "new_articles": new_count,
+                "seconds_since_last_threading": int(age_seconds) if age_seconds is not None else None,
+                "reason": "below_threshold_within_window",
+            }))
+            continue
+
         try:
             await run_story_threading(cat)
             logger.info("story threading completed for %s", cat)
