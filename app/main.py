@@ -69,15 +69,23 @@ async def lifespan(app: FastAPI):
 
     # Start background scheduler in production
     cron_task = None
+    poller_task = None
     if settings.environment == "production":
         cron_task = asyncio.create_task(_scheduled_refresh())
         logger.info("Scheduled refresh enabled (every %ds)", REFRESH_INTERVAL)
+
+        # Phase 6: poll Anthropic Message Batches for completion and apply
+        # results. Runs in prod only; dev uses sync API for quick iteration.
+        from services.batch_poller import run_batch_poller
+        poller_task = asyncio.create_task(run_batch_poller())
 
     yield
 
     # Shutdown
     if cron_task:
         cron_task.cancel()
+    if poller_task:
+        poller_task.cancel()
     await close_pool()
     logger.info("sift-api shut down")
 

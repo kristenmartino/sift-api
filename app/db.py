@@ -33,6 +33,22 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON articles(content_hash)"
         )
 
+        # Phase 6: Message Batches tracking table (50% cost discount).
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS api_batches (
+                batch_id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'processing',
+                submitted_at TIMESTAMPTZ DEFAULT NOW(),
+                completed_at TIMESTAMPTZ,
+                metadata JSONB DEFAULT '{}'::jsonb
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_api_batches_status_kind "
+            "ON api_batches(status, kind)"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

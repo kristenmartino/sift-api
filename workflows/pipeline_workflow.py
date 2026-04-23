@@ -117,16 +117,21 @@ async def summarize_node(state: PipelineState) -> dict:
 
 
 async def context_node(state: PipelineState) -> dict:
-    """Generate 'why it matters' one-liners and importance scores using Claude Haiku."""
-    from services.context_generator import generate_context
+    """Phase 6: Submit context generation to the Message Batches API (50% off).
+
+    Returns immediately with empty contexts/scores — the articles are stored
+    with NULL why_it_matters and NULL importance_score, then the batch poller
+    updates them asynchronously when the batch completes (typically minutes).
+    The UI already tolerates NULL (COALESCE(importance_score, 3) for sorting,
+    and why_it_matters is nullable in DbArticle).
+    """
+    from services.context_generator import submit_context_batch
 
     new_articles = state.get("new_articles", [])
     summaries = state.get("summaries", {})
     if not new_articles:
-        logger.info("context: no new articles to generate context for")
         return {"contexts": {}, "importance_scores": {}}
 
-    # Build input: title + summary for each article
     articles_for_context = []
     for article in new_articles:
         result = summaries.get(article.source_url)
@@ -138,23 +143,25 @@ async def context_node(state: PipelineState) -> dict:
                 "summary": summary,
             })
 
+    if not articles_for_context:
+        return {"contexts": {}, "importance_scores": {}}
+
     try:
-        raw = await generate_context(articles_for_context)
-        # Unpack: raw is {source_url: {"context": str, "score": int}}
-        contexts: dict[str, str] = {}
-        importance_scores: dict[str, int] = {}
-        for url, data in raw.items():
-            contexts[url] = data["context"]
-            importance_scores[url] = data["score"]
-        logger.info("context: generated %d context lines + scores", len(contexts))
-        return {"contexts": contexts, "importance_scores": importance_scores}
+        batch_id = await submit_context_batch(articles_for_context)
+        logger.info(
+            "context: submitted batch %s for %d articles (async)",
+            batch_id, len(articles_for_context),
+        )
     except Exception as e:
-        logger.error("context failed: %s", e)
+        logger.error("context batch submission failed: %s", e)
         return {
             "contexts": {},
             "importance_scores": {},
             "errors": state.get("errors", []) + [f"context: {e}"],
         }
+
+    # Contexts/scores populated later by the poller → return empty now.
+    return {"contexts": {}, "importance_scores": {}}
 
 
 async def embed_node(state: PipelineState) -> dict:

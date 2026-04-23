@@ -112,3 +112,17 @@ INSERT INTO pipeline_state (category) VALUES
     ('energy'), ('world'), ('health'), ('politics'),
     ('sports'), ('entertainment')
 ON CONFLICT (category) DO NOTHING;
+
+-- In-flight Anthropic Message Batches (50% cost discount, up to 24h SLA).
+-- Rows stay until the poller marks them 'succeeded' or 'errored'.
+CREATE TABLE IF NOT EXISTS api_batches (
+    batch_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,                        -- e.g. 'context', 'entity'
+    status TEXT NOT NULL DEFAULT 'processing', -- processing|succeeded|errored|expired|canceled
+    submitted_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}'::jsonb         -- optional per-batch notes
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_batches_status_kind
+    ON api_batches(status, kind);
