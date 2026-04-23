@@ -180,9 +180,6 @@ async def submit_context_batch(articles: list[dict]) -> str | None:
     requests: list[dict] = []
     for i in range(0, len(articles), BATCH_SIZE):
         sub = articles[i : i + BATCH_SIZE]
-        # custom_id must be unique per request. Embed the indices of the
-        # sub-batch by storing a URL manifest in metadata instead.
-        urls_json = json.dumps([a["source_url"] for a in sub])
         custom_id = f"ctx-{i // BATCH_SIZE}"
         requests.append({
             "custom_id": custom_id,
@@ -190,10 +187,6 @@ async def submit_context_batch(articles: list[dict]) -> str | None:
                 "model": MODEL,
                 "max_tokens": 700,
                 "messages": [{"role": "user", "content": _build_batch_prompt(sub)}],
-                # Embed the URL manifest so the handler can recover mapping.
-                # Anthropic doesn't provide a passthrough field, so we stash
-                # it in the system prompt as a no-op comment. Cleaner: track
-                # it in api_batches.metadata keyed by custom_id.
             },
         })
 

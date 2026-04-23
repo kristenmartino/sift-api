@@ -1,7 +1,4 @@
-from __future__ import annotations
-
-"""
-Thin wrapper around Anthropic's Message Batches API.
+"""Thin wrapper around Anthropic's Message Batches API.
 
 Batches get a flat 50% discount on both input and output tokens vs the
 realtime Messages API, at the cost of up to 24h SLA (typically minutes).
@@ -13,10 +10,11 @@ Workflow:
      status. When 'ended', it streams the JSONL results and passes them
      to a kind-specific handler.
 """
+from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable, Awaitable
+from typing import Awaitable, Callable
 
 import anthropic
 import httpx

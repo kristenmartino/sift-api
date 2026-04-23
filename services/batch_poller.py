@@ -1,12 +1,10 @@
-from __future__ import annotations
-
-"""
-Background task that polls Anthropic's Message Batches API for completion,
+"""Background task that polls Anthropic's Message Batches API for completion,
 then routes results to kind-specific handlers that update Postgres.
 
 Runs indefinitely while the app is up. Poll interval is short (60s) relative
 to Railway refresh cadence (600s), so completed batches surface quickly.
 """
+from __future__ import annotations
 
 import asyncio
 import logging
