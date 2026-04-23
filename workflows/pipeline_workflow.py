@@ -309,7 +309,7 @@ async def store_node(state: PipelineState) -> dict:
     now_utc = datetime.now(timezone.utc)
 
     for cat in categories_with_new:
-        new_count = new_by_cat[cat]
+        new_count = len(new_by_cat[cat])
         should_skip = False
         age_seconds: float | None = None
 
