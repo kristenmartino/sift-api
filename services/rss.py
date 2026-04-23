@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import calendar
 import ctypes
+import hashlib
 import logging
+import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
@@ -167,6 +169,28 @@ def stable_hash(s: str) -> str:
     return _base36(abs(h))
 
 
+_WS_RE = re.compile(r"\s+")
+_TAG_RE = re.compile(r"<[^>]+>")
+CONTENT_HASH_PREFIX_CHARS = 500
+
+
+def compute_content_hash(title: str, raw_content: str) -> str:
+    """SHA-256 of normalized title + content prefix, used for pre-Claude dedup.
+
+    Normalization: strip HTML, lowercase, collapse runs of whitespace, trim.
+    This catches syndicated copies of the same story across feeds (AP → NPR,
+    Yahoo, ABC, etc.) whose source_url differs but body text is identical.
+    """
+    def _norm(text: str) -> str:
+        text = _TAG_RE.sub(" ", text or "")
+        text = _WS_RE.sub(" ", text).strip().lower()
+        return text
+
+    t = _norm(title)
+    c = _norm(raw_content)[:CONTENT_HASH_PREFIX_CHARS]
+    return hashlib.sha256(f"{t}\n{c}".encode("utf-8")).hexdigest()
+
+
 def _base36(n: int) -> str:
     if n == 0:
         return "0"
@@ -251,6 +275,7 @@ def parse_feed(data: bytes, source_name: str) -> list[RSSArticle]:
             published_date=pub_date,
             image_url=image_url,
             raw_content=raw_content,
+            content_hash=compute_content_hash(title, raw_content),
         ))
 
     return articles

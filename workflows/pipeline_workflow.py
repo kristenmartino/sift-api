@@ -247,14 +247,15 @@ async def store_node(state: PipelineState) -> dict:
                 """
                 INSERT INTO articles (id, title, summary, source_url, source_name,
                     image_url, category, published_date, embedding, read_time,
-                    why_it_matters, importance_score)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12)
+                    why_it_matters, importance_score, content_hash)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12, $13)
                 ON CONFLICT (source_url) DO UPDATE SET
                     summary = EXCLUDED.summary,
                     category = EXCLUDED.category,
                     embedding = EXCLUDED.embedding,
                     why_it_matters = EXCLUDED.why_it_matters,
                     importance_score = EXCLUDED.importance_score,
+                    content_hash = EXCLUDED.content_hash,
                     updated_at = NOW()
                 """,
                 article_id,
@@ -269,6 +270,7 @@ async def store_node(state: PipelineState) -> dict:
                 read_time,
                 why_it_matters,
                 importance_score,
+                article.content_hash,
             )
             stored += 1
         except Exception as e:

@@ -20,12 +20,16 @@ CREATE TABLE IF NOT EXISTS articles (
     entities JSONB DEFAULT '[]'::jsonb,
     why_it_matters TEXT,
     importance_score INTEGER,
+    content_hash TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_articles_category_date
     ON articles(category, published_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_articles_content_hash
+    ON articles(content_hash);
 
 -- Note: IVFFlat index requires rows to exist for training.
 -- Run after initial data load:

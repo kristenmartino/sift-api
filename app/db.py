@@ -14,6 +14,24 @@ async def init_pool() -> None:
         min_size=2,
         max_size=10,
     )
+    await _apply_migrations(_pool)
+
+
+async def _apply_migrations(pool: asyncpg.Pool) -> None:
+    """Idempotent schema migrations run at startup.
+
+    Keeping these here (rather than a separate migration runner) lets Railway's
+    existing DB pick up additive columns on the next deploy without manual ops.
+    """
+    async with pool.acquire() as conn:
+        # Phase 4: content-hash dedup column + lookup index.
+        await conn.execute(
+            "ALTER TABLE articles ADD COLUMN IF NOT EXISTS content_hash TEXT"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_content_hash "
+            "ON articles(content_hash)"
+        )
 
 
 async def get_pool() -> asyncpg.Pool:

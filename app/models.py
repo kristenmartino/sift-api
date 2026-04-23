@@ -90,3 +90,4 @@ class RSSArticle(BaseModel):
     image_url: str | None = None
     category: str = ""  # Empty until AI classifies during summarization
     raw_content: str = ""  # RSS description/content, used for summarization input
+    content_hash: str | None = None  # sha256(norm_title + norm_content[:500]), for dedup
