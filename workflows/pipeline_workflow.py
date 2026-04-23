@@ -308,6 +308,35 @@ async def store_node(state: PipelineState) -> dict:
 
     logger.info("store: inserted %d articles", stored)
 
+    # Phase 6b: submit entity extraction to Batch API (50% off). Results are
+    # written to articles.entities asynchronously by the poller; the story
+    # threading workflow reads entities from the DB. Articles whose batch
+    # hasn't completed yet simply get excluded from this cycle's threading
+    # and picked up next cycle.
+    from services.entity_extractor import submit_entity_batch
+
+    articles_for_entities = []
+    for article in new_articles:
+        result = summaries.get(article.source_url)
+        summary = result["summary"] if result else ""
+        if summary:
+            articles_for_entities.append({
+                "source_url": article.source_url,
+                "source_name": article.source_name,
+                "title": article.title,
+                "summary": summary,
+            })
+
+    if articles_for_entities:
+        try:
+            batch_id = await submit_entity_batch(articles_for_entities)
+            logger.info(
+                "entity: submitted batch %s for %d articles (async)",
+                batch_id, len(articles_for_entities),
+            )
+        except Exception as e:
+            logger.error("entity batch submission failed: %s", e)
+
     # Run story threading for categories that received new articles.
     # Skip categories with <MIN_NEW_ARTICLES_FOR_THREADING new articles UNLESS
     # more than MAX_THREADING_INTERVAL_SECONDS has elapsed since the last

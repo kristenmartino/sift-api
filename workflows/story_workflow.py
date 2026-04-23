@@ -34,23 +34,39 @@ async def fetch_articles_node(state: StoryState) -> dict:
     pool = await get_pool()
 
     try:
+        # Phase 6b: only include articles whose entities have been populated
+        # by the batch poller. The articles.entities column defaults to
+        # '[]'::jsonb; once the poller writes a result it becomes an object
+        # ({people, organizations, locations, event_description}). Filter on
+        # jsonb_typeof = 'object' to pick only processed rows — unprocessed
+        # articles get picked up next cycle.
         rows = await pool.fetch(
             f"""
             SELECT id, source_url, source_name, title, summary, image_url,
-                   published_date, story_id
+                   published_date, story_id, entities
             FROM articles
             WHERE category = $1
               AND from_search = false
               AND published_date > NOW() - INTERVAL '{RECENCY_WINDOW_HOURS} hours'
               AND embedding IS NOT NULL
+              AND jsonb_typeof(entities) = 'object'
             ORDER BY published_date DESC
             LIMIT 50
             """,
             category,
         )
 
-        articles = [
-            {
+        articles = []
+        for row in rows:
+            # asyncpg may return JSONB as dict or JSON string depending on
+            # codec config. Normalize to dict.
+            raw_ent = row["entities"]
+            if isinstance(raw_ent, str):
+                try:
+                    raw_ent = json.loads(raw_ent)
+                except json.JSONDecodeError:
+                    raw_ent = {}
+            articles.append({
                 "id": row["id"],
                 "source_url": row["source_url"],
                 "source_name": row["source_name"],
@@ -59,9 +75,8 @@ async def fetch_articles_node(state: StoryState) -> dict:
                 "image_url": row["image_url"],
                 "published_date": row["published_date"].isoformat() if row["published_date"] else None,
                 "existing_story_id": row["story_id"],
-            }
-            for row in rows
-        ]
+                "entities": raw_ent or {},
+            })
 
         logger.info("fetch_articles [%s]: got %d articles from last %dh", category, len(articles), RECENCY_WINDOW_HOURS)
         return {"articles": articles}
@@ -70,26 +85,30 @@ async def fetch_articles_node(state: StoryState) -> dict:
         return {"articles": [], "errors": state.get("errors", []) + [f"fetch_articles: {e}"]}
 
 
-# ─── Node 2: Entity extraction ────────────────────────────
+# ─── Node 2: Entity assembly (DB-backed, no Claude call) ──
 
 async def extract_entities_node(state: StoryState) -> dict:
-    """Batch entity extraction via Claude Haiku."""
-    from services.entity_extractor import extract_entities
+    """Phase 6b: Pull pre-computed entities from the articles rows.
 
+    Entities are populated asynchronously by the Message Batches poller
+    (see services/entity_extractor.process_entity_batch_results). This
+    node no longer calls Claude — it just assembles the source_url ->
+    entities mapping from the state loaded by fetch_articles_node.
+    """
     articles = state.get("articles", [])
     if not articles:
         return {"entities": {}}
 
-    try:
-        entities = await extract_entities(articles)
-        logger.info("extract_entities [%s]: extracted for %d articles", state["category"], len(entities))
-        return {"entities": entities}
-    except Exception as e:
-        logger.error("extract_entities [%s] failed: %s", state["category"], e)
-        return {
-            "entities": {},
-            "errors": state.get("errors", []) + [f"extract_entities: {e}"],
-        }
+    entities = {
+        a["source_url"]: a.get("entities") or {}
+        for a in articles
+        if a.get("entities")
+    }
+    logger.info(
+        "extract_entities [%s]: loaded %d pre-computed entity sets",
+        state["category"], len(entities),
+    )
+    return {"entities": entities}
 
 
 # ─── Node 3: LLM clustering ──────────────────────────────

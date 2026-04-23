@@ -16,6 +16,10 @@ from services.context_generator import (
     BATCH_KIND as CONTEXT_BATCH_KIND,
     process_context_batch_results,
 )
+from services.entity_extractor import (
+    BATCH_KIND as ENTITY_BATCH_KIND,
+    process_entity_batch_results,
+)
 
 logger = logging.getLogger("sift-api.batch_poller")
 
@@ -25,6 +29,7 @@ POLL_INTERVAL_SECONDS = 60
 # Kind → async handler(batch_id, results_list)
 HANDLERS = {
     CONTEXT_BATCH_KIND: process_context_batch_results,
+    ENTITY_BATCH_KIND: process_entity_batch_results,
 }
 
 
