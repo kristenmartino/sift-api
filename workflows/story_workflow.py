@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from datetime import datetime
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, END
@@ -200,6 +201,14 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
             pd = a.get("published_date")
             if pd and (earliest_date is None or pd < earliest_date):
                 earliest_date = pd
+
+        # published_date is stored as an ISO string in state (see fetch_articles_node);
+        # asyncpg requires datetime. Coerce back before the INSERT.
+        if isinstance(earliest_date, str):
+            try:
+                earliest_date = datetime.fromisoformat(earliest_date)
+            except ValueError:
+                earliest_date = None
 
         # Upsert story
         try:
