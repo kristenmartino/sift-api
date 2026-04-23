@@ -21,7 +21,7 @@ logger = logging.getLogger("sift-api")
 
 API_VERSION = "1.0.0"
 
-REFRESH_INTERVAL = 10 * 60  # 10 minutes
+REFRESH_INTERVAL = 30 * 60  # 30 minutes (was 10 min) — stretched to cut spend 66%
 
 
 async def _scheduled_refresh():

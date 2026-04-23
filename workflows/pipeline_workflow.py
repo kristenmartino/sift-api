@@ -19,7 +19,7 @@ ALL_CATEGORIES = ["top", "technology", "business", "science", "energy", "world",
 # arrived in a category since last run, the cluster result barely changes.
 # Skip unless: (a) enough new articles arrived, OR (b) too much time passed.
 MIN_NEW_ARTICLES_FOR_THREADING = 3
-MAX_THREADING_INTERVAL_SECONDS = 30 * 60  # 30 min
+MAX_THREADING_INTERVAL_SECONDS = 60 * 60  # 60 min (scheduler runs every 30 min)
 
 
 class PipelineState(TypedDict):
