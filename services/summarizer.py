@@ -57,7 +57,7 @@ async def _summarize_batch(
 
     response = await client.messages.create(
         model=MODEL,
-        max_tokens=2048,
+        max_tokens=700,
         messages=[{"role": "user", "content": prompt}],
     )
     log_usage("summarizer.batch", response, model=MODEL)
@@ -98,8 +98,9 @@ Most articles should go into a specific topic category. Only use "top" for truly
 
 {articles_text}
 
-Return a JSON array with one object per article, in the same order:
-[{{"index": 1, "summary": "1-2 sentence summary", "category": "technology"}}, ...]
+Return a JSON array with one object per article, in the same order.
+Use short keys: i=index, s=summary, c=category.
+[{{"i":1,"s":"1-2 sentence summary","c":"technology"}}, ...]
 
 Return ONLY the JSON array, no other text."""
 
@@ -111,9 +112,10 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
     parsed = _extract_json_array(text)
     if parsed:
         for item in parsed:
-            idx = item.get("index")
-            summary = item.get("summary", "")
-            category = item.get("category", "top")
+            # Accept short keys (new) and fall back to long keys (legacy prompt form).
+            idx = item.get("i", item.get("index"))
+            summary = item.get("s", item.get("summary", ""))
+            category = item.get("c", item.get("category", "top"))
             if category not in VALID_CATEGORIES:
                 category = "top"
             if isinstance(idx, int) and 1 <= idx <= len(batch) and summary:

@@ -53,24 +53,27 @@ async def _extract_batch(
             f"   Summary: {article['summary']}\n"
         )
 
-    prompt = f"""Extract named entities from each of the following news articles.
+    # Short JSON keys to reduce output tokens (output is 5x more expensive than input).
+    # i=index, p=people, o=organizations, l=locations, e=event_description
+    prompt = f"""Extract named entities from each article. Use short JSON keys.
 
-For each article, return:
-- people: list of people mentioned by name
-- organizations: list of companies, governments, agencies, or bodies mentioned
-- locations: list of specific places, countries, or regions mentioned
-- event_description: a brief phrase (5-10 words) describing the core event
+Keys:
+- i: 1-based article index
+- p: people (list of names)
+- o: organizations (list of companies, governments, agencies)
+- l: locations (list of places, countries, regions)
+- e: brief event phrase (5-10 words)
 
 {articles_text}
 
-Return a JSON array with one object per article, in the same order:
-[{{"index": 1, "people": ["Name1"], "organizations": ["Org1"], "locations": ["Place1"], "event_description": "brief event phrase"}}, ...]
+Return a JSON array, one object per article, in order:
+[{{"i":1,"p":["Name"],"o":["Org"],"l":["Place"],"e":"brief event"}}, ...]
 
 Return ONLY the JSON array, no other text."""
 
     response = await client.messages.create(
         model=MODEL,
-        max_tokens=2048,
+        max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],
     )
     log_usage("entity_extractor.batch", response, model=MODEL)
@@ -86,13 +89,14 @@ def _parse_entities(text: str, batch: list[dict]) -> dict[str, dict]:
     parsed = _extract_json_array(text)
     if parsed:
         for item in parsed:
-            idx = item.get("index")
+            # Accept short keys (new) and fall back to long keys (legacy prompt form).
+            idx = item.get("i", item.get("index"))
             if isinstance(idx, int) and 1 <= idx <= len(batch):
                 results[batch[idx - 1]["source_url"]] = {
-                    "people": item.get("people", []),
-                    "organizations": item.get("organizations", []),
-                    "locations": item.get("locations", []),
-                    "event_description": item.get("event_description", ""),
+                    "people": item.get("p", item.get("people", [])),
+                    "organizations": item.get("o", item.get("organizations", [])),
+                    "locations": item.get("l", item.get("locations", [])),
+                    "event_description": item.get("e", item.get("event_description", "")),
                 }
     else:
         logger.warning("Failed to parse entity extraction JSON")

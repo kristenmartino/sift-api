@@ -63,14 +63,15 @@ async def _generate_batch(
 Articles:
 {articles_text}
 
-Return a JSON array with one object per article, in the same order:
-[{{"index": 1, "context": "Your one-liner here.", "score": 3}}, ...]
+Return a JSON array with one object per article, in the same order.
+Use short keys: i=index, c=context one-liner, s=score.
+[{{"i":1,"c":"Your one-liner here.","s":3}}, ...]
 
 Return ONLY the JSON array, no other text."""
 
     response = await client.messages.create(
         model=MODEL,
-        max_tokens=2048,
+        max_tokens=700,
         messages=[{"role": "user", "content": prompt}],
     )
     log_usage("context_generator.batch", response, model=MODEL)
@@ -86,9 +87,10 @@ def _parse_context(text: str, batch: list[dict]) -> dict[str, dict]:
     parsed = _extract_json_array(text)
     if parsed:
         for item in parsed:
-            idx = item.get("index")
-            context = item.get("context", "")
-            score = item.get("score", 3)
+            # Accept short keys (new) and fall back to long keys (legacy prompt form).
+            idx = item.get("i", item.get("index"))
+            context = item.get("c", item.get("context", ""))
+            score = item.get("s", item.get("score", 3))
             if isinstance(idx, int) and 1 <= idx <= len(batch) and context:
                 # Clamp score to 1-5
                 if not isinstance(score, int) or score < 1 or score > 5:
