@@ -10,6 +10,7 @@ import anthropic
 from langgraph.graph import StateGraph, END
 
 from app.config import settings
+from services.usage_tracker import count_web_searches, log_usage
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -86,6 +87,12 @@ async def search_sources_node(state: CompareState) -> dict:
                     }],
                 ),
                 timeout=PER_SOURCE_TIMEOUT,
+            )
+            log_usage(
+                "compare.search_sources",
+                response,
+                model=MODEL,
+                web_searches=count_web_searches(response),
             )
 
             # Extract text blocks from response
@@ -195,6 +202,7 @@ Available sources: {json.dumps(sources_list)}
 Return ONLY the JSON, no other text.""",
         }],
     )
+    log_usage("compare.extract_and_compare", response, model=MODEL)
 
     # Extract text from response
     text = ""

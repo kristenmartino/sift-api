@@ -6,6 +6,7 @@ import logging
 import anthropic
 
 from app.config import settings
+from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_synthesizer")
 
@@ -51,6 +52,7 @@ Return ONLY a JSON object:
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
+        log_usage("story_synthesizer.synthesize", response, model=MODEL)
 
         text = "".join(b.text for b in response.content if b.type == "text")
         result = _extract_json_object(text)

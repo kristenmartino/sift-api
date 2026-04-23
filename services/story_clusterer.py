@@ -6,6 +6,7 @@ import logging
 import anthropic
 
 from app.config import settings
+from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_clusterer")
 
@@ -66,6 +67,7 @@ Return ONLY the JSON array, no other text."""
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
+        log_usage("story_clusterer.cluster", response, model=MODEL)
 
         text = "".join(b.text for b in response.content if b.type == "text")
         clusters = _parse_clusters(text, len(articles))

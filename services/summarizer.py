@@ -8,6 +8,7 @@ import anthropic
 
 from app.config import settings
 from app.models import RSSArticle
+from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.summarizer")
 
@@ -59,6 +60,7 @@ async def _summarize_batch(
         max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
+    log_usage("summarizer.batch", response, model=MODEL)
 
     text = ""
     for block in response.content:

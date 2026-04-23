@@ -6,6 +6,7 @@ import logging
 import anthropic
 
 from app.config import settings
+from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.context_generator")
 
@@ -72,6 +73,7 @@ Return ONLY the JSON array, no other text."""
         max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
+    log_usage("context_generator.batch", response, model=MODEL)
 
     text = "".join(b.text for b in response.content if b.type == "text")
     return _parse_context(text, batch)
