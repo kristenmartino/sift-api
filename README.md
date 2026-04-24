@@ -102,6 +102,41 @@ sift-api/
 └── .github/workflows/ci.yml # Ruff + pytest on PR/push
 ```
 
+## Database
+
+Schema source of truth for a fresh database is `init.sql`. Additive changes after the initial schema are layered on via two parallel mechanisms:
+
+| Where                              | Form                                    | Applied by                                   |
+| ---------------------------------- | --------------------------------------- | -------------------------------------------- |
+| `migrations/NNN_*.sql`             | `CREATE ... CONCURRENTLY IF NOT EXISTS` | Operator running `psql -f` manually          |
+| `app/db.py:_apply_migrations`      | Same DDL, non-CONCURRENTLY, idempotent  | FastAPI startup (the prod path on Railway)   |
+
+When adding a migration, write both. The SQL file is the CONCURRENTLY-safe version for live ops; the Python hook is what actually runs on every deploy.
+
+### Feed queries and the indexes that serve them
+
+The user-facing `/api/news` feed is served by queries that live in **`sift/lib/db.ts` in the `sift` repo**, not here. This service owns the write path and the indexes; the frontend owns the read queries. The partial indexes below (defined in `migrations/004_feed_indexes.sql` + `app/db.py:_apply_migrations`) exist to match the exact predicates those queries use.
+
+| Query (`sift/lib/db.ts`)          | Purpose                        | Index                                          |
+| --------------------------------- | ------------------------------ | ---------------------------------------------- |
+| `:36`  `getArticlesByCategory`    | category fallback feed         | `idx_articles_feed`                            |
+| `:85`  stories + LEFT JOIN        | top stories per category       | `idx_stories_feed` + `idx_articles_story_feed` |
+| `:121` story articles             | articles belonging to a story  | `idx_articles_story_feed`                      |
+| `:150` standalone articles        | articles outside any story     | `idx_articles_feed`                            |
+
+Client abort budget is `API_TIMEOUT_MS = 10_000` in `sift/lib/constants.ts`; exceeding it surfaces as "We hit a snag pulling today's stories." If a category tab starts timing out, these indexes or these queries are the place to look.
+
+### Diagnosing feed-query performance
+
+```bash
+python scripts/explain_feed_queries.py            # summary table
+python scripts/explain_feed_queries.py --verbose  # full EXPLAIN JSON
+```
+
+Runs `EXPLAIN (ANALYZE, BUFFERS)` across all 10 categories × 3 query shapes against `DATABASE_URL`. Warns at 2000 ms, fails (exit 1) at 8000 ms.
+
+CI wires the same script into the **`feed-perf`** job (`.github/workflows/ci.yml`), triggered only on PRs that touch `app/db.py`, `migrations/`, or the script itself. Requires a `DATABASE_URL` repo secret set to the prod Neon URL.
+
 ## Environment variables
 
 | Variable | Required | Description |
