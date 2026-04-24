@@ -49,6 +49,34 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON api_batches(status, kind)"
         )
 
+        # Feed indexes (migrations/004_feed_indexes.sql). Partial indexes that
+        # match the exact predicates in sift/lib/db.ts's user-facing queries,
+        # so category feeds don't fall back to sequential scans on articles.
+        # CREATE INDEX (without CONCURRENTLY) is fine here: asyncpg runs each
+        # execute() in autocommit, and IF NOT EXISTS makes repeat deploys a
+        # no-op. CONCURRENTLY lives in the SQL file for operators who prefer
+        # to apply the migration manually against a live DB.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_feed "
+            "ON articles (category, published_date DESC) "
+            "WHERE from_search = false "
+            "AND summary IS NOT NULL "
+            "AND summary <> ''"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_story_feed "
+            "ON articles (story_id) "
+            "WHERE story_id IS NOT NULL "
+            "AND from_search = false "
+            "AND summary IS NOT NULL "
+            "AND summary <> ''"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stories_feed "
+            "ON stories (category, published_date DESC) "
+            "WHERE synthesis_status = 'complete'"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
