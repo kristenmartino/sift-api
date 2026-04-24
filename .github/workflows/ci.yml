@@ -26,3 +26,47 @@ jobs:
 
       - name: Test
         run: pytest tests/ -v
+
+  feed-perf:
+    name: Feed Query Perf
+    # Only runs when a PR touches the query surface or the diagnostic script.
+    # Guards against plan regressions landing in main without being noticed.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need enough history to diff against the PR base.
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: changes
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          if git diff --name-only "$base" "$head" -- \
+              app/db.py \
+              migrations \
+              scripts/explain_feed_queries.py \
+              | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.changes.outputs.run == 'true'
+        with:
+          python-version-file: '.python-version'
+          cache: 'pip'
+
+      - name: Install deps
+        if: steps.changes.outputs.run == 'true'
+        run: pip install -r requirements.txt
+
+      - name: EXPLAIN ANALYZE feed queries
+        if: steps.changes.outputs.run == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/explain_feed_queries.py
