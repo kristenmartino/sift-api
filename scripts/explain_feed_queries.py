@@ -171,6 +171,22 @@ async def run(verbose: bool) -> int:
                 idx_str = ", ".join(sorted(idx)) if idx else "(no index — seq scan)"
                 print(f"{cat:<14} {label:<11} {ms:>9.1f}  {idx_str:<50} {v}")
 
+                # Surface warns/fails on the GitHub Actions Checks tab so a
+                # slope of degradation is visible before it becomes a cliff.
+                # https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions
+                if v == "WARN":
+                    print(
+                        f"::warning title=feed-perf {cat}/{label} slow"
+                        f"::{ms:.1f} ms (warn threshold {WARN_MS} ms). "
+                        f"See sift-api#16 for the deferred follow-ups."
+                    )
+                elif v == "FAIL":
+                    print(
+                        f"::error title=feed-perf {cat}/{label} failing"
+                        f"::{ms:.1f} ms (fail threshold {FAIL_MS} ms). "
+                        f"Pick from sift-api#16."
+                    )
+
                 if verbose:
                     print(json.dumps(plan, indent=2))
                     print()
