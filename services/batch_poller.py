@@ -18,6 +18,10 @@ from services.entity_extractor import (
     BATCH_KIND as ENTITY_BATCH_KIND,
     process_entity_batch_results,
 )
+from services.primer_generator import (
+    BATCH_KIND as PRIMER_BATCH_KIND,
+    process_primer_batch_results,
+)
 
 logger = logging.getLogger("sift-api.batch_poller")
 
@@ -28,6 +32,7 @@ POLL_INTERVAL_SECONDS = 60
 HANDLERS = {
     CONTEXT_BATCH_KIND: process_context_batch_results,
     ENTITY_BATCH_KIND: process_entity_batch_results,
+    PRIMER_BATCH_KIND: process_primer_batch_results,
 }
 
 
