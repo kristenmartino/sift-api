@@ -164,6 +164,51 @@ async def context_node(state: PipelineState) -> dict:
     return {"contexts": {}, "importance_scores": {}}
 
 
+async def primer_node(state: PipelineState) -> dict:
+    """Civic-literacy MVP Phase 1A: submit background-primer generation to the
+    Message Batches API.
+
+    Same async pattern as context_node — returns immediately, articles are
+    stored with NULL context_primer, the batch poller writes context_primer
+    when the batch completes. The UI tolerates NULL (BackgroundPrimer renders
+    nothing when context_primer is null/empty).
+    """
+    from services.primer_generator import submit_primer_batch
+
+    new_articles = state.get("new_articles", [])
+    summaries = state.get("summaries", {})
+    if not new_articles:
+        return {}
+
+    articles_for_primer = []
+    for article in new_articles:
+        result = summaries.get(article.source_url)
+        summary = result["summary"] if result else ""
+        if summary:
+            articles_for_primer.append({
+                "source_url": article.source_url,
+                "source_name": article.source_name,
+                "title": article.title,
+                "summary": summary,
+            })
+
+    if not articles_for_primer:
+        return {}
+
+    try:
+        batch_id = await submit_primer_batch(articles_for_primer)
+        logger.info(
+            "primer: submitted batch %s for %d articles (async)",
+            batch_id, len(articles_for_primer),
+        )
+    except Exception as e:
+        logger.error("primer batch submission failed: %s", e)
+        return {"errors": state.get("errors", []) + [f"primer: {e}"]}
+
+    # Populated later by the poller → return empty now.
+    return {}
+
+
 async def embed_node(state: PipelineState) -> dict:
     """Generate Voyage AI embeddings for new articles."""
     from services.embedder import embed_texts
@@ -394,6 +439,7 @@ def build_pipeline_graph():
     graph.add_node("deduplicate", deduplicate_node)
     graph.add_node("summarize", summarize_node)
     graph.add_node("context", context_node)
+    graph.add_node("primer", primer_node)
     graph.add_node("embed", embed_node)
     graph.add_node("store", store_node)
 
@@ -401,7 +447,8 @@ def build_pipeline_graph():
     graph.add_edge("fetch_rss", "deduplicate")
     graph.add_edge("deduplicate", "summarize")
     graph.add_edge("summarize", "context")
-    graph.add_edge("context", "embed")
+    graph.add_edge("context", "primer")
+    graph.add_edge("primer", "embed")
     graph.add_edge("embed", "store")
     graph.add_edge("store", END)
 

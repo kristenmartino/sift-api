@@ -77,6 +77,17 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "WHERE synthesis_status = 'complete'"
         )
 
+        # Civic-literacy MVP (migrations/005_context_primer_and_reading_levels.sql).
+        # context_primer holds the "What you should know first" panel data;
+        # reading_levels holds Claude rewrites at simpler + detailed reading
+        # levels for long-form articles. Both nullable — UI tolerates NULL.
+        await conn.execute(
+            "ALTER TABLE articles ADD COLUMN IF NOT EXISTS context_primer JSONB"
+        )
+        await conn.execute(
+            "ALTER TABLE articles ADD COLUMN IF NOT EXISTS reading_levels JSONB"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
