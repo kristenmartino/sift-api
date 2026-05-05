@@ -59,6 +59,10 @@ Critical rules:
 - Never use the word "context" in the primer itself.
 - Never start with "This article is about" or similar meta-language.
 - Never recommend a position or imply one is correct.
+- When paraphrasing a third-party finding (a court ruling, regulator decision, panel determination, audit, study), \
+preserve the source attribution: write "the court ruled the probe overstepped her authority" not "the probe \
+overstepped her authority." The primer surfaces what's known to whom — never the LLM's own legal, political, \
+or moral assessment of facts a third party determined.
 - If the article is short or self-contained and needs no context, return background as an empty string \
 and terms as an empty array. The UI hides empty primers.
 
