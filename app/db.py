@@ -88,6 +88,47 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ALTER TABLE articles ADD COLUMN IF NOT EXISTS reading_levels JSONB"
         )
 
+        # Outlet provenance (migrations/006_outlet_profiles.sql).
+        # outlet_profiles: curated metadata for the ~50 outlets Sift ingests
+        # from. source_name_aliases: maps messy RSS source_name values onto
+        # canonical outlet_slug. Both populated from the data/outlet_profiles.csv
+        # template via scripts/seed_outlet_profiles.py.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS outlet_profiles (
+                slug                  TEXT PRIMARY KEY,
+                name                  TEXT NOT NULL,
+                parent_company        TEXT,
+                parent_company_url    TEXT,
+                founded_year          INT,
+                funding_model         TEXT,
+                major_funders         JSONB DEFAULT '[]'::jsonb,
+                allsides_rating       TEXT,
+                allsides_url          TEXT,
+                allsides_last_checked DATE,
+                mbfc_factual          TEXT,
+                mbfc_url              TEXT,
+                mbfc_last_checked     DATE,
+                notes                 TEXT,
+                external_links        JSONB DEFAULT '{}'::jsonb,
+                updated_at            TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_outlet_profiles_name_lower "
+            "ON outlet_profiles (LOWER(name))"
+        )
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS source_name_aliases (
+                raw_source_name TEXT PRIMARY KEY,
+                outlet_slug     TEXT NOT NULL REFERENCES outlet_profiles (slug) ON DELETE CASCADE,
+                added_at        TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_source_name_aliases_slug "
+            "ON source_name_aliases (outlet_slug)"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
