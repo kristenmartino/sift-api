@@ -43,7 +43,7 @@ CSV_PATH = os.path.join(
 )
 
 ALLSIDES_VALUES = {"left", "lean-left", "center", "lean-right", "right", "mixed"}
-MBFC_VALUES = {"high", "mostly-factual", "mixed", "low", "very-low"}
+MBFC_VALUES = {"very-high", "high", "mostly-factual", "mixed", "low", "very-low"}
 FUNDING_VALUES = {
     "subscription", "advertising", "foundation", "donations",
     "mixed", "public-service",
