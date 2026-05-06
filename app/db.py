@@ -129,6 +129,94 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON source_name_aliases (outlet_slug)"
         )
 
+        # Phase 3.A — politician + org + bill curated profile tables
+        # (migrations/007_politician_org_bill_profiles.sql).
+        # Schema only here; population is staged across Phase 3.B (GovTrack
+        # scrape for politicians), 3.D (manual org curation), 3.E
+        # (OpenSecrets enrichment), 3.F (on-demand bill fetch).
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS politician_profiles (
+                bioguide_id                  TEXT PRIMARY KEY,
+                name                         TEXT NOT NULL,
+                party                        TEXT,
+                state                        TEXT,
+                chamber                      TEXT,
+                committees                   JSONB DEFAULT '[]'::jsonb,
+                top_industries_current_cycle JSONB DEFAULT '[]'::jsonb,
+                interest_group_ratings       JSONB DEFAULT '{}'::jsonb,
+                external_links               JSONB DEFAULT '{}'::jsonb,
+                notes                        TEXT,
+                refreshed_at                 TIMESTAMPTZ DEFAULT NOW(),
+                updated_at                   TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_politician_profiles_name_lower "
+            "ON politician_profiles (LOWER(name))"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_politician_profiles_state_party "
+            "ON politician_profiles (state, party)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_politician_profiles_chamber "
+            "ON politician_profiles (chamber)"
+        )
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS org_profiles (
+                slug              TEXT PRIMARY KEY,
+                name              TEXT NOT NULL,
+                type              TEXT,
+                political_lean    TEXT,
+                founded_year      INT,
+                annual_budget_usd NUMERIC,
+                major_funders     JSONB DEFAULT '[]'::jsonb,
+                fara_registered   BOOLEAN DEFAULT FALSE,
+                fara_countries    JSONB DEFAULT '[]'::jsonb,
+                external_links    JSONB DEFAULT '{}'::jsonb,
+                notes             TEXT,
+                updated_at        TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_org_profiles_name_lower "
+            "ON org_profiles (LOWER(name))"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_org_profiles_type "
+            "ON org_profiles (type)"
+        )
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS bill_profiles (
+                bill_id               TEXT PRIMARY KEY,
+                congress              INT NOT NULL,
+                title                 TEXT NOT NULL,
+                short_title           TEXT,
+                sponsor_bioguide      TEXT REFERENCES politician_profiles (bioguide_id) ON DELETE SET NULL,
+                cosponsors            JSONB DEFAULT '[]'::jsonb,
+                status                TEXT,
+                introduced_date       DATE,
+                lobbying_for_usd      NUMERIC,
+                lobbying_against_usd  NUMERIC,
+                external_links        JSONB DEFAULT '{}'::jsonb,
+                notes                 TEXT,
+                refreshed_at          TIMESTAMPTZ DEFAULT NOW(),
+                updated_at            TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_bill_profiles_sponsor "
+            "ON bill_profiles (sponsor_bioguide)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_bill_profiles_congress "
+            "ON bill_profiles (congress)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_bill_profiles_short_title_lower "
+            "ON bill_profiles (LOWER(short_title))"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
