@@ -30,6 +30,7 @@ class PipelineState(TypedDict):
     contexts: dict[str, str]         # source_url -> "This matters because..."
     importance_scores: dict[str, int]  # source_url -> 1-5
     embeddings: dict[str, list[float]]  # source_url -> vector
+    entity_links: dict[str, list[dict]]  # source_url -> [{type, canonical_id, surface_form}] (Phase 3.G)
     results: dict[str, CategoryResult]
     total_skipped: int
     errors: list[str]
@@ -243,6 +244,46 @@ async def embed_node(state: PipelineState) -> dict:
         }
 
 
+async def link_entities_node(state: PipelineState) -> dict:
+    """Civic-literacy MVP Phase 3.G: resolve entity mentions in each
+    article's title + summary to canonical IDs from the curated profile
+    tables (outlet_profiles / politician_profiles / org_profiles /
+    bill_profiles). Stored as JSONB on articles.entity_links by the
+    store node; consumed by sift Phase 3.H InlineGlossaryTooltip.
+
+    Synchronous, deterministic regex matching — no LLM call. Tolerant
+    of missing tables (returns empty links); pipeline continues with
+    entity_links=[] per article in that case.
+    """
+    from services.entity_linker import link_articles
+
+    new_articles = state.get("new_articles", [])
+    if not new_articles:
+        return {"entity_links": {}}
+
+    # Build the article shape the linker expects.
+    inputs = []
+    for a in new_articles:
+        result = state.get("summaries", {}).get(a.source_url, {})
+        inputs.append({
+            "source_url": a.source_url,
+            "title": a.title,
+            "summary": result.get("summary", "") if result else "",
+        })
+
+    try:
+        links = await link_articles(inputs)
+        return {"entity_links": links}
+    except Exception as e:
+        logger.error("link_entities failed: %s", e)
+        # Don't block the pipeline on linker errors — articles still ship
+        # without entity_links populated.
+        return {
+            "entity_links": {},
+            "errors": state.get("errors", []) + [f"link_entities: {e}"],
+        }
+
+
 async def store_node(state: PipelineState) -> dict:
     """Upsert articles into Postgres and update pipeline_state."""
     from app.db import get_pool
@@ -253,6 +294,7 @@ async def store_node(state: PipelineState) -> dict:
     contexts = state.get("contexts", {})
     importance_scores = state.get("importance_scores", {})
     embeddings = state.get("embeddings", {})
+    entity_links = state.get("entity_links", {})  # Phase 3.G
     all_articles = state.get("articles", [])
 
     pool = await get_pool()
@@ -287,6 +329,7 @@ async def store_node(state: PipelineState) -> dict:
         why_it_matters = contexts.get(article.source_url)
         importance_score = importance_scores.get(article.source_url)
         embedding = embeddings.get(article.source_url)
+        article_entity_links = entity_links.get(article.source_url, [])
         read_time = max(1, len(summary.split()) // 200 + 1) if summary else 1
 
         # Format embedding as pgvector string
@@ -294,13 +337,16 @@ async def store_node(state: PipelineState) -> dict:
         if embedding:
             embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
 
+        # Format entity_links as JSON string for ::jsonb cast (Phase 3.G).
+        entity_links_json = json.dumps(article_entity_links) if article_entity_links else "[]"
+
         try:
             await pool.execute(
                 """
                 INSERT INTO articles (id, title, summary, source_url, source_name,
                     image_url, category, published_date, embedding, read_time,
-                    why_it_matters, importance_score, content_hash)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12, $13)
+                    why_it_matters, importance_score, content_hash, entity_links)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12, $13, $14::jsonb)
                 ON CONFLICT (source_url) DO UPDATE SET
                     summary = EXCLUDED.summary,
                     category = EXCLUDED.category,
@@ -308,6 +354,7 @@ async def store_node(state: PipelineState) -> dict:
                     why_it_matters = EXCLUDED.why_it_matters,
                     importance_score = EXCLUDED.importance_score,
                     content_hash = EXCLUDED.content_hash,
+                    entity_links = EXCLUDED.entity_links,
                     updated_at = NOW()
                 """,
                 article_id,
@@ -323,6 +370,7 @@ async def store_node(state: PipelineState) -> dict:
                 why_it_matters,
                 importance_score,
                 article.content_hash,
+                entity_links_json,
             )
             stored += 1
         except Exception as e:
@@ -441,6 +489,7 @@ def build_pipeline_graph():
     graph.add_node("context", context_node)
     graph.add_node("primer", primer_node)
     graph.add_node("embed", embed_node)
+    graph.add_node("link_entities", link_entities_node)  # Phase 3.G
     graph.add_node("store", store_node)
 
     graph.set_entry_point("fetch_rss")
@@ -449,7 +498,8 @@ def build_pipeline_graph():
     graph.add_edge("summarize", "context")
     graph.add_edge("context", "primer")
     graph.add_edge("primer", "embed")
-    graph.add_edge("embed", "store")
+    graph.add_edge("embed", "link_entities")  # Phase 3.G
+    graph.add_edge("link_entities", "store")
     graph.add_edge("store", END)
 
     return graph.compile()

@@ -217,6 +217,22 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON bill_profiles (LOWER(short_title))"
         )
 
+        # Phase 3.G — articles.entity_links
+        # (migrations/008_article_entity_links.sql).
+        # Denormalized JSONB column populated by the entity_linker pipeline
+        # node. Frontend (sift Phase 3.H InlineGlossaryTooltip) reads this
+        # to render hover/tap context panels for politicians/orgs/bills/
+        # outlets mentioned in each article. GIN index supports the inverse
+        # query ("which articles mention this entity") for dossier pages.
+        await conn.execute(
+            "ALTER TABLE articles "
+            "ADD COLUMN IF NOT EXISTS entity_links JSONB DEFAULT '[]'::jsonb"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_entity_links_gin "
+            "ON articles USING gin(entity_links)"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
