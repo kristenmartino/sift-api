@@ -96,8 +96,15 @@ class TestParseFeed:
 
 class TestFeedConfig:
     def test_feed_count(self):
-        # Flat list of (name, url) tuples — 128 feeds after adding politics/sports/entertainment
-        assert len(FEEDS) >= 100
+        # Civic-literacy MVP (Phase 2.0): curated outlet whitelist.
+        # Lower bound guards against accidental empty-feed deploys; upper
+        # bound flags drift back into the long-tail aggregator era.
+        # See plans/sift-phase-2-cross-spectrum-and-outlet-provenance.md.
+        assert 40 <= len(FEEDS) <= 70, (
+            f"FEEDS count ({len(FEEDS)}) is outside the curated range. "
+            "Adding feeds? Confirm the outlet is on the curated list. "
+            "Cutting? Confirm a category isn't left empty."
+        )
 
     def test_feeds_are_tuples(self):
         for feed in FEEDS:
