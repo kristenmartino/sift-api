@@ -143,9 +143,9 @@ async def main(dry_run: bool) -> None:
     by_lean: dict[str, int] = {}
     for r in rows:
         t = (r.get("type") or "").strip().lower() or "?"
-        l = (r.get("political_lean") or "").strip().lower() or "?"
+        lean = (r.get("political_lean") or "").strip().lower() or "?"
         by_type[t] = by_type.get(t, 0) + 1
-        by_lean[l] = by_lean.get(l, 0) + 1
+        by_lean[lean] = by_lean.get(lean, 0) + 1
     print(f"  By type: {dict(sorted(by_type.items()))}")
     print(f"  By lean: {dict(sorted(by_lean.items()))}")
     fara_count = sum(1 for r in rows if (r.get("fara_registered") or "").strip().lower() in {"true", "yes", "1", "t", "y"})
