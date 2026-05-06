@@ -173,6 +173,7 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
         category,
     )
 
+    skipped_single_outlet = 0
     for cluster in clusters:
         indices = cluster.get("article_indices", [])
         event = cluster.get("event", "")
@@ -184,6 +185,24 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
                 cluster_articles.append(articles[idx - 1])
 
         if len(cluster_articles) < 2:
+            continue
+
+        # Civic-literacy MVP requirement: a "story" must reflect cross-outlet
+        # coverage, not one outlet publishing several near-duplicate articles
+        # about the same event. Without this gate the clusterer happily groups
+        # 4× 9to5Mac posts about an Apple release into a "story" that the UI
+        # then misrenders as "How 4 outlets covered this." sift PR #72 patches
+        # the symptom at render; this is the durable data-layer fix.
+        unique_outlets = {a.get("source_name") for a in cluster_articles if a.get("source_name")}
+        if len(unique_outlets) < 2:
+            skipped_single_outlet += 1
+            logger.info(json.dumps({
+                "event": "cluster_dropped_single_outlet",
+                "category": category,
+                "outlet": next(iter(unique_outlets), "unknown"),
+                "article_count": len(cluster_articles),
+                "cluster_event": event,
+            }))
             continue
 
         # Generate stable story ID from sorted article IDs
@@ -276,7 +295,10 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
         except Exception as e:
             logger.error("Failed to store story %s: %s", story_id, e)
 
-    logger.info("synthesize_and_store [%s]: created/updated %d stories", category, len(stories))
+    logger.info(
+        "synthesize_and_store [%s]: created/updated %d stories (skipped %d single-outlet clusters)",
+        category, len(stories), skipped_single_outlet,
+    )
     return {"stories": stories}
 
 
