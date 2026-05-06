@@ -22,6 +22,8 @@ logger = logging.getLogger("sift-api")
 API_VERSION = "1.0.0"
 
 REFRESH_INTERVAL = 30 * 60  # 30 minutes (was 10 min) — stretched to cut spend 66%
+ENRICHMENT_INTERVAL = 24 * 60 * 60  # 24 hours — politician committee + donor refresh
+ENRICHMENT_STARTUP_DELAY = 5 * 60  # 5 minutes after boot, then daily
 
 
 async def _scheduled_refresh():
@@ -51,6 +53,40 @@ async def _scheduled_refresh():
         await asyncio.sleep(REFRESH_INTERVAL)
 
 
+async def _scheduled_enrichment():
+    """Phase 3.F.3: refresh committee data daily.
+
+    Runs after `ENRICHMENT_STARTUP_DELAY` and then on a 24-hour loop.
+    Each cycle calls `committee_enricher.refresh_committees()` — pulls
+    the latest unitedstates/congress-legislators YAMLs and UPDATEs every
+    politician_profiles row whose committees changed. Cheap (~30s, two
+    HTTP fetches + a few hundred indexed DB UPDATEs).
+
+    Tolerates missing tables / network failures and returns zero-counts
+    on soft errors. The task never throws — worst case it logs and the
+    next cycle retries.
+
+    Note: donor-industry refresh is NOT in this loop. OpenSecrets
+    discontinued their public API on April 15, 2025; donor enrichment
+    now goes through `scripts/import_opensecrets_bulk.py` (Phase 3.F.2,
+    bulk-data path), which is a quarterly manual import — not a daily
+    cron. Bulk data updates ~6 months after each cycle closes, so the
+    cron cadence wouldn't help anyway.
+    """
+    await asyncio.sleep(ENRICHMENT_STARTUP_DELAY)
+    while True:
+        try:
+            logger.info("Enrichment cycle starting")
+            from services.committee_enricher import refresh_committees
+
+            pool = await get_pool()
+            committee_stats = await refresh_committees(pool)
+            logger.info("Enrichment cycle done: committees=%s", committee_stats)
+        except Exception as e:
+            logger.error("Enrichment cycle failed: %s", e)
+        await asyncio.sleep(ENRICHMENT_INTERVAL)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -70,6 +106,7 @@ async def lifespan(app: FastAPI):
     # Start background scheduler in production
     cron_task = None
     poller_task = None
+    enrichment_task = None
     if settings.environment == "production":
         cron_task = asyncio.create_task(_scheduled_refresh())
         logger.info("Scheduled refresh enabled (every %ds)", REFRESH_INTERVAL)
@@ -79,6 +116,14 @@ async def lifespan(app: FastAPI):
         from services.batch_poller import run_batch_poller
         poller_task = asyncio.create_task(run_batch_poller())
 
+        # Phase 3.F.3: daily politician enrichment (committees + donors).
+        # Soft-fails on its own; never blocks the article pipeline.
+        enrichment_task = asyncio.create_task(_scheduled_enrichment())
+        logger.info(
+            "Scheduled enrichment enabled (every %ds, starts after %ds delay)",
+            ENRICHMENT_INTERVAL, ENRICHMENT_STARTUP_DELAY,
+        )
+
     yield
 
     # Shutdown
@@ -86,6 +131,8 @@ async def lifespan(app: FastAPI):
         cron_task.cancel()
     if poller_task:
         poller_task.cancel()
+    if enrichment_task:
+        enrichment_task.cancel()
     await close_pool()
     logger.info("sift-api shut down")
 
