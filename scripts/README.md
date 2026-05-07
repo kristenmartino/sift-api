@@ -30,6 +30,45 @@ railway run ./.venv/bin/python3 scripts/explain_feed_queries.py
 For scripts that write (like `backfill_context.py`), prefer running them once
 locally with the prod `DATABASE_URL` exported, so you can Ctrl-C cleanly.
 
+## Refresh cadence (politician_profiles)
+
+The civic-literacy data on `politician_profiles` doesn't go stale at the
+same rate. No cron — manual re-runs on the schedule below.
+
+| Surface              | Source                                  | Cadence                                          | Trigger                                          |
+| -------------------- | --------------------------------------- | ------------------------------------------------ | ------------------------------------------------ |
+| Roster (536 members) | GovTrack public API                     | ~Every 6 months                                  | Special elections / mid-term changes             |
+| Committees           | unitedstates/congress-legislators YAMLs | Twice a year; **must** rerun in Jan of odd years | New Congress seats Jan 3 of odd years            |
+| Top industries (PAC) | OpenSecrets bulk data                   | Once per cycle (~every 2 years)                  | New cycle bulk drops ~6 months after cycle close |
+
+**Why no cron**: OpenSecrets discontinued their public API on 2025-04-15,
+which removed the only daily-refresh use case. Committees alone change a
+few times a year — daily/weekly is overkill; manual handles it. See
+sift-api PR #32 for the abandoned scheduler.
+
+**Re-run sequence (any of the above)**:
+
+```bash
+# 1. Refresh source-of-truth CSV (run only the one(s) you need)
+./.venv/bin/python3 scripts/scrape_govtrack.py          # roster
+./.venv/bin/python3 scripts/scrape_committees.py        # committees
+./.venv/bin/python3 scripts/import_opensecrets_bulk.py  # PAC industries
+
+# 2. Commit the CSV diff (review with `git diff` first)
+
+# 3. Seed against prod
+railway run ./.venv/bin/python3 scripts/seed_politician_profiles.py
+```
+
+When you bump the OpenSecrets cycle (2022 → 2024), also update the cycle
+label in the sift frontend: `lib/copy.ts → topIndustries: "Top industries
+by PAC contributions (YYYY cycle)"`.
+
+`data/opensecrets/` is gitignored (CC NC-SA license). On a fresh clone,
+download `pacsXX.txt` + `CRP_Categories.txt` from
+`opensecrets.org/open-data/bulk-data` into `data/opensecrets/` before
+running `import_opensecrets_bulk.py`.
+
 ## Adding a new script
 
 - Put the file here; name it for what it does, not for what it uses.
