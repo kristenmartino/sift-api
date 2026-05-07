@@ -293,8 +293,14 @@ def link_text(
 
 
 async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
-    """Async wrapper that loads the catalog from Postgres, builds the
-    search dict, and runs link_text for each article.
+    """Async wrapper that loads the catalog from Postgres and resolves
+    entity mentions in each article.
+
+    Strategy (Phase 3.G.2): primary path is the LLM linker
+    (services.entity_linker_llm), which handles full-name collisions
+    (Susan Collins the Senator vs the Boston Fed President) without a
+    hardcoded blocklist. Falls back to the regex `link_text` matcher on
+    any LLM error so chips never disappear due to API blips.
 
     Input shape: list of {source_url, title, summary, ...}.
     Output: {source_url: [EntityLink, ...]}.
@@ -333,25 +339,45 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
         raise
 
     catalog = build_catalog(outlets, politicians, orgs, bills)
-    search_dict = build_search_dict(catalog)
     logger.info(
-        "entity_linker: built search dict — %d outlets, %d politicians, %d orgs, "
-        "%d bills, %d total search keys",
-        len(outlets), len(politicians), len(orgs), len(bills), len(search_dict),
+        "entity_linker: catalog loaded — %d outlets, %d politicians, %d orgs, %d bills",
+        len(outlets), len(politicians), len(orgs), len(bills),
     )
 
+    # Primary: LLM linker. Falls back to regex per-article on any error.
     out: dict[str, list[EntityLink]] = {}
+    try:
+        from services.entity_linker_llm import link_articles_llm
+        out = await link_articles_llm(articles, catalog)  # type: ignore[arg-type]
+        logger.info(
+            "entity_linker: LLM path resolved %d articles",
+            sum(1 for v in out.values() if v is not None),
+        )
+    except Exception as e:  # noqa: BLE001 — degrade rather than block the pipeline
+        logger.warning(
+            "entity_linker: LLM path failed (%s) — falling back to regex for all %d",
+            e, len(articles),
+        )
+
+    # For any article the LLM path didn't resolve (missing url, error, or
+    # silently-empty), fall back to the regex matcher.
+    search_dict = build_search_dict(catalog)
+    fallback_used = 0
     total_links = 0
     for article in articles:
         url = article.get("source_url")
         if not url:
             continue
-        title = article.get("title") or ""
-        summary = article.get("summary") or ""
-        text = f"{title}\n{summary}"
-        links = link_text(text, search_dict)
-        out[url] = links
-        total_links += len(links)
+        if url not in out:
+            title = article.get("title") or ""
+            summary = article.get("summary") or ""
+            text = f"{title}\n{summary}"
+            out[url] = link_text(text, search_dict)
+            fallback_used += 1
+        total_links += len(out[url])
+    if fallback_used:
+        logger.info("entity_linker: regex-fallback used for %d/%d articles",
+                    fallback_used, len(articles))
 
     logger.info(
         "entity_linker: resolved %d links across %d articles (avg %.1f/article)",
