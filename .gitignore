@@ -11,9 +11,3 @@ venv/
 .mypy_cache/
 *.egg
 .DS_Store
-
-# OpenSecrets bulk-data files — Phase 3.F.2 (CC NC-SA licensed).
-# Re-downloadable from opensecrets.org's bulk-data dashboard; not
-# committed to the repo. The importer (`scripts/import_opensecrets_bulk.py`)
-# reads from this path locally.
-data/opensecrets/
