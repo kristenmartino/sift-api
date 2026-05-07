@@ -20,10 +20,15 @@ auditable. Trade-off: misses common surface-form variants (e.g.,
 
 Aliases applied:
 
-* Politicians: full canonical name + last-name-only IF the last name is
-  unique across the curated 535-member set. So "Schumer" matches Chuck
-  Schumer, but "Jones" matches none of the multiple Joneses (handled at
-  catalog-build time by counting last-name frequencies).
+* Politicians: full canonical name only. We deliberately do NOT alias
+  to last-name-only — even with uniqueness + length checks, common-noun
+  surnames (Cloud, Self, Case, Strong, Banks, Hill, Young, Downing, ...)
+  generate constant false positives in news copy ("cloud computing",
+  "the case involves", "Cloud AI", "China Asks Banks to Pause", etc.).
+  Recall trade-off accepted: a "Schumer said" reference loses its link,
+  but journalism typically introduces politicians by full name on first
+  mention — which we still catch. Better to under-link than mislink for
+  a portfolio site whose credibility hinges on signal-to-noise.
 * Orgs: full canonical name only. Initials/abbreviations are too
   ambiguous without per-org curation.
 * Bills: short_title (when present) + bill_id ("hr-5376-117"). The
@@ -150,18 +155,26 @@ def build_search_dict(
 def politician_aliases(name: str, lastname_freq: Counter[str]) -> list[str]:
     """Build a list of acceptable surface forms for a politician.
 
-    - Always: the full canonical name verbatim.
-    - When the last-name is unique across the catalog: last name alone.
-      "Schumer" matches Chuck Schumer because no other curated
-      politician shares that last name.
+    Returns an empty list — only the full canonical name is searchable.
+
+    Last-name-only aliases were originally added when uniqueness +
+    `_MIN_KEY_LENGTH` were assumed sufficient guards. They aren't.
+    Common-noun surnames in the curated roster (Cloud, Self, Case,
+    Strong, Banks, Hill, Young, Downing, Field, Stone, Reed, Forest, ...)
+    constantly false-match in news copy and even more so in title-cased
+    headlines ("Cloud AI", "China Asks Banks to Pause"), where
+    case-sensitivity alone wouldn't help.
+
+    Kept as a function (rather than inlined) so a future Phase 3.G.2
+    can add back smarter aliasing — e.g., LLM-confirmed mention type,
+    or a curated common-noun blocklist — without changing the call site
+    in `build_catalog`.
+
+    `lastname_freq` is now unused but kept in the signature so callers
+    don't break (and so we still need `Counter` if the policy reverses).
     """
-    aliases: list[str] = []
-    parts = name.strip().split()
-    if len(parts) >= 2:
-        last = parts[-1]
-        if lastname_freq.get(last.lower(), 0) == 1 and len(last) >= _MIN_KEY_LENGTH:
-            aliases.append(last)
-    return aliases
+    del name, lastname_freq  # explicit no-op until Phase 3.G.2
+    return []
 
 
 def build_catalog(
