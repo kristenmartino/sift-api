@@ -12,33 +12,60 @@ from services.entity_linker import (
 
 
 # ── politician_aliases ──────────────────────────────────────
+#
+# Policy (current): no aliases. We deliberately drop last-name-only
+# matching because common-noun surnames in the curated roster (Cloud,
+# Self, Case, Strong, Banks, Hill, Young, Downing, Green, ...)
+# constantly false-match in news copy. See the module docstring for the
+# precision-vs-recall trade-off.
+#
+# Tests assert the no-alias behavior holds across the input shapes the
+# function previously branched on, so a future Phase 3.G.2 reverse can't
+# silently regress.
 
 
-def test_politician_aliases_unique_lastname():
-    """Last names that appear once in the catalog become aliases."""
+def test_politician_aliases_returns_empty_for_unique_lastname():
+    """Even unique last names get no alias (was: returned [last])."""
     freq = Counter({"schumer": 1, "warren": 1, "jones": 3})
-    assert politician_aliases("Chuck Schumer", freq) == ["Schumer"]
-    assert politician_aliases("Elizabeth Warren", freq) == ["Warren"]
+    assert politician_aliases("Chuck Schumer", freq) == []
+    assert politician_aliases("Elizabeth Warren", freq) == []
 
 
-def test_politician_aliases_ambiguous_lastname():
-    """Last names that appear multiple times stay out of the alias set."""
+def test_politician_aliases_returns_empty_for_ambiguous_lastname():
+    """Ambiguous last names also get no alias (unchanged behavior)."""
     freq = Counter({"jones": 3, "smith": 2})
     assert politician_aliases("Mary Jones", freq) == []
     assert politician_aliases("Bob Smith", freq) == []
 
 
-def test_politician_aliases_single_token_name():
-    """Names without a last-name token return no aliases."""
+def test_politician_aliases_returns_empty_for_single_token_name():
+    """Single-token names get no alias (unchanged behavior)."""
     freq = Counter({"madonna": 1})
     assert politician_aliases("Madonna", freq) == []
 
 
-def test_politician_aliases_short_lastname():
-    """Last names below the min-key length threshold are dropped."""
-    # _MIN_KEY_LENGTH = 4; "Wu" is too short to be a useful alias.
+def test_politician_aliases_returns_empty_for_short_lastname():
+    """Short last names get no alias (unchanged behavior)."""
     freq = Counter({"wu": 1})
     assert politician_aliases("Michelle Wu", freq) == []
+
+
+def test_politician_aliases_no_false_match_on_common_noun_surnames():
+    """Regression: 'Cloud', 'Self', 'Case', 'Strong', 'Banks', 'Green',
+    'Young', 'Downing' all live in the real roster. The pre-fix policy
+    produced last-name aliases for each, which then false-matched in
+    news copy ('cloud computing', 'the case involves', 'Cloud AI',
+    'China Asks Banks to Pause', 'green steel', 'young people',
+    'self-improving AI', 'downing power lines'). The fix is no aliases."""
+    freq = Counter({s: 1 for s in (
+        "cloud", "self", "case", "strong", "banks",
+        "green", "young", "downing",
+    )})
+    for full in (
+        "Michael Cloud", "Keith Self", "Ed Case", "Dale Strong",
+        "Jim Banks", "Al Green", "Todd Young", "Troy Downing",
+    ):
+        assert politician_aliases(full, freq) == [], full
 
 
 # ── build_catalog ────────────────────────────────────────────
@@ -86,23 +113,22 @@ def test_build_catalog_skips_rows_missing_required_fields():
     }
 
 
-def test_build_catalog_politician_aliases_applied():
+def test_build_catalog_politicians_have_no_aliases():
+    """Politician rows now carry no aliases — only the full canonical
+    name is searchable. See politician_aliases policy note."""
     catalog = build_catalog(
         outlets=[],
         politicians=[
-            {"bioguide_id": "S000148", "name": "Chuck Schumer"},  # unique
+            {"bioguide_id": "S000148", "name": "Chuck Schumer"},
             {"bioguide_id": "J001", "name": "Mary Jones"},
-            {"bioguide_id": "J002", "name": "Bob Jones"},  # ambiguous
+            {"bioguide_id": "J002", "name": "Bob Jones"},
         ],
         orgs=[],
         bills=[],
     )
-    schumer = next(r for r in catalog if r["canonical_id"] == "S000148")
-    mary = next(r for r in catalog if r["canonical_id"] == "J001")
-    bob = next(r for r in catalog if r["canonical_id"] == "J002")
-    assert "Schumer" in schumer["aliases"]
-    assert mary["aliases"] == []  # Jones is shared with Bob
-    assert bob["aliases"] == []
+    for row in catalog:
+        if row["type"] == "politician":
+            assert row["aliases"] == [], row["primary_name"]
 
 
 def test_build_catalog_bill_uses_short_title_or_falls_back_to_title():
@@ -227,14 +253,21 @@ def test_link_text_case_insensitive():
 
 
 def test_link_text_collapses_duplicate_canonicals():
-    """Same entity matched via two keys (name + alias) → single link."""
+    """Same entity matched via two keys (e.g., bill name + bill_id) → single
+    link. (Politicians no longer get aliases, but bills still do —
+    short_title + bill_id, plus year-stripped form.)"""
     d = _dict({
-        "chuck schumer": ("politician", "S000148"),
-        "schumer": ("politician", "S000148"),
+        "inflation reduction act of 2022": ("bill", "hr-5376-117"),
+        "inflation reduction act": ("bill", "hr-5376-117"),
+        "hr-5376-117": ("bill", "hr-5376-117"),
     })
-    out = link_text("Chuck Schumer met with Schumer", d)
+    out = link_text(
+        "The Inflation Reduction Act of 2022, also called the Inflation "
+        "Reduction Act, is hr-5376-117.",
+        d,
+    )
     assert len(out) == 1
-    assert out[0]["canonical_id"] == "S000148"
+    assert out[0]["canonical_id"] == "hr-5376-117"
 
 
 def test_link_text_preserves_original_casing_in_surface_form():
