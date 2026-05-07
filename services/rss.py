@@ -44,8 +44,12 @@ logger = logging.getLogger("sift-api.rss")
 
 FEEDS: list[tuple[str, str]] = [
     # ── General / Wire services ──────────────────────────
-    ("AP News", "https://apnews.com/world-news.rss"),
-    ("Reuters", "https://openrss.org/feed/www.reuters.com"),
+    # AP News and Reuters retired their public RSS feeds (AP behind an
+    # auth-walled API; Reuters killed RSS in 2020). The openrss.org
+    # wrapper for Reuters is now rate-limiting us (HTTP 429). Wire copy
+    # from both still reaches Sift via NPR / CBS / USA Today / ABC /
+    # BBC / Guardian, all of which run AP and Reuters syndication.
+    # TODO: revisit if/when we acquire AP API or Reuters Connect access.
     ("NPR", "https://feeds.npr.org/1001/rss.xml"),
     ("BBC", "http://feeds.bbci.co.uk/news/rss.xml"),
     ("Axios", "https://api.axios.com/feed/"),
@@ -57,7 +61,9 @@ FEEDS: list[tuple[str, str]] = [
     ("ABC News", "https://abcnews.go.com/abcnews/topstories"),
     ("CBS News", "https://www.cbsnews.com/latest/rss/main"),
     ("New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"),
-    ("Washington Post", "https://feeds.washingtonpost.com/rss/national"),
+    # WaPo: /rss/national was returning ~5 items (and intermittently empty
+    # on Railway egress); /rss/homepage is the full firehose (~70 items).
+    ("Washington Post", "https://feeds.washingtonpost.com/rss/homepage"),
     # ── Technology (specialty) ───────────────────────────
     ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"),
     ("The Verge", "https://www.theverge.com/rss/index.xml"),
@@ -65,7 +71,6 @@ FEEDS: list[tuple[str, str]] = [
     ("MIT Tech Review", "https://www.technologyreview.com/feed/"),
     # ── Business & Finance ───────────────────────────────
     ("CNBC", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
-    ("Reuters Business", "https://openrss.org/feed/www.reuters.com/business"),
     ("Financial Times", "https://www.ft.com/rss/home"),
     ("The Economist", "https://www.economist.com/finance-and-economics/rss.xml"),
     ("Bloomberg", "https://feeds.bloomberg.com/markets/news.rss"),
@@ -82,7 +87,6 @@ FEEDS: list[tuple[str, str]] = [
     ("The Guardian World", "https://www.theguardian.com/world/rss"),
     ("NPR World", "https://feeds.npr.org/1004/rss.xml"),
     ("Foreign Policy", "https://foreignpolicy.com/feed/"),
-    ("Reuters World", "https://openrss.org/feed/www.reuters.com/world"),
     ("The Intercept", "https://theintercept.com/feed/?rss"),
     # ── Health & Medicine ────────────────────────────────
     ("STAT News", "https://www.statnews.com/feed/"),
@@ -96,7 +100,8 @@ FEEDS: list[tuple[str, str]] = [
     ("ESPN", "https://www.espn.com/espn/rss/news"),
     ("BBC Sport", "http://feeds.bbci.co.uk/sport/rss.xml"),
     ("CBS Sports", "https://www.cbssports.com/rss/headlines/"),
-    ("Sports Illustrated", "https://www.si.com/rss/si_topstories.rss"),
+    # SI moved the feed; old /rss/si_topstories.rss was 404.
+    ("Sports Illustrated", "https://www.si.com/feed"),
     # ── Entertainment (out-of-scope for civic-literacy mechanics) ──
     ("Variety", "https://variety.com/feed/"),
     ("The Hollywood Reporter", "https://www.hollywoodreporter.com/feed/"),
