@@ -17,6 +17,7 @@ One-off and diagnostic scripts. All run from the `sift-api/` root and use
 | `seed_org_profiles.py`          | **Yes**       | No           | UPSERTs `org_profiles` from `data/org_profiles.csv`. Idempotent. |
 | `seed_bill_profiles.py`         | **Yes**       | No           | UPSERTs `bill_profiles` from `data/bill_profiles.csv`. Idempotent. NULLs out unresolved sponsor_bioguide refs. |
 | `seed_all.sh`                   | **Yes**       | No           | One-shot wrapper: dry-run validates every CSV, then runs all six seeds against prod in order, with a human-review pause before the alias seed. `--dry-run-only` and `--skip-aliases` flags supported. |
+| `backfill_entity_links.py`      | **Yes**       | No           | One-shot: re-runs the Phase 3.G entity linker over articles that already have a non-empty `entity_links` value, writes corrected links back. Used after #40 dropped last-name-only aliases (the policy change cleared 46 of 50 false-positive chips in prod). Idempotent — safe to re-run; `--dry-run` for spot checks. Regex-only, no LLM cost. |
 
 ## Running against prod
 
