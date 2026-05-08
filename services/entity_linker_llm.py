@@ -134,14 +134,26 @@ refer to the Senator from Maine OR the Boston Fed President. Use article \
 context (titles, organizations, locations, roles) to decide which person \
 is meant. If unclear, omit the tag.
 
-3. Tag an outlet only when its name appears in the article copy AND \
+3. Require a DIRECT reference. Do NOT tag a politician based on indirect \
+signals such as a state name, party label, or chamber alone. The article \
+must name the person directly (full name, or a clearly resolvable form like \
+"Speaker Johnson", "Sen. Schumer", or "the Senator from Vermont, Sanders"). \
+Examples of references that must NOT produce a politician tag:
+   - "blue states aren't getting fire prevention money" (mentioning Colorado \
+     or California is not a tag of any senator from those states)
+   - "California Republicans face primaries" (a state's politicians are not \
+     individually named here)
+   - "Democrats blocked the bill" (no specific politician is named)
+   - "Maryland lawmakers demanded answers" (collective; not a single politician)
+
+4. Tag an outlet only when its name appears in the article copy AND \
 refers to that outlet's reporting (e.g., "according to Reuters"). Don't \
 tag the article's own source — that's surfaced separately.
 
-4. surface_form must be the exact substring as it appears in the article \
+5. surface_form must be the exact substring as it appears in the article \
 (preserve original casing).
 
-5. Output JSON only — no prose, no markdown fences. Empty array if no \
+6. Output JSON only — no prose, no markdown fences. Empty array if no \
 roster entities are mentioned.
 
 Schema:
