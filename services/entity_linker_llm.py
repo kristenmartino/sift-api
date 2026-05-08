@@ -152,14 +152,68 @@ def _build_system_prompt(catalog: list[CatalogEntry]) -> str:
     return SYSTEM_INSTRUCTIONS.format(catalog=_format_catalog_block(catalog))
 
 
-def _build_user_prompt(title: str, summary: str) -> str:
+def _build_user_prompt(
+    title: str,
+    summary: str,
+    source_name: str | None = None,
+) -> str:
     title = (title or "").strip() or "(untitled)"
     summary = (summary or "").strip() or "(no summary)"
-    return (
-        f"Article title: {title}\n\n"
-        f"Article summary: {summary}\n\n"
-        "Return the JSON array now."
-    )
+    parts = [
+        f"Article title: {title}",
+        f"Article summary: {summary}",
+    ]
+    if source_name:
+        # Belt: tell the LLM the article's own source so it can skip
+        # tagging that outlet (we surface the source separately in the
+        # UI, so a self-referencing chip is just visual noise).
+        parts.append(
+            f"Article source: {source_name}\n\n"
+            "Do NOT tag the article's own source as an outlet entity. "
+            "If the source above matches one of the OUTLETS in the roster, "
+            "skip that tag — it's surfaced elsewhere in the UI."
+        )
+    parts.append("Return the JSON array now.")
+    return "\n\n".join(parts)
+
+
+# ── Source-name → outlet-slug resolution ──────────────────────────
+
+
+def _normalize_outlet_name(name: str) -> str:
+    """Lowercase + strip a leading 'the ' for forgiving matches.
+
+    'The New York Times' and 'New York Times' should map to the same
+    outlet. Common abbreviations (FT, WSJ, NPR) aren't handled here —
+    those would need explicit aliases on outlet_profiles.
+    """
+    n = name.strip().lower()
+    if n.startswith("the "):
+        n = n[4:]
+    return n
+
+
+def _build_outlet_name_index(catalog: list["CatalogEntry"]) -> dict[str, str]:
+    """{normalized_outlet_name: slug}. Used to resolve an article's raw
+    `source_name` to a curated outlet slug for the self-reference filter.
+    """
+    out: dict[str, str] = {}
+    for row in catalog:
+        if row["type"] == "outlet":
+            out[_normalize_outlet_name(row["primary_name"])] = row["canonical_id"]
+    return out
+
+
+def _resolve_source_outlet_slug(
+    source_name: str | None,
+    name_index: dict[str, str],
+) -> str | None:
+    """Best-effort resolution of `source_name` to an outlet slug.
+    Returns None on no match — the filter then becomes a no-op.
+    """
+    if not source_name:
+        return None
+    return name_index.get(_normalize_outlet_name(source_name))
 
 
 # ── Response parsing ───────────────────────────────────────────────
@@ -195,10 +249,14 @@ def _extract_json_array(text: str) -> list[dict] | None:
 def _parse_response(
     text: str,
     valid_canonicals: dict[str, set[str]],
+    *,
+    source_outlet_slug: str | None = None,
 ) -> list[EntityLink]:
     """Validate parsed entries against the catalog. Drops anything the
     model hallucinated (wrong type, unknown canonical_id, missing
-    surface_form)."""
+    surface_form). Also drops a self-referencing outlet chip when the
+    LLM tags the article's own source — `source_outlet_slug` is the
+    suspenders behind the prompt's belt rule."""
     parsed = _extract_json_array(text)
     if parsed is None:
         return []
@@ -220,6 +278,10 @@ def _parse_response(
         cid = cid.strip()
         # Reject hallucinations: the model must pick from the actual roster.
         if cid not in valid_canonicals.get(etype, set()):
+            continue
+        # Suspenders: drop a self-referencing outlet chip even if the LLM
+        # ignored the prompt rule.
+        if etype == "outlet" and source_outlet_slug and cid == source_outlet_slug:
             continue
         ref = (etype, cid)
         if ref in seen:
@@ -255,9 +317,16 @@ async def link_text_llm(
     summary: str,
     catalog: list[CatalogEntry],
     *,
+    source_name: str | None = None,
     client: anthropic.AsyncAnthropic | None = None,
 ) -> list[EntityLink]:
     """Single-article entity linking via Claude.
+
+    `source_name` is the article's own source (e.g., "Reuters",
+    "Financial Times"). When provided, we resolve it to an outlet slug
+    via the catalog and (a) tell the LLM in the prompt to skip tagging
+    that outlet, and (b) drop self-referencing outlet chips in
+    post-processing as a backstop.
 
     Returns [] on any failure path (API error, parse error, timeout).
     The caller is responsible for falling back to the regex linker if
@@ -269,8 +338,11 @@ async def link_text_llm(
 
     client = client or _client()
     system_prompt = _build_system_prompt(catalog)
-    user_prompt = _build_user_prompt(title, summary)
+    user_prompt = _build_user_prompt(title, summary, source_name=source_name)
     valid = _index_catalog(catalog)
+    source_slug = _resolve_source_outlet_slug(
+        source_name, _build_outlet_name_index(catalog),
+    )
 
     try:
         response = await asyncio.wait_for(
@@ -300,7 +372,7 @@ async def link_text_llm(
     log_usage("entity_linker_llm.link_text", response, model=MODEL)
 
     text = "".join(b.text for b in response.content if b.type == "text")
-    return _parse_response(text, valid)
+    return _parse_response(text, valid, source_outlet_slug=source_slug)
 
 
 async def link_articles_llm(
@@ -330,6 +402,7 @@ async def link_articles_llm(
                 article.get("title") or "",
                 article.get("summary") or "",
                 catalog,
+                source_name=article.get("source_name") or None,
                 client=client,
             )
             return url, links

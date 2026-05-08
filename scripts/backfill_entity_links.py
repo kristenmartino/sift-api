@@ -74,7 +74,8 @@ async def main(dry_run: bool) -> None:
         # policy.
         rows = await conn.fetch(
             """
-            SELECT id, title, summary, source_url, entity_links::text AS el
+            SELECT id, title, summary, source_url, source_name,
+                   entity_links::text AS el
             FROM articles
             WHERE entity_links IS NOT NULL
               AND entity_links::text != '[]'
@@ -87,9 +88,11 @@ async def main(dry_run: bool) -> None:
 
         # Run the LLM linker over all of them at once — concurrency-limited
         # internally; prompt-cache amortizes the catalog tokens across calls.
+        # `source_name` lets the linker drop a self-referencing outlet chip
+        # (e.g., FT article → no Financial Times chip).
         articles = [
-            {"source_url": r["source_url"], "title": r["title"] or "",
-             "summary": r["summary"] or ""}
+            {"source_url": r["source_url"], "source_name": r["source_name"],
+             "title": r["title"] or "", "summary": r["summary"] or ""}
             for r in rows
         ]
         link_map = await link_articles_llm(articles, catalog)  # type: ignore[arg-type]
