@@ -12,12 +12,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services.entity_linker_llm import (
+    _build_outlet_name_index,
     _build_system_prompt,
     _build_user_prompt,
     _extract_json_array,
     _format_catalog_block,
     _index_catalog,
+    _normalize_outlet_name,
     _parse_response,
+    _resolve_source_outlet_slug,
     link_text_llm,
 )
 
@@ -96,6 +99,95 @@ def test_build_user_prompt_handles_empty_fields():
     p = _build_user_prompt("", "")
     assert "(untitled)" in p
     assert "(no summary)" in p
+
+
+def test_build_user_prompt_with_source_includes_self_skip_rule():
+    """When source_name is present, tell the LLM to skip the self-source."""
+    p = _build_user_prompt(
+        "Some headline", "Some summary", source_name="Financial Times",
+    )
+    assert "Financial Times" in p
+    assert "Do NOT tag the article's own source" in p
+
+
+def test_build_user_prompt_without_source_omits_self_skip_rule():
+    """No source_name → no self-skip clause (keeps the prompt lean)."""
+    p = _build_user_prompt("Some headline", "Some summary")
+    assert "Do NOT tag the article's own source" not in p
+
+
+# ── Source-outlet resolution ──────────────────────────────────────
+
+
+def test_normalize_outlet_name_strips_leading_the():
+    assert _normalize_outlet_name("The New York Times") == "new york times"
+    assert _normalize_outlet_name("New York Times") == "new york times"
+
+
+def test_normalize_outlet_name_lowercases():
+    assert _normalize_outlet_name("Reuters") == "reuters"
+    assert _normalize_outlet_name("REUTERS") == "reuters"
+
+
+def test_build_outlet_name_index_only_outlets():
+    """Politicians/orgs/bills don't pollute the outlet name lookup."""
+    idx = _build_outlet_name_index(SAMPLE_CATALOG)
+    assert idx == {"reuters": "reuters"}
+
+
+def test_resolve_source_outlet_slug_match():
+    idx = _build_outlet_name_index(SAMPLE_CATALOG)
+    assert _resolve_source_outlet_slug("Reuters", idx) == "reuters"
+    # 'The Reuters' would be unusual, but if it happened, match still works.
+    assert _resolve_source_outlet_slug("The Reuters", idx) == "reuters"
+
+
+def test_resolve_source_outlet_slug_no_match():
+    idx = _build_outlet_name_index(SAMPLE_CATALOG)
+    assert _resolve_source_outlet_slug("Unknown Outlet", idx) is None
+    assert _resolve_source_outlet_slug(None, idx) is None
+    assert _resolve_source_outlet_slug("", idx) is None
+
+
+# ── Self-source filter in _parse_response ────────────────────────
+
+
+def test_parse_response_drops_self_source_outlet_chip():
+    """LLM tagged the article's own source as an outlet → drop it."""
+    valid = _index_catalog(SAMPLE_CATALOG)
+    text = (
+        '[{"type":"outlet","canonical_id":"reuters","surface_form":"Reuters"},'
+        '{"type":"politician","canonical_id":"S000148","surface_form":"Chuck Schumer"}]'
+    )
+    out = _parse_response(text, valid, source_outlet_slug="reuters")
+    canonicals = {(e["type"], e["canonical_id"]) for e in out}
+    # Outlet chip dropped; politician chip kept.
+    assert canonicals == {("politician", "S000148")}
+
+
+def test_parse_response_keeps_other_outlet_chip_when_filtering_self():
+    """Filtering only drops the self-source, not all outlets."""
+    catalog = SAMPLE_CATALOG + [{
+        "type": "outlet", "canonical_id": "bbc",
+        "primary_name": "BBC", "aliases": [],
+    }]
+    valid = _index_catalog(catalog)
+    text = (
+        '[{"type":"outlet","canonical_id":"reuters","surface_form":"Reuters"},'
+        '{"type":"outlet","canonical_id":"bbc","surface_form":"BBC"}]'
+    )
+    out = _parse_response(text, valid, source_outlet_slug="reuters")
+    canonicals = {e["canonical_id"] for e in out}
+    assert canonicals == {"bbc"}
+
+
+def test_parse_response_no_filter_when_source_slug_none():
+    """No source_slug → all valid outlet chips pass through."""
+    valid = _index_catalog(SAMPLE_CATALOG)
+    text = '[{"type":"outlet","canonical_id":"reuters","surface_form":"Reuters"}]'
+    out = _parse_response(text, valid, source_outlet_slug=None)
+    assert len(out) == 1
+    assert out[0]["canonical_id"] == "reuters"
 
 
 # ── JSON extraction ────────────────────────────────────────────────
@@ -290,3 +382,38 @@ async def test_link_text_llm_short_circuits_on_empty_catalog():
         catalog=[],
     )
     assert out == []
+
+
+@pytest.mark.asyncio
+async def test_link_text_llm_filters_self_source_outlet_end_to_end(monkeypatch):
+    """Even if the LLM tags the article's own source, the post-filter
+    drops it. Belt-and-suspenders: prompt asks the LLM to skip,
+    validator drops if the LLM ignored the rule."""
+    monkeypatch.setattr(
+        "services.entity_linker_llm.log_usage", lambda *a, **kw: None,
+    )
+
+    fake_client = SimpleNamespace(
+        messages=SimpleNamespace(
+            create=AsyncMock(return_value=_mock_response(
+                # LLM "ignored" the self-skip rule and tagged Reuters.
+                '[{"type":"outlet","canonical_id":"reuters","surface_form":"Reuters"}]'
+            ))
+        )
+    )
+
+    out = await link_text_llm(
+        title="Some headline",
+        summary="Some summary text.",
+        catalog=SAMPLE_CATALOG,
+        source_name="Reuters",
+        client=fake_client,  # type: ignore[arg-type]
+    )
+    # Self-source chip dropped by the suspenders filter.
+    assert out == []
+
+    # And the prompt told the LLM about it (the belt).
+    args, kwargs = fake_client.messages.create.call_args
+    user_msg = kwargs["messages"][0]["content"]
+    assert "Reuters" in user_msg
+    assert "Do NOT tag the article's own source" in user_msg

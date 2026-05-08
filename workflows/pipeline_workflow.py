@@ -261,12 +261,15 @@ async def link_entities_node(state: PipelineState) -> dict:
     if not new_articles:
         return {"entity_links": {}}
 
-    # Build the article shape the linker expects.
+    # Build the article shape the linker expects. `source_name` lets the
+    # LLM linker drop a self-referencing outlet chip (so an FT article
+    # doesn't get a Financial Times chip).
     inputs = []
     for a in new_articles:
         result = state.get("summaries", {}).get(a.source_url, {})
         inputs.append({
             "source_url": a.source_url,
+            "source_name": a.source_name,
             "title": a.title,
             "summary": result.get("summary", "") if result else "",
         })
