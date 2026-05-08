@@ -94,6 +94,20 @@ def test_build_system_prompt_embeds_catalog():
     assert "Susan Collins" in p
 
 
+def test_build_system_prompt_includes_indirect_reference_guard():
+    """Rule 3 — politician tags require a DIRECT reference, not just a
+    state name, party label, or chamber. Caught these in prod after PR
+    #45 backfill: 'Colorado' → senator Bennet, 'California' → Pelosi
+    on a 'blue states aren't getting fire prevention money' article.
+    """
+    p = _build_system_prompt(SAMPLE_CATALOG)
+    assert "DIRECT reference" in p
+    # Specific examples should appear so Claude has anchors.
+    assert "blue states" in p.lower()
+    assert "lawmakers demanded" in p.lower()
+    assert "state name" in p.lower()
+
+
 def test_build_user_prompt_handles_empty_fields():
     """Falls back to placeholders rather than blank prompt."""
     p = _build_user_prompt("", "")
