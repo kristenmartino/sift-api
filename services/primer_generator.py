@@ -38,8 +38,14 @@ BATCH_SIZE = 5  # primer is more tokens out per article than one-liner context
 BATCH_KIND = "primer"  # identifier persisted to api_batches.kind
 
 # Voice/format guard. Keep prompt-engineering tight: the LLM gets one job per
-# article (write a primer + 3-5 terms) and outputs strict JSON. The prompt is
+# article (write a primer + 0-4 terms) and outputs strict JSON. The prompt is
 # the same in both the live and batch paths.
+#
+# Term-bar history: original prompt picked 3-5 terms with a soft "NOT common
+# words" rule. In practice the LLM defaulted to safety and surfaced obvious
+# vocabulary (tariffs, IPO, child support, pollen season, data center).
+# Tightened in 2026-05-08 to 0-4 with a hard anti-pattern list — better to
+# skip than to define an obvious word.
 _PROMPT_HEADER = """You are writing the "What you should know first" panel for a civic-literacy news app. \
 For each article below, write a brief teaching primer for a smart American adult who may have missed key context.
 
@@ -50,10 +56,31 @@ needs before reading the article. Cover what's at stake, who the players are, or
 the reader most likely doesn't already know. Conversational tone. Active voice. Contractions OK. \
 NEVER editorialize, NEVER take a political side, NEVER tell the reader what to think.
 
-2. terms — 3 to 5 key terms from the article that benefit from a one-sentence plain-language definition. \
-Pick terms a non-expert would stumble on (filibuster, cloture, basis points, antitrust review, FOMC, \
-attainment standards, EBITDA, etc.) — NOT proper nouns or common words. Each term gets a max-25-word \
-definition that an 8th-grader could understand.
+2. terms — 0 to 4 key terms from the article that a college-educated reader \
+would actually need to look up to understand the story. NOT proper nouns. Each term gets a max-25-word \
+plain-language definition that an 8th-grader could understand.
+
+The bar is HIGH. Better to return zero terms than to define an obvious word. Default to fewer terms.
+
+GOOD picks (domain-specific jargon, procedural terms, regulatory or legal-of-art):
+filibuster, cloture, basis points, antitrust review, FOMC, attainment standards, EBITDA, \
+qualified immunity, federalism, deference doctrine, motion to proceed, Calendar Wednesday, \
+chilling effect (when used in a 1A context), notice-and-comment, certiorari, prior restraint, \
+adverse possession, force majeure, Section 230, indemnification, rulemaking, conferee.
+
+DO NOT PICK these — they fail the "would a college-educated reader actually look this up?" bar. \
+If you find yourself reaching for one of these, return fewer terms instead:
+
+  • Common adult vocabulary: tariffs, IPO, child support, recession, supply chain, data center, \
+utility, subscription, broadcast, social media, civil rights, immigration, federal agency, \
+primary election, runoff, plea deal.
+  • Generic English idioms: unintended consequences, downstream effects, chain reaction, \
+knock-on effects, fallout, ripple effect, paradigm shift.
+  • Tautological / circular definitions where the "definition" just restates the term: \
+pollen season ("when pollen is released"), price hike ("when prices go up"), \
+rate cut ("when rates are cut"), data center ("place that houses servers").
+  • Words whose definition is one Google search away: typhoon, asteroid, vaccine, refinery, \
+semiconductor, grid (electrical), GDP, moratorium.
 
 Critical rules:
 - Never use the word "context" in the primer itself.
