@@ -37,10 +37,13 @@ logger = logging.getLogger("sift-api.rss")
 # do not get cross-spectrum or outlet-provenance treatments. Whether
 # those categories survive long-term is a separate product call.
 #
-# Outlets on the curated list that DON'T currently have an RSS feed
-# wired here (CNN, MSNBC, Fox News, NY Post, National Review, WSJ,
-# Daily Wire, Federalist, Daily Caller, etc.) get added in Phase 2.A
-# along with their outlet_profiles seed entries.
+# Right-leaning outlets we have curated in `outlet_profiles` but without
+# a working RSS endpoint:
+#   - The American Conservative (theamericanconservative.com/feed/) → 403
+#     Cloudflare bot-protect even with browser UA. No public alternative.
+#   - The Federalist (thefederalist.com/feed/) → 403 same as above.
+# Both have outlet_profiles rows so any direct mention via entity-linker
+# still resolves to a dossier; we just won't ingest their headlines.
 
 FEEDS: list[tuple[str, str]] = [
     # ── General / Wire services ──────────────────────────
@@ -64,6 +67,10 @@ FEEDS: list[tuple[str, str]] = [
     # WaPo: /rss/national was returning ~5 items (and intermittently empty
     # on Railway egress); /rss/homepage is the full firehose (~70 items).
     ("Washington Post", "https://feeds.washingtonpost.com/rss/homepage"),
+    # Fox News' Google Publisher Center feed — Atom-style, ~25 entries
+    # per fetch. Their direct RSS at /rss/* is paywalled/auth-walled.
+    ("Fox News", "https://moxie.foxnews.com/google-publisher/latest.xml"),
+    ("New York Post", "https://nypost.com/feed/"),
     # ── Technology (specialty) ───────────────────────────
     ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"),
     ("The Verge", "https://www.theverge.com/rss/index.xml"),
@@ -96,6 +103,17 @@ FEEDS: list[tuple[str, str]] = [
     ("Politico Congress", "https://rss.politico.com/congress.xml"),
     ("The Hill Politics", "https://thehill.com/homenews/feed/"),
     ("The Dispatch", "https://thedispatch.com/feed/"),
+    # Right-leaning political outlets — the corpus before this addition
+    # had ~0 articles/week from any "right" or "lean-right" outlet
+    # despite the home page promising "across the political spectrum".
+    # All eight of these returned HTTP 200 with non-empty bodies under
+    # the Sift/1.0 user-agent during pre-merge curl audit.
+    ("Reason", "https://reason.com/latest/feed/"),
+    ("National Review", "https://www.nationalreview.com/feed/"),
+    ("Washington Examiner", "https://www.washingtonexaminer.com/feed"),
+    ("The Washington Times", "https://www.washingtontimes.com/rss/headlines/news/national/"),
+    ("The Daily Caller", "https://dailycaller.com/feed/"),
+    ("The Daily Wire", "https://www.dailywire.com/feeds/rss.xml"),
     # ── Sports (out-of-scope for civic-literacy mechanics) ──
     ("ESPN", "https://www.espn.com/espn/rss/news"),
     ("BBC Sport", "http://feeds.bbci.co.uk/sport/rss.xml"),
