@@ -126,3 +126,36 @@ CREATE TABLE IF NOT EXISTS api_batches (
 
 CREATE INDEX IF NOT EXISTS idx_api_batches_status_kind
     ON api_batches(status, kind);
+
+-- Search-funnel instrumentation (migrations/009_search_queries.sql).
+-- Phase 1 of search-improvement plan: one row per topic-search request
+-- so we can see what users actually look for. Raw IPs are NEVER stored —
+-- the sift route hashes them with HMAC-SHA256 before INSERT. Query text
+-- is verbatim (needed for top-query rollups + eval-set generation);
+-- 90-day retention enforced by scripts/cleanup_old_search_queries.py.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS search_queries (
+    id                      TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    query                   TEXT NOT NULL,             -- raw, max 200 chars per route guard
+    query_norm              TEXT NOT NULL,             -- lowercased, whitespace-collapsed
+    query_token_count       INT NOT NULL,              -- proxy for "name" vs "question"
+    result_count_vector     INT NOT NULL,              -- passed SIMILARITY_THRESHOLD
+    result_count_total      INT NOT NULL,              -- after web-fallback dedup
+    fallback_used           BOOLEAN NOT NULL DEFAULT FALSE,
+    latency_ms_total        INT NOT NULL,
+    latency_ms_embed        INT,
+    latency_ms_vector       INT,
+    latency_ms_fallback     INT,                       -- null when fallback not used
+    session_id              TEXT,                      -- localStorage UUID
+    ip_hash                 TEXT,                      -- HMAC-SHA256, never raw
+    user_agent_class        TEXT,                      -- mobile|desktop|bot|unknown
+    matched_entity_type     TEXT,                      -- Phase 2 hook: politician|org|bill|outlet
+    matched_entity_id       TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_queries_created
+    ON search_queries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_queries_query_norm
+    ON search_queries(query_norm);
