@@ -233,6 +233,48 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON articles USING gin(entity_links)"
         )
 
+        # Search-funnel instrumentation (migrations/009_search_queries.sql).
+        # Phase 1 of search-improvement plan: log every topic-search query
+        # so we can see what users actually look for and decide whether
+        # the next investment should be entity-aware resolution (Phase 2)
+        # or HNSW + re-ranking (Phase 3). Raw IPs are never persisted —
+        # the sift route hashes them with HMAC-SHA256 before INSERT.
+        # 90-day retention enforced by scripts/cleanup_old_search_queries.py.
+        await conn.execute(
+            "CREATE EXTENSION IF NOT EXISTS pgcrypto"
+        )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS search_queries (
+              id                      TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+              created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              query                   TEXT NOT NULL,
+              query_norm              TEXT NOT NULL,
+              query_token_count       INT NOT NULL,
+              result_count_vector     INT NOT NULL,
+              result_count_total      INT NOT NULL,
+              fallback_used           BOOLEAN NOT NULL DEFAULT FALSE,
+              latency_ms_total        INT NOT NULL,
+              latency_ms_embed        INT,
+              latency_ms_vector       INT,
+              latency_ms_fallback     INT,
+              session_id              TEXT,
+              ip_hash                 TEXT,
+              user_agent_class        TEXT,
+              matched_entity_type     TEXT,
+              matched_entity_id       TEXT
+            )
+            """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_search_queries_created "
+            "ON search_queries(created_at DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_search_queries_query_norm "
+            "ON search_queries(query_norm)"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
