@@ -19,6 +19,7 @@ One-off and diagnostic scripts. All run from the `sift-api/` root and use
 | `seed_all.sh`                   | **Yes**       | No           | One-shot wrapper: dry-run validates every CSV, then runs all six seeds against prod in order, with a human-review pause before the alias seed. `--dry-run-only` and `--skip-aliases` flags supported. |
 | `backfill_entity_links.py`      | **Yes**       | No           | One-shot: re-runs the Phase 3.G entity linker over articles that already have a non-empty `entity_links` value, writes corrected links back. Used after #40 dropped last-name-only aliases (the policy change cleared 46 of 50 false-positive chips in prod). Idempotent — safe to re-run; `--dry-run` for spot checks. Regex-only, no LLM cost. |
 | `cleanup_old_search_queries.py` | **Yes** (DELETE) | No        | Phase 1 search-analytics retention. DELETEs `search_queries` rows older than 90 days (configurable via `--days N`). The privacy page commits to 90-day retention on logged search queries; this script enforces it. Re-run weekly or wire into a daily Railway cron when query volume warrants. `--dry-run` flag for spot-checks. Safe to re-run. |
+| `cleanup_old_primer_events.py`  | **Yes** (DELETE) | No        | Sister to `cleanup_old_search_queries.py` — same shape, same retention promise, different table. DELETEs `primer_expand_events` rows older than 90 days. Run on the same cadence. |
 
 ## Running against prod
 
