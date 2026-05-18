@@ -275,6 +275,35 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON search_queries(query_norm)"
         )
 
+        # Primer-expand instrumentation (migrations/010_primer_expand_events.sql).
+        # We've shipped three rounds of primer-content work without ever
+        # knowing whether anyone opens the panel. This table records every
+        # panel-expand click; impressions are NOT tracked (computable from
+        # articles.context_primer IS NOT NULL at query time, no need to
+        # write ~5k rows/day). Privacy posture mirrors search_queries:
+        # IPs hashed, 90-day retention via scripts/cleanup_old_primer_events.py.
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS primer_expand_events (
+              id                      TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+              created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              article_id              TEXT,
+              surface                 TEXT,
+              session_id              TEXT,
+              ip_hash                 TEXT,
+              user_agent_class        TEXT
+            )
+            """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_primer_expand_events_created "
+            "ON primer_expand_events(created_at DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_primer_expand_events_article "
+            "ON primer_expand_events(article_id) WHERE article_id IS NOT NULL"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

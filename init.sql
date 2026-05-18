@@ -159,3 +159,24 @@ CREATE INDEX IF NOT EXISTS idx_search_queries_created
     ON search_queries(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_search_queries_query_norm
     ON search_queries(query_norm);
+
+-- Primer-expand instrumentation (migrations/010_primer_expand_events.sql).
+-- Phase 1 question: do users actually open the "What you should know first"
+-- panel? Without this signal, all primer-content iteration is guessing.
+-- Tracks expand clicks only (not impressions — those are computable from
+-- articles.context_primer IS NOT NULL without paying for the writes).
+-- IPs hashed; 90-day retention via scripts/cleanup_old_primer_events.py.
+CREATE TABLE IF NOT EXISTS primer_expand_events (
+    id                      TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    article_id              TEXT,             -- nullable: future surfaces may lack one
+    surface                 TEXT,             -- 'feed' | 'bookmarks' | future
+    session_id              TEXT,             -- localStorage UUID
+    ip_hash                 TEXT,             -- HMAC-SHA256, never raw
+    user_agent_class        TEXT              -- mobile|desktop|bot|unknown
+);
+
+CREATE INDEX IF NOT EXISTS idx_primer_expand_events_created
+    ON primer_expand_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_primer_expand_events_article
+    ON primer_expand_events(article_id) WHERE article_id IS NOT NULL;
