@@ -2,6 +2,26 @@
 
 Context you'll want before editing anything here. Keep this file **short and current** — if it grows past one screen, split the long bits into real docs.
 
+## Pre-session ritual
+
+Before doing real work in a session:
+
+1. Read [`STATUS.md`](./STATUS.md) — Active focus, Open question, Next 3, Blocked-on, Recent decisions.
+2. List open PRs + issues (`mcp__github__list_pull_requests` / `list_issues`, or `gh` locally).
+3. If touching the feed read path, also read `sift/lib/db.ts` in the sibling repo — those queries are the user-visible slow path, not anything here.
+
+If `STATUS.md` is older than ~3 days during a high-velocity period (10+ PRs / week), flag the staleness to the user before starting.
+
+## End-of-PR doc-impact check
+
+Before opening the PR:
+
+- Did this change anything in `STATUS.md`'s Next 3, Blocked-on, or Open question? Update it.
+- Did this make or close a strategic decision? Add a `## Recent decisions` entry in `STATUS.md` (and, if substantial, a row in the sibling `sift/docs/DECISIONS.md`).
+- Did this change a public contract (API endpoint, response shape, env var)? Update `README.md` and any `sift/docs/TECHNICAL_SPEC.md` rows that referenced it.
+- Did this change DB schema? Update `init.sql` AND add a `migrations/NNN_*.sql` AND extend `app/db.py:_apply_migrations`. See `## Schema` below.
+- Run the sift-api–specific `## Before closing a task` checklist at the bottom of this file.
+
 ## The two-repo split
 
 The product lives in two sibling repos under `sift_v1/`:
@@ -74,3 +94,4 @@ When adding a migration: write it in both places. The SQL file is documentation 
 - If I changed a query or index, rerun `scripts/explain_feed_queries.py` against prod.
 - If I edited `app/db.py` migrations, verify via `railway logs --service sift-api` that startup ran clean.
 - If I edited `.github/workflows/`, verify on a small PR that the job actually runs (don't assume path filters work).
+- Plus the universal end-of-PR doc-impact check at the top of this file.
