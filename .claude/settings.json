@@ -1,4 +1,17 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "enableAllProjectMcpServers": true
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f STATUS.md && jq -Rs '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:.}}' < STATUS.md || echo '{}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
 }
