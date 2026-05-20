@@ -2,6 +2,19 @@
 
 Context you'll want before editing anything here. Keep this file **short and current** — if it grows past one screen, split the long bits into real docs.
 
+## Pre-session ritual
+
+Run these first, in order. Skip none.
+
+```bash
+cat STATUS.md            # active focus, open questions, next 3, recent decisions
+gh pr list               # what's open, what's mid-flight
+gh issue list            # what's committed but not started
+cat BACKLOG.md           # deferred work + bugs/quirks to revisit
+```
+
+The 30 seconds this takes saves hours of "wait, I thought we already decided…" later in the session.
+
 ## The two-repo split
 
 The product lives in two sibling repos under `sift_v1/`:
@@ -69,8 +82,28 @@ When adding a migration: write it in both places. The SQL file is documentation 
 - The pool in `sift/lib/db.ts` has `max: 5` — don't raise casually; Neon free/hobby tiers cap connections.
 - When Railway logs show a healthcheck pass but the UI still times out, the queries are the problem, not the deploy. Look at the feed queries.
 
-## Before closing a task
+## Where to file new work (decision tree)
+
+| What you found | Where it goes |
+|---|---|
+| **Bug blocking current work** | Fix it in the active branch. Don't file. |
+| **Concrete feature committing to in next ~2 weeks** | GitHub issue with `tier-v1.5` / `tier-v2` + `effort-*` labels. Add to STATUS.md "Next 3" if it bumps something. |
+| **Concrete feature wanted eventually, no commitment** | BACKLOG.md "Stretch / nice-to-have." Promote to issue when committed. |
+| **Quirk or minor bug, not urgent** | BACKLOG.md "Bugs / quirks to revisit." |
+| **Critical bug found but not fixed in session** | GitHub issue with `bug` label *and* note in BACKLOG.md. Mention in STATUS.md "Blocked-on" if it blocks Next 3. |
+| **Strategic question / open architectural decision** | STATUS.md "Open strategic questions" — never a GitHub issue. |
+| **Architectural decision now made** | STATUS.md "Recent decisions." Trim oldest if >6 entries. |
+| **Out-of-scope idea surfaced during work** | BACKLOG.md "Stretch / nice-to-have." |
+
+**The rule:** dated + scoped → file an issue. Half-formed → BACKLOG.md. Issues you'll never close are noise.
+
+## Before closing a PR
 
 - If I changed a query or index, rerun `scripts/explain_feed_queries.py` against prod.
 - If I edited `app/db.py` migrations, verify via `railway logs --service sift-api` that startup ran clean.
 - If I edited `.github/workflows/`, verify on a small PR that the job actually runs (don't assume path filters work).
+- **If the change shifted active focus / Next 3 / open questions** → update `STATUS.md` in the PR.
+- **If it added a deferred item, surfaced a quirk worth tracking, or recorded an architectural decision** → update `BACKLOG.md` (or STATUS.md "Recent decisions") in the PR.
+- **If it changed setup / env / how-to-run** → update `README.md`.
+
+Don't open PRs that change behavior without touching the doc that explains the behavior. Future-you will thank you.
