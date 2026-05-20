@@ -8,11 +8,35 @@
 
 Civic-literacy pivot backend. Recently shipped: fixed entity linker (LLM-gated, A/B-able) in `services/entity_linker_llm.py`; 170 new dossier entries via 4 new CSVs + seed scripts in `data/` and `scripts/`; `coverage_audit.py` archived measuring post-fix link rate.
 
-## Open strategic question
+## Open strategic questions
 
-**DMCA fair-use posture for AI summarization.**
+Four live unknowns. None block current work; all shape decisions in the next 1–3 months.
 
-Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protected content" as prohibited) + the live NYT / Perplexity / AP litigation landscape: audit needed to confirm `services/` doesn't write original article body HTML or images to disk on Railway, and `/methodology` (sibling `sift` repo) needs a transformative-use posture paragraph before any user-submitted-URL features (e.g. iOS share extension) ship. Tracked as a Next-3 item below.
+### 1. When does sift-api need to scale beyond Railway hobby tier?
+
+Pipeline runs every 10 min, ingests ~135 sources, calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
+
+Watch for:
+- Pipeline run time exceeds 8 min (close to the 10-min cadence)
+- Anthropic monthly bill from pipeline crosses $50/mo (today: ~$15)
+- Neon Postgres connection pool `max=5` starts queuing requests visibly
+- Native app launches and pushes write volume up
+
+### 2. Is the LLM-based entity linker durable, or does it need a v2?
+
+Phase 3.G.2 shipped the LLM linker with disambiguation rules added since. It's working but it's a moving target — every dossier expansion changes its catalog, and the prompt keeps needing tweaks.
+
+What would resolve this: a stable eval set with target precision/recall numbers, run on every PR that touches `services/entity_linker_llm.py`. Until that exists, the linker stays in "iterate fast" mode.
+
+### 3. Does `sift-mcp` eventually merge into `sift-api` as one service with two surfaces?
+
+The MCP is a separate Python service today that shares Postgres but nothing else. Merging would let `compare_outlets`-style hybrid workflows live next to the rest of the LangGraph pipeline.
+
+Won't resolve until ~3 months of usage data + an actual feature that needs cross-surface code-sharing.
+
+### 4. DMCA fair-use posture for AI summarization
+
+Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protected content" as prohibited) + the live NYT / Perplexity / AP litigation landscape: audit needed to confirm `services/` doesn't write original article body HTML or images to disk on Railway, and `/methodology` (sibling `sift` repo) needs a transformative-use posture paragraph before any user-submitted-URL features (e.g. iOS share extension) ship. Tracked as Next-3 item #2 below.
 
 ## Next 3
 
@@ -37,4 +61,4 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
 ---
 
-*See also: [`CLAUDE.md`](./CLAUDE.md) (orientation), [`README.md`](./README.md), [`init.sql`](./init.sql). Sibling repos: `sift` (frontend, owns user-facing reads + civic surface), `sift-mcp` (MCP server, separate cadence).*
+*See also: [`CLAUDE.md`](./CLAUDE.md) (orientation), [`BACKLOG.md`](./BACKLOG.md) (deferred items), [`README.md`](./README.md), [`init.sql`](./init.sql). Sibling repos: `sift` (frontend, owns user-facing reads + civic surface), `sift-mcp` (MCP server, separate cadence).*
