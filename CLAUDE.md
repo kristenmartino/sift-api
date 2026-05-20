@@ -89,6 +89,23 @@ When adding a migration: write it in both places. The SQL file is documentation 
 - The pool in `sift/lib/db.ts` has `max: 5` — don't raise casually; Neon free/hobby tiers cap connections.
 - When Railway logs show a healthcheck pass but the UI still times out, the queries are the problem, not the deploy. Look at the feed queries.
 
+## Where to file new work (decision tree)
+
+When you discover something during a session that's worth tracking, use this to decide where it goes. The goal: **never lose anything, but don't over-file** either.
+
+| What you found | Where it goes |
+|---|---|
+| **Bug blocking current work** | Fix in active branch. Don't file. |
+| **Concrete feature committing to in next ~2 weeks** | GitHub issue with `tier-v1.5` / `tier-v2` + `effort-*` labels. Add to STATUS.md "Next 3" if it bumps something. |
+| **Concrete feature wanted eventually, no commitment** | Note in `STATUS.md` "Recent decisions" if it's a decision; otherwise wait until you're ready to commit, then file an issue. |
+| **Quirk or minor bug, not urgent** | GitHub issue with `bug` label. No need to surface in STATUS.md unless it blocks Next 3. |
+| **Critical bug found but not fixed** | GitHub issue with `bug` label, then mention in STATUS.md "Blocked-on" if it blocks Next 3. |
+| **Strategic question / open architectural decision** | STATUS.md "Open strategic question" — never a GitHub issue. Questions get answered through usage/conversation, not engineering work. |
+| **Architectural decision now made** | STATUS.md "Recent decisions" with a date. If substantial, also add a row in [`sift/docs/DECISIONS.md`](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md) (sift owns the cross-repo decision log). |
+| **Out-of-scope idea surfaced during work** | If it's tied to a specific file, use the spawned-task chip in your editor. Otherwise note in STATUS.md "Recent decisions" or open an issue if scoped. |
+
+**The rule:** dated + scoped → file an issue. Half-formed → leave in STATUS.md context or a casual note. Issues you'll never close are noise.
+
 ## Before closing a task
 
 - If I changed a query or index, rerun `scripts/explain_feed_queries.py` against prod.
