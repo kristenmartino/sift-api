@@ -14,10 +14,10 @@ Four live unknowns. None block current work; all shape decisions in the next 1â€
 
 ### 1. When does sift-api need to scale beyond Railway hobby tier?
 
-Pipeline runs every 10 min, ingests ~135 sources, calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
+Pipeline runs every 30 min, ingests ~135 sources, calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
 
 Watch for:
-- Pipeline run time exceeds 8 min (close to the 10-min cadence)
+- Pipeline run time approaches the 30-min cadence (e.g. exceeds ~25 min)
 - Anthropic monthly bill from pipeline crosses $50/mo (today: ~$15)
 - Neon Postgres connection pool `max=5` starts queuing requests visibly
 - Native app launches and pushes write volume up

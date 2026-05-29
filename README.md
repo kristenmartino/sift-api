@@ -7,7 +7,7 @@ Handles the background content pipeline (RSS feeds → Claude Haiku summaries �
 ## Architecture
 
 ```
-Railway asyncio scheduler (every 10 min)
+Railway asyncio scheduler (every 30 min)
   → LangGraph pipeline: fetch_rss → deduplicate → summarize (Claude) → embed (Voyage) → store (Postgres)
 
 User compare request (via Vercel proxy)
@@ -48,11 +48,11 @@ uvicorn app.main:app --reload --port 8000
 # Health check
 curl http://localhost:8000/health
 
-# Trigger pipeline (technology category)
+# Trigger the RSS pipeline (refreshes all categories; there is no category-scoped refresh)
 curl -X POST http://localhost:8000/pipeline/refresh \
   -H "Content-Type: application/json" \
   -H "X-Pipeline-Key: dev-key" \
-  -d '{"categories": ["technology"]}'
+  -d '{"force": true}'
 
 # Multi-source comparison
 curl -X POST http://localhost:8000/analyze/compare \
