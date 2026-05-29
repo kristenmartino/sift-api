@@ -2,7 +2,7 @@
 then routes results to kind-specific handlers that update Postgres.
 
 Runs indefinitely while the app is up. Poll interval is short (60s) relative
-to Railway refresh cadence (600s), so completed batches surface quickly.
+to Railway refresh cadence (1800s), so completed batches surface quickly.
 """
 from __future__ import annotations
 

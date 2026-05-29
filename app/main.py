@@ -25,7 +25,7 @@ REFRESH_INTERVAL = 30 * 60  # 30 minutes (was 10 min) — stretched to cut spend
 
 
 async def _scheduled_refresh():
-    """Run pipeline refresh every 10 minutes in production."""
+    """Run the pipeline on a fixed interval (REFRESH_INTERVAL, 30 min) in production."""
     await asyncio.sleep(60)  # let the app fully start and serve initial requests
     while True:
         try:
