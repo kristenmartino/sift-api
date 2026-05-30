@@ -17,7 +17,9 @@ logger = logging.getLogger("sift-api.compare-router")
 
 router = APIRouter(prefix="/analyze", tags=["compare"])
 
-COMPARE_TIMEOUT = 90  # seconds — max time for entire comparison workflow
+# Overall compare-workflow ceiling. Kept within the frontend proxy budget
+# (sift#122): backend 50s < proxy abort 55s < Vercel maxDuration 60s < client 65s.
+COMPARE_TIMEOUT = 50  # seconds
 
 compare_graph = build_compare_graph()
 
@@ -29,7 +31,7 @@ compare_graph = build_compare_graph()
     description=(
         "Searches multiple news sources for coverage of a topic, extracts key claims, "
         "and compares how sources agree or disagree. Supports up to 5 sources. "
-        "Rate limited to 10 requests per minute. May take up to 90 seconds."
+        "Rate limited to 10 requests per minute. May take up to 50 seconds."
     ),
 )
 @limiter.limit("10/minute")
