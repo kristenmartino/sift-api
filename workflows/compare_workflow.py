@@ -10,6 +10,7 @@ import anthropic
 from langgraph.graph import StateGraph, END
 
 from app.config import settings
+from app.db import get_pool
 from services.usage_tracker import count_web_searches, log_usage
 
 logger = logging.getLogger("sift-api.compare")
@@ -17,14 +18,63 @@ logger = logging.getLogger("sift-api.compare")
 MODEL = "claude-haiku-4-5-20251001"
 PER_SOURCE_TIMEOUT = 20  # seconds per source search
 
-# Allowed source names — reject anything not on this list
-ALLOWED_SOURCES = {
+# Safe fallback allowlist — used ONLY when the curated set can't be loaded from
+# the DB (local dev, startup race, or an outage). The production allowlist is
+# data-backed (see load_allowed_sources): it tracks the curated outlet_profiles
+# set + source_name_aliases, so the compare source pool stays in sync with the
+# outlets Sift actually ingests instead of drifting from a hand-maintained list.
+FALLBACK_ALLOWED_SOURCES = {
     "reuters", "bbc", "associated press", "ap news", "npr", "cnn", "fox news",
     "nbc news", "abc news", "cbs news", "the new york times", "washington post",
     "the guardian", "al jazeera", "politico", "the hill", "axios", "bloomberg",
     "cnbc", "financial times", "the economist", "the wall street journal",
     "techcrunch", "the verge", "wired", "ars technica", "nature", "science",
 }
+
+
+async def load_allowed_sources() -> set[str]:
+    """Allowed compare source names (lowercased), derived from curated outlets.
+
+    Sources are validated against the curated outlet set rather than a static
+    constant: canonical names and slugs from ``outlet_profiles`` plus the raw
+    RSS names in ``source_name_aliases``. This keeps the compare allowlist in
+    sync with the outlets Sift ingests — including curated right-leaning outlets
+    the old hardcoded list omitted. Falls back to ``FALLBACK_ALLOWED_SOURCES``
+    (small, safe) if the DB is unavailable or unseeded, so validation stays
+    strict and deterministic rather than failing open.
+    """
+    try:
+        pool = await get_pool()
+        rows = await pool.fetch(
+            """
+            SELECT LOWER(name) AS s FROM outlet_profiles
+            UNION
+            SELECT LOWER(slug) AS s FROM outlet_profiles
+            UNION
+            SELECT LOWER(raw_source_name) AS s FROM source_name_aliases
+            """
+        )
+        allowed = {r["s"].strip() for r in rows if r["s"] and r["s"].strip()}
+        if allowed:
+            return allowed
+        logger.warning(
+            "outlet_profiles/source_name_aliases empty; using fallback allowlist"
+        )
+    except Exception as e:
+        logger.warning(
+            "Could not load compare allowlist from DB (%s); using fallback", e
+        )
+    return set(FALLBACK_ALLOWED_SOURCES)
+
+
+def filter_allowed_sources(sources: list[str], allowed: set[str]) -> list[str]:
+    """Keep only sources whose normalized (lowercased, trimmed) name is allowed.
+
+    Matching is case-/whitespace-insensitive; the original source string is
+    preserved for the downstream search prompt. Anything not explicitly on the
+    allowlist (arbitrary domains, injected strings) is rejected.
+    """
+    return [s for s in sources if s.lower().strip() in allowed]
 
 
 def _sanitize_text(text: str) -> str:
@@ -52,11 +102,9 @@ async def search_sources_node(state: CompareState) -> dict:
     """Search each source in parallel using Claude web_search."""
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
     topic = _sanitize_text(state["topic"])
-    # Validate sources against allowlist; reject unknown names
-    sources = [
-        s for s in state["sources"]
-        if s.lower().strip() in ALLOWED_SOURCES
-    ]
+    # Validate sources against the curated allowlist; reject unknown names.
+    allowed = await load_allowed_sources()
+    sources = filter_allowed_sources(state["sources"], allowed)
     if not sources:
         return {
             "search_results": {},
