@@ -230,11 +230,20 @@ async def embed_node(state: PipelineState) -> dict:
 
     try:
         vectors = await embed_texts(texts)
+        # Skip articles whose embedding batch failed: omit them from the dict so
+        # store_node writes NULL (not a zero vector). They stay browsable but are
+        # excluded from vector search until a future re-embed pass.
         embeddings = {
             article.source_url: vector
             for article, vector in zip(new_articles, vectors)
+            if vector is not None
         }
-        logger.info("embed: generated %d embeddings", len(embeddings))
+        skipped = len(new_articles) - len(embeddings)
+        logger.info(
+            "embed: generated %d embeddings (%d skipped → NULL)",
+            len(embeddings),
+            skipped,
+        )
         return {"embeddings": embeddings}
     except Exception as e:
         logger.error("embed failed: %s", e)
