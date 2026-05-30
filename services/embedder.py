@@ -13,16 +13,21 @@ MODEL = "voyage-3-lite"
 BATCH_SIZE = 128  # Voyage AI max batch size
 
 
-async def embed_texts(texts: list[str]) -> list[list[float]]:
+async def embed_texts(texts: list[str]) -> list[list[float] | None]:
     """
     Embed a list of texts using Voyage AI voyage-3-lite.
-    Returns list of 512-dim vectors in the same order as inputs.
+
+    Returns a list aligned 1:1 with ``texts``: a 512-dim vector per text, or
+    ``None`` for any text whose batch failed to embed. Callers persist ``None``
+    as a NULL embedding (never a zero vector), so a failed batch stays out of
+    vector search and can be re-embedded later instead of polluting similarity
+    results with ``[0.0] * 512``.
     """
     if not texts:
         return []
 
     client = voyageai.Client(api_key=settings.voyage_api_key)
-    all_embeddings: list[list[float]] = []
+    all_embeddings: list[list[float] | None] = []
 
     for i in range(0, len(texts), BATCH_SIZE):
         batch = texts[i : i + BATCH_SIZE]
@@ -36,9 +41,24 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
             )
             all_embeddings.extend(result.embeddings)
         except Exception as e:
-            logger.error("Embedding failed for batch %d: %s", i // BATCH_SIZE, e)
-            # Return zero vectors as fallback for this batch
-            all_embeddings.extend([[0.0] * 512 for _ in batch])
+            logger.error(
+                "Embedding failed for batch %d (%d texts); emitting NULL "
+                "embeddings (skipped, re-embeddable later): %s",
+                i // BATCH_SIZE,
+                len(batch),
+                e,
+            )
+            # Emit None per item (NULL embedding) — never a zero vector. Length
+            # is preserved so the caller's article/vector alignment stays stable.
+            all_embeddings.extend([None] * len(batch))
 
-    logger.info("Embedded %d texts (%d-dim vectors)", len(all_embeddings), 512)
+    embedded = sum(1 for v in all_embeddings if v is not None)
+    skipped = len(all_embeddings) - embedded
+    logger.info(
+        "Embedded %d/%d texts (%d-dim); %d skipped (NULL embedding)",
+        embedded,
+        len(all_embeddings),
+        512,
+        skipped,
+    )
     return all_embeddings
