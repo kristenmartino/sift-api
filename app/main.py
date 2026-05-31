@@ -15,6 +15,7 @@ from app.config import settings
 from app.db import init_pool, get_pool, close_pool
 from app.dependencies import limiter
 from app.models import HealthResponse
+from app.observability import init_sentry
 from app.routers import pipeline, compare
 
 logger = logging.getLogger("sift-api")
@@ -88,6 +89,11 @@ async def lifespan(app: FastAPI):
         poller_task.cancel()
     await close_pool()
     logger.info("sift-api shut down")
+
+
+# Initialize error monitoring before the app is created so Sentry's ASGI
+# integration wraps request handling. No-op unless SENTRY_DSN is configured.
+init_sentry()
 
 
 app = FastAPI(

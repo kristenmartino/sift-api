@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "info"
 
+    # Error monitoring (Sentry) — inert unless sentry_dsn (SENTRY_DSN) is set.
+    # Reuses `environment` as the Sentry environment tag.
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.1
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
