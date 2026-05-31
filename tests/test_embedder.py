@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from services.cost_guard import BudgetDecision
 from services.embedder import BATCH_SIZE, embed_texts
 
 ZERO_VECTOR = [0.0] * 512
@@ -58,4 +59,20 @@ class TestEmbedTexts:
         assert all(v is not None and len(v) == 512 for v in out[:BATCH_SIZE])
         # ...second (failed) batch is None, never zero vectors.
         assert out[BATCH_SIZE:] == [None, None, None]
+        assert ZERO_VECTOR not in out
+
+    def test_returns_none_when_cost_guard_blocks(self):
+        """Fail-closed / over-budget: when the cost guard blocks, no Voyage call
+        is made and every text gets a NULL embedding (re-embeddable later)."""
+        texts = ["a", "b", "c"]
+        blocked = BudgetDecision(False, "guard_unavailable", 0.0, 10.0)
+        with patch(
+            "services.embedder.check_budget",
+            new_callable=AsyncMock,
+            return_value=blocked,
+        ):
+            with patch("services.embedder.voyageai.Client") as Client:
+                out = asyncio.run(embed_texts(texts))
+        assert out == [None, None, None]
+        Client.assert_not_called()  # provider never constructed/called
         assert ZERO_VECTOR not in out

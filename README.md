@@ -150,6 +150,9 @@ CI wires the same script into the **`feed-perf`** job (`.github/workflows/ci.yml
 | `LOG_LEVEL` | No | `debug`, `info`, `warning`, `error` |
 | `SENTRY_DSN` | No | Sentry DSN for error monitoring. Inert unless set; no PII sent |
 | `SENTRY_TRACES_SAMPLE_RATE` | No | Sentry tracing sample rate (default: `0.1`) |
+| `AI_COST_GUARD_ENABLED` | No | Enable the daily AI cost ceiling (default: `false`) |
+| `DAILY_AI_COST_LIMIT_USD` | No | Daily Claude + Voyage spend ceiling, USD (default: `10.0`) |
+| `AI_COST_ALERT_THRESHOLD_RATIO` | No | Budget fraction that triggers an alert (default: `0.8`) |
 
 ## Tests
 

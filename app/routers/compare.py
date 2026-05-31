@@ -11,6 +11,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from app.config import settings
 from app.dependencies import limiter
 from app.models import CompareRequest, CompareResponse
+from services.cost_guard import check_budget
 from workflows.compare_workflow import build_compare_graph, CompareState
 
 logger = logging.getLogger("sift-api.compare-router")
@@ -20,6 +21,12 @@ router = APIRouter(prefix="/analyze", tags=["compare"])
 # Overall compare-workflow ceiling. Kept within the frontend proxy budget
 # (sift#122): backend 50s < proxy abort 55s < Vercel maxDuration 60s < client 65s.
 COMPARE_TIMEOUT = 50  # seconds
+
+# Conservative per-source cost estimate for the daily-budget pre-check
+# (sift-api#70): ~one web search per source (~$0.01) plus Claude tokens for
+# search + extraction. Deliberately on the high side so a compare is blocked
+# *before* it would cross the ceiling, not after.
+COMPARE_COST_ESTIMATE_PER_SOURCE_USD = 0.04
 
 compare_graph = build_compare_graph()
 
@@ -48,6 +55,36 @@ async def compare_sources(
 
     if len(body.sources) > 5:
         raise HTTPException(status_code=400, detail="Maximum 5 sources allowed")
+
+    # Daily AI cost ceiling (sift-api#70): block the live Claude web-search path
+    # when today's spend plus this request's estimated cost would exceed budget.
+    # Frontend topic-search is NOT covered yet — it stays a temporary D35
+    # exception until sift-api#79 moves that fallback into sift-api.
+    budget = await check_budget(
+        COMPARE_COST_ESTIMATE_PER_SOURCE_USD * len(body.sources)
+    )
+    if not budget.allowed:
+        logger.warning(
+            "Compare blocked by cost guard (reason=%s, spent=$%.4f / $%.2f)",
+            budget.reason,
+            budget.spent_usd,
+            budget.limit_usd,
+        )
+        if budget.reason == "guard_unavailable":
+            # Fail-closed: we couldn't verify today's spend, so we don't make the
+            # paid provider call.
+            detail = (
+                "Comparison is temporarily unavailable: the cost guard could "
+                "not verify the AI budget. Please try again shortly."
+            )
+            code = "COST_GUARD_UNAVAILABLE"
+        else:
+            detail = (
+                "Comparison is temporarily unavailable: today's AI budget has "
+                "been reached. Please try again tomorrow."
+            )
+            code = "AI_BUDGET_EXCEEDED"
+        raise HTTPException(status_code=503, detail={"detail": detail, "code": code})
 
     start = time.time()
 
