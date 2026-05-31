@@ -11,6 +11,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from app.config import settings
 from app.dependencies import limiter
 from app.models import CompareRequest, CompareResponse
+from services.cost_guard import check_budget
 from workflows.compare_workflow import build_compare_graph, CompareState
 
 logger = logging.getLogger("sift-api.compare-router")
@@ -48,6 +49,28 @@ async def compare_sources(
 
     if len(body.sources) > 5:
         raise HTTPException(status_code=400, detail="Maximum 5 sources allowed")
+
+    # Daily AI cost ceiling (sift-api#70): block the live Claude web-search path
+    # when today's spend is over budget. Frontend topic-search is NOT covered
+    # yet — it stays a temporary D35 exception until sift-api#79 moves that
+    # fallback into sift-api.
+    budget = await check_budget()
+    if not budget.allowed:
+        logger.warning(
+            "Compare blocked by daily AI cost ceiling (spent=$%.4f / $%.2f)",
+            budget.spent_usd,
+            budget.limit_usd,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "detail": (
+                    "Comparison is temporarily unavailable: today's AI budget "
+                    "has been reached. Please try again tomorrow."
+                ),
+                "code": "AI_BUDGET_EXCEEDED",
+            },
+        )
 
     start = time.time()
 

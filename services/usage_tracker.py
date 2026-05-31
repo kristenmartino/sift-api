@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
+
+from app.config import settings
 
 logger = logging.getLogger("sift-api.usage")
 
@@ -15,6 +18,11 @@ PRICE_CACHE_READ_PER_M = 0.10  # 0.1x base input for cache hits
 
 # Web search tool pricing: $10 per 1,000 searches
 PRICE_WEB_SEARCH_PER_CALL = 0.010
+
+# Voyage AI voyage-3-lite embeddings (USD per 1M tokens). Voyage bills a small
+# per-token rate above a generous free monthly tier; this is a conservative
+# upper-bound estimate, used only for the daily cost ledger.
+PRICE_VOYAGE_PER_M = 0.02
 
 
 def log_usage(
@@ -63,6 +71,7 @@ def log_usage(
             "cost_usd": round(cost_usd, 6),
         }
         logger.info(json.dumps(payload))
+        _record_to_ledger(operation, model, round(cost_usd, 6))
         return payload
     except Exception as e:
         # Never let telemetry break the pipeline
@@ -83,3 +92,33 @@ def count_web_searches(response: Any) -> int:
         return count
     except Exception:
         return 0
+
+
+# Fire-and-forget tasks that persist usage to the daily cost ledger. We keep a
+# reference so the running loop doesn't garbage-collect them mid-flight.
+_pending_records: set = set()
+
+
+def voyage_cost(total_tokens: int) -> float:
+    """Estimated USD cost for a Voyage embedding call, for the daily ledger."""
+    return (total_tokens or 0) * PRICE_VOYAGE_PER_M / 1_000_000
+
+
+def _record_to_ledger(operation: str, model: str, cost_usd: float) -> None:
+    """Best-effort: persist a Claude call's cost to the daily ledger without
+    blocking the caller. No-op when the cost guard is disabled or when there's
+    no running event loop (sync contexts / unit tests)."""
+    if cost_usd <= 0 or not settings.ai_cost_guard_enabled:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return  # no event loop to schedule onto
+    try:
+        from services.cost_guard import record_usage
+
+        task = loop.create_task(record_usage("anthropic", model, operation, cost_usd))
+        _pending_records.add(task)
+        task.add_done_callback(_pending_records.discard)
+    except Exception as e:  # never let telemetry break the caller
+        logger.debug("usage ledger scheduling failed for %s: %s", operation, e)

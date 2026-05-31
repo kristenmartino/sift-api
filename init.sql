@@ -180,3 +180,21 @@ CREATE INDEX IF NOT EXISTS idx_primer_expand_events_created
     ON primer_expand_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_primer_expand_events_article
     ON primer_expand_events(article_id) WHERE article_id IS NOT NULL;
+
+-- Daily AI cost ledger (migrations/011_ai_usage_daily.sql).
+-- One row per (UTC date, provider, model, operation). services/cost_guard.py
+-- sums the day's estimated_cost_usd to enforce a hard daily ceiling on the
+-- live paid paths (compare web-search + Voyage embeddings) and to alert at 80%
+-- of budget (sift-api#70). Frontend topic-search paid calls are NOT covered
+-- here yet — they remain a temporary D35 exception until sift-api#79 moves
+-- that fallback into sift-api.
+CREATE TABLE IF NOT EXISTS ai_usage_daily (
+    usage_date          DATE NOT NULL,
+    provider            TEXT NOT NULL,          -- 'anthropic' | 'voyage'
+    model               TEXT NOT NULL,
+    operation           TEXT NOT NULL,          -- call-site id, e.g. 'compare.search'
+    estimated_cost_usd  DOUBLE PRECISION NOT NULL DEFAULT 0,
+    call_count          INTEGER NOT NULL DEFAULT 0,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (usage_date, provider, model, operation)
+);

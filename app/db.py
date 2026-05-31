@@ -304,6 +304,25 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON primer_expand_events(article_id) WHERE article_id IS NOT NULL"
         )
 
+        # Daily AI cost ledger (migrations/011_ai_usage_daily.sql).
+        # One row per (UTC date, provider, model, operation). cost_guard sums
+        # the day's estimated_cost_usd to enforce the daily ceiling (sift-api#70)
+        # and alert at 80%. Covers the live paid paths (compare web-search +
+        # Voyage embeddings); frontend topic-search stays a D35 exception
+        # (sift-api#79) until that fallback moves into sift-api.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_usage_daily (
+                usage_date          DATE NOT NULL,
+                provider            TEXT NOT NULL,
+                model               TEXT NOT NULL,
+                operation           TEXT NOT NULL,
+                estimated_cost_usd  DOUBLE PRECISION NOT NULL DEFAULT 0,
+                call_count          INTEGER NOT NULL DEFAULT 0,
+                updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (usage_date, provider, model, operation)
+            )
+        """)
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
