@@ -65,20 +65,26 @@ async def compare_sources(
     )
     if not budget.allowed:
         logger.warning(
-            "Compare blocked by daily AI cost ceiling (spent=$%.4f / $%.2f)",
+            "Compare blocked by cost guard (reason=%s, spent=$%.4f / $%.2f)",
+            budget.reason,
             budget.spent_usd,
             budget.limit_usd,
         )
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "detail": (
-                    "Comparison is temporarily unavailable: today's AI budget "
-                    "has been reached. Please try again tomorrow."
-                ),
-                "code": "AI_BUDGET_EXCEEDED",
-            },
-        )
+        if budget.reason == "guard_unavailable":
+            # Fail-closed: we couldn't verify today's spend, so we don't make the
+            # paid provider call.
+            detail = (
+                "Comparison is temporarily unavailable: the cost guard could "
+                "not verify the AI budget. Please try again shortly."
+            )
+            code = "COST_GUARD_UNAVAILABLE"
+        else:
+            detail = (
+                "Comparison is temporarily unavailable: today's AI budget has "
+                "been reached. Please try again tomorrow."
+            )
+            code = "AI_BUDGET_EXCEEDED"
+        raise HTTPException(status_code=503, detail={"detail": detail, "code": code})
 
     start = time.time()
 

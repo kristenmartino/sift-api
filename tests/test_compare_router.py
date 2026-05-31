@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
+from services.cost_guard import BudgetDecision
+
 
 @pytest.fixture
 def client():
@@ -112,3 +114,47 @@ class TestCompareErrorSanitization:
             assert "secret" not in str(detail)
             assert detail["detail"] == "Comparison failed"
             assert detail["code"] == "COMPARISON_FAILED"
+
+
+class TestCompareCostCeiling:
+    def test_over_budget_blocks_without_calling_provider(self, client):
+        """When today's spend is over budget, the request is rejected 503 and the
+        compare workflow (the paid web-search path) is never invoked."""
+        blocked = BudgetDecision(False, "budget_exceeded", 11.0, 10.0)
+        with patch(
+            "app.routers.compare.check_budget",
+            new_callable=AsyncMock,
+            return_value=blocked,
+        ):
+            with patch(
+                "app.routers.compare.compare_graph.ainvoke", new_callable=AsyncMock
+            ) as ainvoke:
+                response = client.post(
+                    "/analyze/compare",
+                    json={"topic": "climate change", "sources": ["reuters"]},
+                    headers={"X-Pipeline-Key": "dev-key"},
+                )
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "AI_BUDGET_EXCEEDED"
+        ainvoke.assert_not_called()
+
+    def test_guard_unavailable_fails_closed_without_calling_provider(self, client):
+        """Fail-closed: when the guard can't verify budget (e.g. DB error), the
+        request is rejected 503 and the provider is never called."""
+        blocked = BudgetDecision(False, "guard_unavailable", 0.0, 10.0)
+        with patch(
+            "app.routers.compare.check_budget",
+            new_callable=AsyncMock,
+            return_value=blocked,
+        ):
+            with patch(
+                "app.routers.compare.compare_graph.ainvoke", new_callable=AsyncMock
+            ) as ainvoke:
+                response = client.post(
+                    "/analyze/compare",
+                    json={"topic": "climate change", "sources": ["reuters"]},
+                    headers={"X-Pipeline-Key": "dev-key"},
+                )
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "COST_GUARD_UNAVAILABLE"
+        ainvoke.assert_not_called()

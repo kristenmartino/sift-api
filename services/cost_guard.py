@@ -33,12 +33,14 @@ def _utc_today() -> date:
 async def check_budget(estimated_cost_usd: float = 0.0) -> BudgetDecision:
     """Decide whether a paid AI call may proceed under today's budget.
 
-    Returns ``allowed=True`` when the guard is disabled, when today's spend plus
-    the estimated cost is within ``daily_ai_cost_limit_usd``, or when the ledger
-    can't be read (fail-open: the guard must never become a new outage vector —
-    a transient DB blip should not halt every paid call). Returns
-    ``allowed=False`` only when the projected spend would exceed the limit;
-    callers should then skip the provider call and degrade gracefully.
+    Returns ``allowed=True`` when the guard is disabled, or when today's spend
+    plus the estimated cost is within ``daily_ai_cost_limit_usd``. Returns
+    ``allowed=False`` when the projected spend would exceed the limit — and also
+    when the guard is enabled but the ledger can't be read (fail-closed): if we
+    can't verify spend we must not authorize paid calls, otherwise an enabled
+    ceiling would permit unlimited spend during the exact failure mode where
+    spend can't be measured. Callers should skip the provider call and degrade
+    gracefully whenever ``allowed=False``.
     """
     limit = settings.daily_ai_cost_limit_usd
     if not settings.ai_cost_guard_enabled:
@@ -53,10 +55,14 @@ async def check_budget(estimated_cost_usd: float = 0.0) -> BudgetDecision:
         )
         spent = float(spent or 0.0)
     except Exception as e:
-        logger.warning(
-            "cost_guard: ledger read failed, allowing call (fail-open): %s", e
+        # Fail CLOSED: when the guard is enabled but the ledger can't be read we
+        # can't verify spend, so we must not authorize paid calls. An enabled
+        # ceiling that failed open would permit unlimited spend during the exact
+        # failure mode where spend can't be measured.
+        logger.error(
+            "cost_guard: ledger read failed, blocking call (fail-closed): %s", e
         )
-        return BudgetDecision(True, "ledger_unavailable", 0.0, limit)
+        return BudgetDecision(False, "guard_unavailable", 0.0, limit)
 
     projected = spent + max(0.0, estimated_cost_usd)
     if limit > 0 and projected > limit:

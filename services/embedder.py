@@ -36,11 +36,12 @@ async def embed_texts(texts: list[str]) -> list[list[float] | None]:
     estimated_tokens = sum(len(t) for t in texts) // 4
     budget = await check_budget(voyage_cost(estimated_tokens))
     if not budget.allowed:
+        # Covers both over-budget and guard-unavailable (fail-closed): either
+        # way we do not make the paid Voyage call.
         logger.warning(
-            "Embedding skipped: daily AI budget reached (spent=$%.4f / $%.2f); "
-            "emitting %d NULL embeddings (re-embeddable later).",
-            budget.spent_usd,
-            budget.limit_usd,
+            "Embedding skipped (cost guard: %s); emitting %d NULL embeddings "
+            "(re-embeddable later).",
+            budget.reason,
             len(texts),
         )
         return [None] * len(texts)

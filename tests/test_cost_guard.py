@@ -65,14 +65,16 @@ class TestCheckBudget:
         assert allowed.allowed is True
         assert allowed.reason == "within_budget"
 
-    def test_ledger_unavailable_fails_open(self):
+    def test_ledger_unavailable_fails_closed_when_enabled(self):
+        # A cost ceiling must not authorize paid calls when it can't verify
+        # spend — an enabled guard fails CLOSED on a ledger/DB error.
         with patch.object(cost_guard.settings, "ai_cost_guard_enabled", True):
             with patch.object(
                 cost_guard, "get_pool", AsyncMock(side_effect=RuntimeError("no pool"))
             ):
                 decision = asyncio.run(cost_guard.check_budget(1.0))
-        assert decision.allowed is True
-        assert decision.reason == "ledger_unavailable"
+        assert decision.allowed is False
+        assert decision.reason == "guard_unavailable"
 
 
 class TestAlert:
