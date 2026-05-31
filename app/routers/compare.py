@@ -22,6 +22,12 @@ router = APIRouter(prefix="/analyze", tags=["compare"])
 # (sift#122): backend 50s < proxy abort 55s < Vercel maxDuration 60s < client 65s.
 COMPARE_TIMEOUT = 50  # seconds
 
+# Conservative per-source cost estimate for the daily-budget pre-check
+# (sift-api#70): ~one web search per source (~$0.01) plus Claude tokens for
+# search + extraction. Deliberately on the high side so a compare is blocked
+# *before* it would cross the ceiling, not after.
+COMPARE_COST_ESTIMATE_PER_SOURCE_USD = 0.04
+
 compare_graph = build_compare_graph()
 
 
@@ -51,10 +57,12 @@ async def compare_sources(
         raise HTTPException(status_code=400, detail="Maximum 5 sources allowed")
 
     # Daily AI cost ceiling (sift-api#70): block the live Claude web-search path
-    # when today's spend is over budget. Frontend topic-search is NOT covered
-    # yet — it stays a temporary D35 exception until sift-api#79 moves that
-    # fallback into sift-api.
-    budget = await check_budget()
+    # when today's spend plus this request's estimated cost would exceed budget.
+    # Frontend topic-search is NOT covered yet — it stays a temporary D35
+    # exception until sift-api#79 moves that fallback into sift-api.
+    budget = await check_budget(
+        COMPARE_COST_ESTIMATE_PER_SOURCE_USD * len(body.sources)
+    )
     if not budget.allowed:
         logger.warning(
             "Compare blocked by daily AI cost ceiling (spent=$%.4f / $%.2f)",

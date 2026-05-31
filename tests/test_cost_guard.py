@@ -46,6 +46,25 @@ class TestCheckBudget:
         assert decision.allowed is False
         assert decision.reason == "budget_exceeded"
 
+    def test_proactive_estimate_blocks_before_spend_alone_would(self):
+        # Spent is under the limit (and under the alert ratio), but spent plus
+        # this call's estimate is not — the call is blocked before it crosses.
+        pool = _mock_pool(spent=7.0)
+        with patch.object(cost_guard.settings, "ai_cost_guard_enabled", True):
+            with patch.object(cost_guard.settings, "daily_ai_cost_limit_usd", 10.0):
+                with patch.object(
+                    cost_guard.settings, "ai_cost_alert_threshold_ratio", 0.8
+                ):
+                    with patch.object(
+                        cost_guard, "get_pool", AsyncMock(return_value=pool)
+                    ):
+                        blocked = asyncio.run(cost_guard.check_budget(4.0))
+                        allowed = asyncio.run(cost_guard.check_budget(0.5))
+        assert blocked.allowed is False
+        assert blocked.reason == "budget_exceeded"
+        assert allowed.allowed is True
+        assert allowed.reason == "within_budget"
+
     def test_ledger_unavailable_fails_open(self):
         with patch.object(cost_guard.settings, "ai_cost_guard_enabled", True):
             with patch.object(

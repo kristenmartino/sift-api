@@ -28,10 +28,13 @@ async def embed_texts(texts: list[str]) -> list[list[float] | None]:
     if not texts:
         return []
 
-    # Daily AI cost ceiling (sift-api#70): if today's spend is over budget, skip
-    # the paid Voyage call and emit NULL embeddings (re-embeddable later, same
-    # contract as a failed batch) instead of spending past the limit.
-    budget = await check_budget()
+    # Daily AI cost ceiling (sift-api#70): block before the paid Voyage call when
+    # today's spend plus this batch's estimated cost would exceed the limit, and
+    # emit NULL embeddings (re-embeddable later, same contract as a failed batch)
+    # instead of spending past the ceiling. ~4 chars/token is a conservative
+    # pre-estimate so we stop before crossing, not after.
+    estimated_tokens = sum(len(t) for t in texts) // 4
+    budget = await check_budget(voyage_cost(estimated_tokens))
     if not budget.allowed:
         logger.warning(
             "Embedding skipped: daily AI budget reached (spent=$%.4f / $%.2f); "
