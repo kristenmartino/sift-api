@@ -28,6 +28,7 @@ import anthropic
 from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
+from services.quality_gate import gate_background
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.primer_generator")
@@ -54,7 +55,10 @@ Two things per article:
 1. background — ONE short paragraph (max 60 words) of context the reader \
 needs before reading the article. Cover what's at stake, who the players are, or what came before — whichever \
 the reader most likely doesn't already know. Conversational tone. Active voice. Contractions OK. \
-NEVER editorialize, NEVER take a political side, NEVER tell the reader what to think.
+NEVER editorialize, NEVER take a political side, NEVER tell the reader what to think. \
+Avoid vague-significance clichés and filler — phrasings like "raises serious questions", "a turning point", \
+"a wake-up call", "sends a message", or "remains to be seen" add no information. State concrete facts only; \
+if you have no real background to add, return an empty string (better empty than filler).
 
 2. terms — 0 to 4 key terms from the article that a college-educated reader \
 would actually need to look up to understand the story. NOT proper nouns. Each term gets a max-25-word \
@@ -186,6 +190,15 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
         if not (isinstance(idx, int) and 1 <= idx <= len(batch)):
             continue
 
+        # Cliché-gate the background (sift-api#90). Lighter touch than
+        # why_it_matters: clichés only, never restatement — and terms are kept
+        # regardless (they're the differentiated value). An "" background just
+        # hides the paragraph.
+        article = batch[idx - 1]
+        background = gate_background(
+            background, title=article.get("title", ""), summary=article.get("summary", ""),
+        )
+
         # Normalize terms to a stable shape. Tolerate `def`/`definition` and
         # drop any malformed entries silently.
         terms: list[dict] = []
@@ -203,8 +216,8 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
         if not background and not terms:
             continue
 
-        results[batch[idx - 1]["source_url"]] = {
-            "background": background.strip(),
+        results[article["source_url"]] = {
+            "background": background,
             "terms": terms,
             "generated_at": now_iso,
         }
@@ -292,6 +305,7 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
 
     updated = 0
     failed = 0
+    bg_dropped = 0
     for item in results:
         custom_id = item.get("custom_id", "")
         urls = custom_id_to_urls.get(custom_id, [])
@@ -319,6 +333,13 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
             if not (isinstance(idx, int) and 1 <= idx <= len(urls)):
                 continue
 
+            # Cliché-gate the background (sift-api#90). Cliché-only — needs no
+            # title/summary — so no extra DB read here; terms are kept regardless.
+            raw_bg_present = bool(background.strip())
+            background = gate_background(background)
+            if raw_bg_present and not background:
+                bg_dropped += 1
+
             terms: list[dict] = []
             if isinstance(terms_raw, list):
                 for t in terms_raw:
@@ -334,7 +355,7 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
 
             url = urls[idx - 1]
             primer_payload = {
-                "background": background.strip(),
+                "background": background,
                 "terms": terms,
                 "generated_at": now_iso,
             }
@@ -357,5 +378,6 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
         "event": "batch_primer_applied",
         "batch_id": batch_id,
         "updated": updated,
+        "backgrounds_dropped_by_gate": bg_dropped,
         "failed": failed,
     }))
