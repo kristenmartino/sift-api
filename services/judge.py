@@ -212,6 +212,21 @@ async def judge_lines(
     return [v for v in verdicts if v is not None]
 
 
+def judge_rejects(verdict: dict) -> bool:
+    """Runtime-drop criterion for a why_it_matters line.
+
+    Targets the residual the deterministic gate can't catch: paraphrased
+    restatement and editorial color without a known cliché phrase. Drops on
+    `restates` or non-neutrality — but deliberately NOT on `adds_significance`
+    alone, the strictest and fuzziest axis, which would over-suppress (the judge
+    passes only ~1/3 of post-rubric lines on it). An unscored verdict (judge
+    error) is kept, never dropped.
+    """
+    if not verdict.get("judged"):
+        return False
+    return verdict.get("restates") is True or verdict.get("neutral_cliche_free") is False
+
+
 def tally(verdicts: list[dict]) -> dict:
     """Aggregate judge verdicts into the audit-comparable rates.
 

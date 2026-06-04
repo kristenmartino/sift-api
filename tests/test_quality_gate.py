@@ -132,6 +132,18 @@ class TestBackgroundGate:
         bg = "The Colorado River supplies water to about 40 million people across seven states."
         assert gate_background(bg) == bg
 
+    def test_long_paragraph_with_stray_cliche_is_kept(self):
+        # Regression: a substantive multi-sentence paragraph whose closing clause
+        # says "raising questions about <specific X>" must NOT be blanked — that
+        # destroys real context. Cliché-blanking applies only to short paragraphs.
+        bg = (
+            "In 1982, President Reagan pressed Israel to halt its invasion of Lebanon after "
+            "Israeli forces advanced toward Beirut. The standoff tested US-Israel relations "
+            "during a Cold War proxy conflict, raising questions about how presidents balance "
+            "support for Israel with regional stability."
+        )
+        assert gate_background(bg) == bg
+
     def test_background_not_dropped_for_restatement(self):
         # Unlike why_it_matters, background may reuse topic vocabulary — the
         # restatement backstop must NOT fire here.

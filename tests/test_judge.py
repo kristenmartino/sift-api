@@ -19,6 +19,7 @@ from services.judge import (
     _parse_judge,
     build_judge_prompt,
     judge_lines,
+    judge_rejects,
     tally,
 )
 
@@ -149,6 +150,24 @@ class TestJudgeLines:
         client = _mock_client("[]")
         assert await judge_lines([], client=client) == []
         client.messages.create.assert_not_called()
+
+
+class TestJudgeRejects:
+    def test_drops_restatement(self):
+        assert judge_rejects({"judged": True, "restates": True, "neutral_cliche_free": True})
+
+    def test_drops_non_neutral(self):
+        assert judge_rejects({"judged": True, "restates": False, "neutral_cliche_free": False})
+
+    def test_keeps_when_only_significance_missing(self):
+        # Not restating + neutral but unsure on significance -> KEEP (the fuzzy
+        # axis must not over-suppress).
+        assert not judge_rejects(
+            {"judged": True, "restates": False, "neutral_cliche_free": True, "adds_significance": False}
+        )
+
+    def test_keeps_unscored(self):
+        assert not judge_rejects({"judged": False, "verdict": "error"})
 
 
 class TestExtractJsonArray:

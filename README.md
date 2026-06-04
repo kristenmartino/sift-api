@@ -22,7 +22,7 @@ The per-article `why_it_matters` line and `context_primer.background` paragraph 
 
 1. **Generation rubric** (`services/context_generator.py`, `services/primer_generator.py`) — the prompt demands a concrete, *verifiable* stake not already in the title/summary, strictly neutral, no restatement, no clichés, and **returns an empty line when there's no real stake**. An absent line renders nothing — null-over-filler is the intended outcome, not a failure. `why_it_matters` is therefore NULL for a meaningful share of articles by design (it has always been nullable; the UI hides it).
 2. **Deterministic gate** (`services/quality_gate.py`) — a pure, free cliché/restatement check applied in the same poller callback that stores generated copy, as a backstop to the prompt. Clichés (not lexical overlap) are the workhorse.
-3. **LLM judge** (`services/judge.py`) — an *offline* Sonnet judge scoring each line on the issue's three axes (restates? adds verifiable significance? neutral + cliché-free?). Not in the hot path — it's the measurement tool.
+3. **LLM judge** (`services/judge.py`) — a Sonnet judge scoring each line on the issue's three axes (restates? adds verifiable significance? neutral + cliché-free?). Runs *offline* by default (the eval's measurement tool). Optionally runs **in the batch-result path** behind `WHY_IT_MATTERS_JUDGE_ENABLED` (default off) to drop the paraphrase/editorial residual the deterministic gate can't catch — dropping on restatement or non-neutrality only, respecting the cost guard. Background paragraphs are cliché-trimmed only when short, so an informative paragraph with a stray clause is kept.
 
 ```bash
 # Eval: baseline existing copy vs. the new rubric, before/after rates (judge = API spend)
@@ -176,6 +176,7 @@ CI wires the same script into the **`feed-perf`** job (`.github/workflows/ci.yml
 | `AI_COST_GUARD_ENABLED` | No | Enable the daily AI cost ceiling (default: `false`) |
 | `DAILY_AI_COST_LIMIT_USD` | No | Daily Claude + Voyage spend ceiling, USD (default: `10.0`) |
 | `AI_COST_ALERT_THRESHOLD_RATIO` | No | Budget fraction that triggers an alert (default: `0.8`) |
+| `WHY_IT_MATTERS_JUDGE_ENABLED` | No | Run the runtime LLM-judge on generated `why_it_matters` lines (default: `false`; adds a paid call per kept line, increases suppression) |
 
 ## Tests
 

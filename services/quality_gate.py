@@ -22,7 +22,8 @@ Design choices grounded in the audit:
 - Patterns are HIGH precision: phrases that are almost always filler, so a real
   line is rarely false-dropped. Subtler paraphrase/fluff is the judge's job.
 - `background` is trimmed for clichés only — never for restatement (the audit
-  found it appropriately novel) and terms are never touched (they're the gold).
+  found it appropriately novel), only on short paragraphs (a long paragraph with
+  a stray cliché clause is kept), and terms are never touched (they're the gold).
 """
 from __future__ import annotations
 
@@ -33,6 +34,15 @@ from dataclasses import dataclass
 # novel vs. title+summary, i.e. >=80% lexical overlap — near-verbatim only.
 # Deliberately strict so this never fires on a genuine, differently-worded stake.
 NEAR_RESTATEMENT_MAX_NOVELTY = 0.20
+
+# Background is a multi-sentence paragraph, not a one-liner. A stray cliché
+# clause ("…raising questions about <specific tension>") inside an otherwise
+# informative paragraph is usually legitimate, and blanking the whole paragraph
+# to kill it destroys real context (the sift#150 audit validated background as
+# good). So the cliché drop applies to background ONLY when the paragraph is
+# short enough that the cliché is effectively its entire content. Longer
+# paragraphs are kept even if they contain a flagged phrase.
+BACKGROUND_CLICHE_MAX_WORDS = 25
 
 # Small curated English stopword set. Intentionally not exhaustive — the goal is
 # a stable content-word signal for novelty, not perfect linguistics.
@@ -209,8 +219,11 @@ def evaluate_background(background: str | None, *, title: str = "", summary: str
 
     Lighter touch than why_it_matters: clichés only. The audit found background
     appropriately novel, so the restatement backstop is NOT applied here — only
-    vague-significance/editorial clichés are trimmed. Caller keeps `terms`
-    regardless; an empty background just hides the paragraph.
+    vague-significance/editorial clichés are trimmed, and only on SHORT
+    paragraphs (see BACKGROUND_CLICHE_MAX_WORDS): a long informative paragraph
+    with a stray cliché clause is kept, since blanking it would destroy real
+    context. Caller keeps `terms` regardless; an empty background just hides the
+    paragraph.
     """
     reference = f"{title or ''} {summary or ''}"
     cleaned = _clean(background)
@@ -220,7 +233,7 @@ def evaluate_background(background: str | None, *, title: str = "", summary: str
         return GateResult("", "empty", None, novelty)
 
     cliche = find_cliche(cleaned)
-    if cliche:
+    if cliche and len(cleaned.split()) <= BACKGROUND_CLICHE_MAX_WORDS:
         return GateResult("", "cliche", cliche, novelty)
 
     return GateResult(cleaned, "ok", None, novelty)

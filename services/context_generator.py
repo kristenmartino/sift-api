@@ -8,6 +8,8 @@ import anthropic
 from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
+from services.cost_guard import check_budget
+from services.judge import judge_lines, judge_rejects
 from services.quality_gate import gate_why_it_matters
 from services.usage_tracker import log_usage
 
@@ -17,6 +19,10 @@ MODEL = "claude-haiku-4-5-20251001"
 BATCH_SIZE = 10
 
 BATCH_KIND = "context"  # identifier persisted to api_batches.kind
+
+# Rough Sonnet judge cost per line (input title+summary+line + short output),
+# used only to pre-check the cost guard before the optional runtime judge.
+JUDGE_COST_PER_LINE_USD = 0.003
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +268,7 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
 
     updated = 0
     dropped = 0
+    judge_dropped = 0
     failed = 0
     for item in results:
         custom_id = item.get("custom_id", "")
@@ -297,6 +304,8 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
             except Exception as e:
                 logger.error("context gate metadata read failed for %s: %s", custom_id, e)
 
+        # Deterministic gate first; collect per-row results for this sub-batch.
+        pending: list[dict] = []
         for entry in parsed:
             idx = entry.get("i", entry.get("index"))
             raw_context = entry.get("c", entry.get("context", ""))
@@ -311,7 +320,33 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
             gated = gate_why_it_matters(raw_context, title=title, summary=summary)
             if gated is None:
                 dropped += 1
+            pending.append({
+                "url": url, "line": gated, "score": score, "title": title, "summary": summary,
+            })
 
+        # Optional runtime judge over the survivors (sift-api#90, off by default).
+        # Catches the paraphrase/editorial residual the cheap gate can't. One
+        # judge call per sub-batch; skipped (lines kept) when the cost guard
+        # blocks it, so judging never blocks storage and a judge error degrades
+        # to the deterministic result.
+        if settings.why_it_matters_judge_enabled:
+            kept = [p for p in pending if p["line"]]
+            if kept:
+                budget = await check_budget(JUDGE_COST_PER_LINE_USD * len(kept))
+                if budget.allowed:
+                    verdicts = await judge_lines([
+                        {"id": p["url"], "title": p["title"], "summary": p["summary"], "line": p["line"]}
+                        for p in kept
+                    ])
+                    by_url = {v["id"]: v for v in verdicts}
+                    for p in kept:
+                        if judge_rejects(by_url.get(p["url"], {})):
+                            p["line"] = None
+                            judge_dropped += 1
+                else:
+                    logger.info("context runtime judge skipped (%s) for %s", budget.reason, custom_id)
+
+        for p in pending:
             try:
                 await pool.execute(
                     """
@@ -321,11 +356,11 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
                            updated_at = NOW()
                      WHERE source_url = $3
                     """,
-                    gated, score, url,
+                    p["line"], p["score"], p["url"],
                 )
                 updated += 1
             except Exception as e:
-                logger.error("UPDATE why_it_matters for %s failed: %s", url, e)
+                logger.error("UPDATE why_it_matters for %s failed: %s", p["url"], e)
                 failed += 1
 
     logger.info(json.dumps({
@@ -333,5 +368,6 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
         "batch_id": batch_id,
         "updated": updated,
         "dropped_by_gate": dropped,
+        "dropped_by_judge": judge_dropped,
         "failed": failed,
     }))
