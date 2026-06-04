@@ -16,6 +16,25 @@ User compare request (via Vercel proxy)
 
 User-facing reads happen in the Next.js frontend — this service handles background AI processing and on-demand comparison.
 
+## Content quality gate (`why_it_matters` / `context_primer`)
+
+The per-article `why_it_matters` line and `context_primer.background` paragraph are AI-generated (Claude Haiku, via the Message Batches API). A 500-article audit ([sift#150](https://github.com/kristenmartino/sift/issues/150)) found `why_it_matters` failed two ways — it either restated the summary or hand-waved with vague-significance clichés. The gate (sift-api#90) is **semantic, at generation time**, in three layers:
+
+1. **Generation rubric** (`services/context_generator.py`, `services/primer_generator.py`) — the prompt demands a concrete, *verifiable* stake not already in the title/summary, strictly neutral, no restatement, no clichés, and **returns an empty line when there's no real stake**. An absent line renders nothing — null-over-filler is the intended outcome, not a failure. `why_it_matters` is therefore NULL for a meaningful share of articles by design (it has always been nullable; the UI hides it).
+2. **Deterministic gate** (`services/quality_gate.py`) — a pure, free cliché/restatement check applied in the same poller callback that stores generated copy, as a backstop to the prompt. Clichés (not lexical overlap) are the workhorse.
+3. **LLM judge** (`services/judge.py`) — an *offline* Sonnet judge scoring each line on the issue's three axes (restates? adds verifiable significance? neutral + cliché-free?). Not in the hot path — it's the measurement tool.
+
+```bash
+# Eval: baseline existing copy vs. the new rubric, before/after rates (judge = API spend)
+python scripts/eval_why_it_matters.py                                   # offline, fixture corpus, gate only
+python scripts/eval_why_it_matters.py --from-db --limit 500 --judge --mode compare
+
+# Re-gate already-stored copy (ON CONFLICT does not regenerate, so audit-era
+# bad lines persist until reprocessed). Dry run by default.
+python scripts/regate_existing.py            # preview drops
+python scripts/regate_existing.py --apply    # NULL failing lines / blank cliché backgrounds (terms kept)
+```
+
 ## Setup
 
 ### Prerequisites
@@ -92,6 +111,10 @@ sift-api/
 ├── services/
 │   ├── rss.py               # 100+ RSS feeds, feedparser, image extraction
 │   ├── summarizer.py        # Claude Haiku 4.5 batch summarization
+│   ├── context_generator.py # why_it_matters line + importance score
+│   ├── primer_generator.py  # context_primer: background + glossary terms
+│   ├── quality_gate.py      # deterministic cliché/restatement gate (#90)
+│   ├── judge.py             # offline LLM judge for the quality eval (#90)
 │   ├── embedder.py          # Voyage AI embeddings (voyage-3-lite, 512-dim)
 │   └── deduplicator.py      # Postgres dedup check
 ├── tests/
