@@ -1,6 +1,6 @@
 # sift-api — STATUS
 
-**Updated:** 2026-05-20
+**Updated:** 2026-06-03
 **Tier:** v1.5 (civic-literacy pivot backend)
 **Velocity:** High (10+ PRs / week)
 
@@ -50,6 +50,7 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
 ## Recent decisions
 
+- **2026-06-03** — **Outlet table cleanup (#91): pruned 5 drifted rows from prod `outlet_profiles`** (77 → 72) via idempotent, transactional `scripts/dedupe_outlet_profiles.py`. Removed two duplicate profiles (`bbc` → canonical `bbc-news`, `bloomberg-news` → `bloomberg`; 3 `bbc` entity_links repointed) and the three excluded Yahoo verticals (`yahoo-news`/`-finance`/`-sports`, which contradicted `/methodology`'s aggregator exclusion). Surfaced by the sift #153 dynamic-outlet-count work. **Process finding → [#93](https://github.com/kristenmartino/sift-api/issues/93):** prod has ~15 legit outlets NOT in the seed CSV, and `seed_outlet_profiles.py` is upsert-only (never prunes), so the CSV is no longer prod's source of truth.
 - **~2026-05** — **Entity linker LLM-gated, A/B-able rollout** (`services/entity_linker_llm.py`). Lets dossier link-rate be measured pre/post fix without blast-radius risk.
 - **~2026-05** — **Hybrid index + web search architecture** (sift-mcp). Chose B+C smart fallback over pure-index or pure-web for the comparison tool. Pattern likely applies to the compare workflow in this repo too.
 - **~2026-05** — **26-outlet pool with smart DB-exclusion selection** (sift-mcp). Replaced 4-outlet fixed default.
