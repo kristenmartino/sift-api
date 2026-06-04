@@ -6,7 +6,7 @@
 
 ## Active focus
 
-Civic-literacy pivot backend. Recently shipped: fixed entity linker (LLM-gated, A/B-able) in `services/entity_linker_llm.py`; 170 new dossier entries via 4 new CSVs + seed scripts in `data/` and `scripts/`; `coverage_audit.py` archived measuring post-fix link rate.
+Civic-literacy pivot backend, with two threads surfacing this week (2026-06): **content quality** — a generation quality gate for `whyItMatters` / `summary` / `contextPrimer` (rubric + LLM-judge eval, #90) after a 500-article audit found those AI lines inconsistent (restatement + editorializing); and **outlet-data integrity** — prod `outlet_profiles` cleanup shipped (#91, 77→72), with the seed-CSV↔prod divergence + an authoritative seeder queued (#93). Also open: topic search → sift-api (#79/#80), a NULL-embedding repair pass (#76), and an outlet ingestion-status field (#73). Recently shipped: entity linker fix (LLM-gated, A/B-able) in `services/entity_linker_llm.py`; 170 new dossier entries via seed scripts in `data/` + `scripts/`; `coverage_audit.py` archived measuring post-fix link rate.
 
 ## Open strategic questions
 
@@ -44,6 +44,8 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 2. **[committed]** DMCA audit + methodology update (see Issues tab). Verify `services/` doesn't persist source HTML/images on Railway disk or in logs; add transformative-use paragraph + symmetric-application note to `/methodology` (sibling `sift` repo); pre-draft DMCA counter-notice template. Tier `v1.5` · `effort-day`.
 3. **[sketch]** `/v1/*` mobile API endpoints — deferred until native platform direction is settled. See `sift/docs/IOS_APP_ASSESSMENT.md` for why this is not the right time. Tier `v2` · `effort-weeks`.
 
+*Newly surfaced this week — ranking to confirm: content-quality gate (#90, actively prioritized); outlet-data integrity (#93 — the authoritative seeder), which is the foundation for sift's deliberate source expansion (kristenmartino/sift#151).*
+
 ## Blocked-on
 
 - Native platform direction (mobile API surface depends on which client comes first — currently leaning Android-first per `sift/docs/IOS_VS_ANDROID.md`)
@@ -52,14 +54,11 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
 - **2026-06-03** — **Outlet table cleanup (#91): pruned 5 drifted rows from prod `outlet_profiles`** (77 → 72) via idempotent, transactional `scripts/dedupe_outlet_profiles.py`. Removed two duplicate profiles (`bbc` → canonical `bbc-news`, `bloomberg-news` → `bloomberg`; 3 `bbc` entity_links repointed) and the three excluded Yahoo verticals (`yahoo-news`/`-finance`/`-sports`, which contradicted `/methodology`'s aggregator exclusion). Surfaced by the sift #153 dynamic-outlet-count work. **Process finding → [#93](https://github.com/kristenmartino/sift-api/issues/93):** prod has ~15 legit outlets NOT in the seed CSV, and `seed_outlet_profiles.py` is upsert-only (never prunes), so the CSV is no longer prod's source of truth.
 - **~2026-05** — **Entity linker LLM-gated, A/B-able rollout** (`services/entity_linker_llm.py`). Lets dossier link-rate be measured pre/post fix without blast-radius risk.
-- **~2026-05** — **Hybrid index + web search architecture** (sift-mcp). Chose B+C smart fallback over pure-index or pure-web for the comparison tool. Pattern likely applies to the compare workflow in this repo too.
-- **~2026-05** — **26-outlet pool with smart DB-exclusion selection** (sift-mcp). Replaced 4-outlet fixed default.
-- **~2026-05** — **`compare_outlets` returns unified claims array with source tag** (sift-mcp). Simpler client-side rendering than separate-sections shape.
-- **~2026-05** — **`load_dotenv(override=True)` for predictable env precedence** (sift-mcp). Broader pattern for the family.
-- **2026-05-20** — Canonical `/v1/*` API for mobile **deferred**. See `sift/docs/IOS_APP_ASSESSMENT.md`. Reuse Next.js routes for now.
+- **~2026-05** — *sift-mcp architecture decisions* (hybrid index + web fallback; 26-outlet smart-exclusion pool; `compare_outlets` unified-claims-array shape; `load_dotenv(override=True)`) live in **sift-mcp**'s own STATUS — fold into this repo when #62 merges sift-mcp in. Not re-stated here to avoid drift.
+- **2026-05-20** — Canonical `/v1/*` mobile API **deferred** → canonical record in [`sift/docs/DECISIONS.md`](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md) **D33** (reuse Next.js routes for now).
 
 *Dates marked `~2026-05` are approximate — fill in if known.*
 
 ---
 
-*See also: [`CLAUDE.md`](./CLAUDE.md) (orientation), [`BACKLOG.md`](./BACKLOG.md) (deferred items), [`README.md`](./README.md), [`init.sql`](./init.sql). Sibling repos: `sift` (frontend, owns user-facing reads + civic surface), `sift-mcp` (MCP server, separate cadence).*
+*See also: [`CLAUDE.md`](./CLAUDE.md) (orientation), [`BACKLOG.md`](./BACKLOG.md) (deferred items), [`README.md`](./README.md), [`init.sql`](./init.sql), and [`sift/docs/DECISIONS.md`](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md) — the **canonical cross-repo decision register** (record shared architecture decisions there, not duplicated across STATUS files). Sibling repos: `sift` (frontend, owns user-facing reads + civic surface), `sift-mcp` (MCP server, separate cadence).*
