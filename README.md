@@ -8,11 +8,14 @@ Handles the background content pipeline (RSS feeds → Claude Haiku summaries �
 
 ```
 Railway asyncio scheduler (every 30 min)
-  → LangGraph pipeline: fetch_rss → deduplicate → summarize (Claude) → embed (Voyage) → store (Postgres)
+  → LangGraph pipeline: fetch_rss → deduplicate → summarize (Claude) → context/primer (Claude, batch) → embed (Voyage) → link_entities → store (Postgres)
+      → nested LangGraph story-threading (per category): fetch_articles → extract_entities → cluster (Claude) → synthesize_and_store
 
 User compare request (via Vercel proxy)
-  → LangGraph compare: search_sources (parallel) → extract_and_compare → format_response
+  → LangGraph compare: search_sources (parallel, Claude web_search) → extract_and_compare → format_response
 ```
+
+This service compiles **three** LangGraph `StateGraph`s: the ingestion **pipeline**, a **story-threading** graph the pipeline invokes per category, and the on-demand **compare** graph. (Two are user-facing workflows; story-threading is nested inside ingestion.)
 
 User-facing reads happen in the Next.js frontend — this service handles background AI processing and on-demand comparison.
 
@@ -106,10 +109,11 @@ sift-api/
 │       ├── pipeline.py      # POST /pipeline/refresh
 │       └── compare.py       # POST /analyze/compare
 ├── workflows/
-│   ├── pipeline_workflow.py # LangGraph: fetch→dedup→summarize→embed→store
-│   └── compare_workflow.py  # LangGraph: search→extract→compare→format
+│   ├── pipeline_workflow.py # LangGraph: fetch_rss→dedup→summarize→context→primer→embed→link_entities→store
+│   ├── story_workflow.py    # LangGraph: fetch_articles→extract_entities→cluster→synthesize_and_store (nested in pipeline)
+│   └── compare_workflow.py  # LangGraph: search_sources→extract_and_compare→format_response
 ├── services/
-│   ├── rss.py               # 100+ RSS feeds, feedparser, image extraction
+│   ├── rss.py               # 58 RSS feeds across the spectrum, feedparser, image extraction
 │   ├── summarizer.py        # Claude Haiku 4.5 batch summarization
 │   ├── context_generator.py # why_it_matters line + importance score
 │   ├── primer_generator.py  # context_primer: background + glossary terms
@@ -119,7 +123,7 @@ sift-api/
 │   └── deduplicator.py      # Postgres dedup check
 ├── tests/
 ├── docker-compose.yml       # Postgres 16 + pgvector (local dev)
-├── init.sql                 # DB schema (4 tables)
+├── init.sql                 # DB schema (9 tables; civic profile tables via migrations/)
 ├── Dockerfile               # Production image
 ├── railway.toml             # Railway deployment config
 └── .github/workflows/ci.yml # Ruff + pytest on PR/push
