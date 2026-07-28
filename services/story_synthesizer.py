@@ -43,6 +43,21 @@ Generate:
    - framing: One sentence describing this outlet's angle or emphasis
    - tone: One of "neutral", "urgent", "analytical", "critical", "optimistic"
 
+Rules about people and legal matters — these override everything above:
+- Use only what the articles above state. Do not add facts, motives, or history \
+that are not in the text you were given.
+- Never characterize a legal outcome beyond what the sources literally say. \
+"Charged" is not "guilty." "Settled" is not "found liable." An investigation is \
+not a finding. An accusation is not a fact.
+- Attribute contested claims to whoever made them: "prosecutors say," "the \
+complaint alleges," "according to <outlet>."
+- A campaign contribution is not an endorsement. A committee seat is not a \
+position. A vote is not a belief.
+- Where the sources disagree about a fact, say they disagree. Do not pick a \
+winner in the unified headline or summary.
+- "tone" and "framing" describe the OUTLET's coverage, never the truth of the \
+underlying claim, and never the character of any person named in it.
+
 Return ONLY a JSON object:
 {{"headline": "...", "summary": "...", "framings": [{{"source_name": "...", "framing": "...", "tone": "..."}}]}}"""
 

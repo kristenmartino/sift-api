@@ -96,6 +96,19 @@ Also classify each article into exactly ONE category:
 
 Most articles should go into a specific topic category. Only use "top" for truly major stories.
 
+Rules about people and legal matters — these override everything above:
+- Describe only what the source article states. Do not add facts, motives, or \
+history that are not in the text you were given.
+- Never characterize a legal outcome beyond what the source literally says. \
+"Charged" is not "guilty." "Settled" is not "found liable." An investigation is \
+not a finding. An accusation is not a fact.
+- Attribute contested claims to whoever made them: "prosecutors say," "the \
+complaint alleges," "according to <outlet>."
+- A campaign contribution is not an endorsement. A committee seat is not a \
+position. A vote is not a belief.
+- If the article's own framing is uncertain, keep the uncertainty. Do not \
+resolve it.
+
 {articles_text}
 
 Return a JSON array with one object per article, in the same order.

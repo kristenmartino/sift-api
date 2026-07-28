@@ -177,7 +177,25 @@ async def main(dry_run: bool) -> None:
                 "fara_countries": _parse_jsonb(raw.get("fara_countries"), "[]"),
                 "external_links": _parse_jsonb(raw.get("external_links"), "{}"),
                 "notes": _empty_to_none(raw.get("notes")),
+                # Migration 012. A self-description renders ONLY with its source
+                # URL — an uncited quote is the same failure political_lean was.
+                # Enforced below, not just by convention.
+                "self_description": _empty_to_none(raw.get("self_description")),
+                "self_description_source": _empty_to_none(raw.get("self_description_source")),
+                "self_description_checked": _empty_to_none(raw.get("self_description_checked")),
+                "governance_structure": _empty_to_none(raw.get("governance_structure")),
+                "governance_source": _empty_to_none(raw.get("governance_source")),
             }
+
+            # A quote without a source is not a citation. Drop the pair rather
+            # than publish an unattributed characterization of a real org.
+            if row["self_description"] and not row["self_description_source"]:
+                print(f"  WARN {slug}: self_description has no source URL — dropping both")
+                row["self_description"] = None
+                row["self_description_checked"] = None
+            if row["governance_structure"] and not row["governance_source"]:
+                print(f"  WARN {slug}: governance_structure has no source URL — dropping both")
+                row["governance_structure"] = None
 
             if not row["name"]:
                 print(f"  SKIP {slug}: name is empty")
@@ -192,11 +210,15 @@ async def main(dry_run: bool) -> None:
                 INSERT INTO org_profiles
                     (slug, name, type, political_lean, founded_year,
                      annual_budget_usd, major_funders, fara_registered,
-                     fara_countries, external_links, notes, updated_at)
+                     fara_countries, external_links, notes,
+                     self_description, self_description_source,
+                     self_description_checked, governance_structure,
+                     governance_source, updated_at)
                 VALUES
                     ($1, $2, $3, $4, $5,
                      $6, $7::jsonb, $8,
-                     $9::jsonb, $10::jsonb, $11, NOW())
+                     $9::jsonb, $10::jsonb, $11,
+                     $12, $13, $14::date, $15, $16, NOW())
                 ON CONFLICT (slug) DO UPDATE SET
                     name              = EXCLUDED.name,
                     type              = EXCLUDED.type,
@@ -208,12 +230,20 @@ async def main(dry_run: bool) -> None:
                     fara_countries    = EXCLUDED.fara_countries,
                     external_links    = EXCLUDED.external_links,
                     notes             = EXCLUDED.notes,
+                    self_description         = EXCLUDED.self_description,
+                    self_description_source  = EXCLUDED.self_description_source,
+                    self_description_checked = EXCLUDED.self_description_checked,
+                    governance_structure     = EXCLUDED.governance_structure,
+                    governance_source        = EXCLUDED.governance_source,
                     updated_at        = NOW()
                 """,
                 row["slug"], row["name"], row["type"], row["political_lean"],
                 row["founded_year"], row["annual_budget_usd"], row["major_funders"],
                 row["fara_registered"], row["fara_countries"], row["external_links"],
                 row["notes"],
+                row["self_description"], row["self_description_source"],
+                row["self_description_checked"], row["governance_structure"],
+                row["governance_source"],
             )
             if existing:
                 updated += 1

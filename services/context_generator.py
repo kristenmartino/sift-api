@@ -76,6 +76,21 @@ always provide it, even when the line is empty:
    4 = significant (wide impact, affects many people)
    5 = breaking/major (historic, urgent, massive consequence)
 
+Rules about people and legal matters — these override everything above, \
+including the instruction to find a concrete stake. When a stake can only be \
+stated by breaking one of these, return "" instead:
+- Use only what the article states. Do not add facts, motives, or history that \
+are not in the text you were given.
+- Never characterize a legal outcome beyond what the source literally says. \
+"Charged" is not "guilty." "Settled" is not "found liable." An investigation is \
+not a finding. An accusation is not a fact.
+- Attribute contested claims to whoever made them: "prosecutors say," "the \
+complaint alleges," "according to <outlet>."
+- A campaign contribution is not an endorsement. A committee seat is not a \
+position. A vote is not a belief.
+- Do not state a consequence for a named living person that the article treats \
+as possible or alleged as though it were settled.
+
 Articles:
 {_build_articles_text(batch)}
 
