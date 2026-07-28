@@ -323,6 +323,24 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             )
         """)
 
+        # Cited org claims (migrations/012_org_self_description.sql).
+        # Replaces the Sift-assigned org_profiles.political_lean, which was
+        # hand-authored and rendered uncited — Sift computing its own political
+        # rating, contrary to D37. self_description holds the organization's own
+        # words verbatim; governance_structure holds statutory facts for
+        # agencies. Both render only alongside their source URL (the frontend
+        # parser in sift/lib/org.ts nulls the pair otherwise), so an uncited
+        # characterization of a real organization cannot reach a page.
+        # political_lean is retained for rollback and no longer rendered.
+        await conn.execute("""
+            ALTER TABLE org_profiles
+              ADD COLUMN IF NOT EXISTS self_description         TEXT,
+              ADD COLUMN IF NOT EXISTS self_description_source  TEXT,
+              ADD COLUMN IF NOT EXISTS self_description_checked DATE,
+              ADD COLUMN IF NOT EXISTS governance_structure     TEXT,
+              ADD COLUMN IF NOT EXISTS governance_source        TEXT
+        """)
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
