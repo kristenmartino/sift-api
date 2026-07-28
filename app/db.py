@@ -341,6 +341,20 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
               ADD COLUMN IF NOT EXISTS governance_source        TEXT
         """)
 
+        # Budget provenance + political_lean removal (migrations/013).
+        # annual_budget_usd now means total functional expenses from a specific
+        # Form 990 and cannot render without the fiscal year and source that
+        # make it checkable. political_lean is DROPPED, not deprecated:
+        # migration 012 left it in place and /civic went on publishing it for
+        # all 103 orgs, because a column that still exists is one something can
+        # still read.
+        await conn.execute("""
+            ALTER TABLE org_profiles
+              ADD COLUMN IF NOT EXISTS annual_budget_fy     TEXT,
+              ADD COLUMN IF NOT EXISTS annual_budget_source TEXT
+        """)
+        await conn.execute("ALTER TABLE org_profiles DROP COLUMN IF EXISTS political_lean")
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
