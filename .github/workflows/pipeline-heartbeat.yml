@@ -1,0 +1,67 @@
+name: Pipeline heartbeat
+
+# Independent backstop + staleness alarm for the in-process 30-min scheduler
+# (app/main.py:_scheduled_refresh). If the Railway process dies or restarts and
+# the loop stops, ingestion silently stalls — /health exposes last_pipeline_run
+# but nothing watches it. This job watches it: it re-triggers a refresh and
+# fails (→ GitHub notification) when the feed goes stale. Vercel Cron can't do
+# this on Hobby (capped at once/day); GitHub Actions schedule is free + 30-min.
+#
+# Required repo secrets (job no-ops cleanly if unset, so it never spams):
+#   SIFT_API_URL       e.g. https://sift-api-production.up.railway.app
+#   PIPELINE_API_KEY   same shared secret the backend checks via X-Pipeline-Key
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  heartbeat:
+    name: Check ingestion freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check /health and self-heal if stale
+        env:
+          SIFT_API_URL: ${{ secrets.SIFT_API_URL }}
+          PIPELINE_API_KEY: ${{ secrets.PIPELINE_API_KEY }}
+          MAX_AGE_MIN: "70" # scheduler runs every 30 min; 70 ≈ two missed cycles
+        run: |
+          set -euo pipefail
+          if [ -z "${SIFT_API_URL:-}" ] || [ -z "${PIPELINE_API_KEY:-}" ]; then
+            echo "SIFT_API_URL / PIPELINE_API_KEY secrets not set — skipping heartbeat."
+            exit 0
+          fi
+
+          health=$(curl -fsS --max-time 20 "$SIFT_API_URL/health")
+          echo "health: $health"
+          last=$(echo "$health" | jq -r '.last_pipeline_run // empty')
+
+          stale=false
+          if [ -z "$last" ]; then
+            echo "last_pipeline_run is null — treating as stale."
+            stale=true
+          else
+            last_epoch=$(date -u -d "$last" +%s 2>/dev/null || echo 0)
+            now_epoch=$(date -u +%s)
+            age_min=$(( (now_epoch - last_epoch) / 60 ))
+            echo "last_pipeline_run=$last (age ${age_min} min, threshold ${MAX_AGE_MIN})"
+            if [ "$last_epoch" -eq 0 ] || [ "$age_min" -gt "$MAX_AGE_MIN" ]; then
+              stale=true
+            fi
+          fi
+
+          if [ "$stale" = true ]; then
+            echo "::warning::Ingestion is stale — triggering a refresh."
+            curl -fsS --max-time 280 -X POST "$SIFT_API_URL/pipeline/refresh" \
+              -H "Content-Type: application/json" \
+              -H "X-Pipeline-Key: $PIPELINE_API_KEY" \
+              -d '{}' || echo "refresh trigger failed"
+            echo "::error::Ingestion was stale (last run > ${MAX_AGE_MIN} min ago); refresh re-triggered. Investigate the in-process scheduler."
+            exit 1
+          fi
+
+          echo "Ingestion fresh — no action needed."

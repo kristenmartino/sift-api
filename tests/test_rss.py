@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from services.rss import stable_hash, _base36, parse_feed, FEEDS
 
 
@@ -113,3 +116,17 @@ class TestFeedConfig:
             name, url = feed
             assert isinstance(name, str)
             assert url.startswith("http")
+
+    def test_readme_feed_count_matches(self):
+        # Drift guard: the README's "NN RSS feeds" claim must match len(FEEDS).
+        # Code is the single source of truth; this fails the build if the doc
+        # and the feed list diverge — the exact regression that left the README
+        # claiming "100+" while FEEDS held 58.
+        readme = Path(__file__).resolve().parents[1] / "README.md"
+        text = readme.read_text(encoding="utf-8")
+        match = re.search(r"(\d+)\s+RSS feeds", text)
+        assert match, "Could not find an 'NN RSS feeds' claim in README.md"
+        assert int(match.group(1)) == len(FEEDS), (
+            f"README says {match.group(1)} RSS feeds but FEEDS has {len(FEEDS)}. "
+            "Update the count in sift-api/README.md to match."
+        )
