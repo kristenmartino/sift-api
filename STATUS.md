@@ -14,7 +14,7 @@ Four live unknowns (one — #3 — now resolved below). None block current work;
 
 ### 1. When does sift-api need to scale beyond Railway hobby tier?
 
-Pipeline runs every 30 min, ingests ~135 sources, calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
+Pipeline runs every 30 min, ingests **58 RSS feeds** (`len(services.rss.FEEDS)`; corrected 2026-07-27 from "~135 sources", which was wrong and had propagated into sift/docs/OPERATING_CONTEXT.md — see #104's README fix + drift guard), calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
 
 Watch for:
 - Pipeline run time approaches the 30-min cadence (e.g. exceeds ~25 min)
