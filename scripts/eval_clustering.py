@@ -53,6 +53,7 @@ import asyncpg  # noqa: E402
 
 from app.config import settings  # noqa: E402
 from services import cluster_metrics  # noqa: E402
+from workflows.story_workflow import RECENCY_WINDOW_HOURS  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_CORPUS = REPO / "data" / "eval" / "clustering_corpus.jsonl"
@@ -63,9 +64,25 @@ DEFAULT_BASELINE = REPO / "data" / "eval" / "clustering_baseline.json"
 # deliberately: it is where the single-outlet clustering failure concentrates.
 SAMPLE_CATEGORIES = ["politics", "world", "technology", "business", "health", "sports"]
 
+# Imported, not redeclared, so the eval's sampling window cannot silently drift
+# from the window production actually clusters over.
+WINDOW_HOURS = RECENCY_WINDOW_HOURS
+
 
 # ─── sampling (mode: --sample) ────────────────────────────
 
+# Mirrors the production query in workflows/story_workflow.py:43-57 — same
+# filters, same recency window, same recency ordering. The one difference is
+# the window OFFSET, which lets each batch sample a different, non-overlapping
+# stretch of time.
+#
+# The window is the whole point. Production only ever asks the clusterer to
+# group articles from a single 48h window, because that is the span in which
+# two outlets plausibly cover the same event. Sampling "the 25 most recent
+# articles" with no window would, in a slow category, reach back days or weeks
+# — and articles a week apart are essentially never the same event. That
+# corpus would be almost all singletons, and would measure the clusterer on a
+# distribution it never actually sees.
 SAMPLE_SQL = """
     SELECT id, source_url, source_name, title, summary, entities, published_date
       FROM articles
@@ -73,17 +90,44 @@ SAMPLE_SQL = """
        AND from_search = false
        AND summary IS NOT NULL AND summary <> ''
        AND jsonb_typeof(entities) = 'object'
+       AND published_date <  NOW() - make_interval(hours => $2)
+       AND published_date >= NOW() - make_interval(hours => $3)
      ORDER BY published_date DESC NULLS LAST
-     LIMIT $2
+     LIMIT $4
 """
 
 
-async def sample_corpus(batches: int, per_batch: int, out_path: Path) -> None:
+async def sample_corpus(
+    batches: int,
+    per_batch: int,
+    out_path: Path,
+    window_hours: int = WINDOW_HOURS,
+) -> None:
     """Pull real articles and emit an unlabeled corpus for hand-labeling.
 
     Read-only. Writes nothing to the database.
 
-    Two deliberate choices that protect the eval's validity:
+    SAMPLING FRAME — each batch is one non-overlapping `window_hours` window,
+    walking back in time (batch 0 = the most recent window, batch 1 = the one
+    before it, ...), paired with a different category. This mirrors
+    workflows/story_workflow.py, which only ever hands the clusterer a single
+    48h window. Two consequences that matter:
+
+      * Cluster density matches production. Sampling "the N most recent
+        articles" with no window would, in a slow category, span days — and
+        articles days apart are essentially never the same event, so the
+        corpus would be nearly all singletons and would measure the clusterer
+        on a distribution it never sees.
+      * Batches are genuinely distinct. Without a per-batch window offset,
+        asking for more batches than categories would re-fetch the SAME
+        articles under a different batch_id.
+
+    It is deliberately NOT a uniform random sample of all articles. A random
+    draw across months would contain almost no same-event pairs, which is the
+    only thing this eval measures. Within a window, articles are taken by
+    recency exactly as production does.
+
+    Three further choices that protect validity:
 
     1. Labels are NOT pre-seeded from the pipeline's own story_id. Seeding
        would cut labeling time ~3x but biases ground truth toward the system
@@ -91,6 +135,9 @@ async def sample_corpus(batches: int, per_batch: int, out_path: Path) -> None:
     2. Articles are sorted ALPHABETICALLY BY TITLE within each batch, not by
        published_date and not by story_id, so the ordering carries no signal
        about which articles belong together.
+    3. Slow windows are kept, not discarded. A window with no real clusters is
+       the control case: every other metric punishes under-clustering, and
+       nothing punishes inventing groups on a quiet news day.
 
     Privacy: only title, Sift-generated summary, source_name and entities are
     written — no raw article body, no full URL. sift-api/.gitignore excludes
@@ -106,11 +153,19 @@ async def sample_corpus(batches: int, per_batch: int, out_path: Path) -> None:
     pool = await asyncpg.create_pool(db_url, min_size=1, max_size=4, ssl=ssl_mode)
     try:
         out_batches = []
+        diagnostics: list[tuple[str, int, str]] = []
         for i in range(batches):
             category = SAMPLE_CATEGORIES[i % len(SAMPLE_CATEGORIES)]
-            rows = await pool.fetch(SAMPLE_SQL, category, per_batch)
+            # Batch i covers [now - (i+1)*window, now - i*window).
+            start_h = i * window_hours
+            end_h = (i + 1) * window_hours
+            rows = await pool.fetch(SAMPLE_SQL, category, start_h, end_h, per_batch)
             if not rows:
-                print(f"  ! no rows for category={category}, skipping", file=sys.stderr)
+                print(
+                    f"  ! {category}: no articles in the window "
+                    f"{end_h}h–{start_h}h ago, skipping",
+                    file=sys.stderr,
+                )
                 continue
 
             articles = []
@@ -140,12 +195,23 @@ async def sample_corpus(batches: int, per_batch: int, out_path: Path) -> None:
             for idx, a in enumerate(articles, 1):
                 a["idx"] = idx
 
+            dates = [r["published_date"] for r in rows if r["published_date"]]
+            span = (
+                f"{min(dates):%Y-%m-%d %H:%M} .. {max(dates):%Y-%m-%d %H:%M}"
+                if dates else "unknown"
+            )
+            n_outlets = len({r["source_name"] for r in rows if r["source_name"]})
+
             out_batches.append({
                 "batch_id": f"{category}-{i + 1}",
                 "category": category,
+                "window_hours": window_hours,
+                "window_span": span,
+                "n_outlets": n_outlets,
                 "note": "UNLABELED — set event_id on each article before use",
                 "articles": articles,
             })
+            diagnostics.append((f"{category}-{i + 1}", len(articles), f"{n_outlets} outlets, {span}"))
     finally:
         await pool.close()
 
@@ -156,6 +222,29 @@ async def sample_corpus(batches: int, per_batch: int, out_path: Path) -> None:
 
     total = sum(len(b["articles"]) for b in out_batches)
     print(f"wrote {len(out_batches)} batches / {total} articles -> {out_path}")
+    print()
+
+    # Sanity-check the sample BEFORE anyone spends two hours labeling it.
+    print("  batch                 articles  window")
+    for bid, n, detail in diagnostics:
+        flag = ""
+        if n < per_batch * 0.5:
+            flag = "  <- THIN: window had few articles"
+        elif n < 8:
+            flag = "  <- THIN: too small to contain clusters"
+        print(f"  {bid:22} {n:>6}   {detail}{flag}")
+    print()
+
+    thin = [b for b, n, _ in diagnostics if n < 8]
+    single_outlet = [b["batch_id"] for b in out_batches if b["n_outlets"] < 2]
+    if thin:
+        print(f"  WARNING: {len(thin)} batch(es) too thin to contain real clusters: {thin}")
+        print("  Widen with --window-hours, or raise --per-batch, and re-sample.")
+    if single_outlet:
+        print(f"  WARNING: single-outlet batch(es): {single_outlet}")
+        print("  Cross-outlet coverage is what a story IS — these cannot produce one.")
+    if not thin and not single_outlet:
+        print("  Sample looks usable: every batch has enough articles and >1 outlet.")
     print()
     print("Next: label it. For each article set \"event_id\" to a short slug shared")
     print("by every article covering the SAME SPECIFIC EVENT. Leave it null for")
@@ -415,6 +504,10 @@ def main() -> None:
 
     p.add_argument("--batches", type=int, default=6, help="--sample: number of batches (default 6)")
     p.add_argument("--per-batch", type=int, default=25, help="--sample: articles per batch (default 25)")
+    p.add_argument(
+        "--window-hours", type=int, default=WINDOW_HOURS,
+        help=f"--sample: hours per batch window (default {WINDOW_HOURS}, matching production)",
+    )
     p.add_argument("--repeats", type=int, default=1, help="--live: repeat runs to measure spread")
     p.add_argument("--record", action="store_true", help="--live: (re)write response fixtures + baseline")
     p.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
@@ -424,7 +517,9 @@ def main() -> None:
     args = p.parse_args()
 
     if args.sample:
-        asyncio.run(sample_corpus(args.batches, args.per_batch, args.corpus))
+        asyncio.run(
+            sample_corpus(args.batches, args.per_batch, args.corpus, args.window_hours)
+        )
         return
 
     corpus = load_corpus(args.corpus)
