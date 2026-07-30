@@ -4,6 +4,15 @@ Pure functions, no network. The headline test is the corpus regression: every
 labeled row in data/eval/why_it_matters_corpus.jsonl must gate to its
 `expect_gate` value, which pins the two live production failures (cop-fired,
 Kepner) as permanent negatives.
+
+MUTATION SCORE (mutmut, config in setup.cfg)
+    2026-07-30: 170 mutants, 106 killed, 64 survived -> 62% kill rate
+
+62% is mediocre and worth improving — these tests lean on a 16-row corpus and
+assert outcomes more than internals, so mutations to the normalization and
+scoring helpers often slip through. `.venv/bin/mutmut results` lists the
+survivors; `mutmut show <id>` shows the diff. Attack the `_clean` / novelty
+helpers first.
 """
 from __future__ import annotations
 
@@ -63,6 +72,90 @@ class TestCorpusRegression:
         for r in _load_corpus():
             if r["label"] == "good" and r["field"] == "why_it_matters":
                 assert gate_why_it_matters(r["line"], title=r["title"], summary=r["summary"]) is not None
+
+
+class TestCorpusSchema:
+    """Make the rest of the corpus schema load-bearing.
+
+    Before this class, `test_every_row_gates_as_expected` asserted only
+    `expect_gate`. The `label`, `failure_modes`, and `judge_only` fields — the
+    parts that describe WHY a row is what it is, and which of the two quality
+    layers is supposed to catch it — were never read by any test. A mislabeled
+    row, a duplicated id padding the `>= 14` count, or a drop that starts
+    firing for a different reason all shipped green.
+    """
+
+    REQUIRED = {"id", "field", "title", "summary", "line", "label", "expect_gate", "failure_modes"}
+    VALID_REASONS = {"ok", "empty", "cliche", "restatement"}
+
+    def test_schema_and_unique_ids(self):
+        rows = _load_corpus()
+        ids = [r["id"] for r in rows]
+        assert len(set(ids)) == len(ids), (
+            f"duplicate corpus ids: {sorted({i for i in ids if ids.count(i) > 1})}"
+        )
+        for r in rows:
+            missing = self.REQUIRED - set(r)
+            assert not missing, f"{r.get('id')}: missing fields {sorted(missing)}"
+            assert r["field"] in {"why_it_matters", "background"}, r["id"]
+            assert r["label"] in {"good", "filler"}, r["id"]
+            assert r["expect_gate"] in {"keep", "drop"}, r["id"]
+            assert isinstance(r["failure_modes"], list), r["id"]
+
+    def test_good_rows_are_internally_consistent(self):
+        """label == "good" must mean: kept, with nothing wrong with it."""
+        for r in _load_corpus():
+            if r["label"] == "good":
+                assert r["expect_gate"] == "keep", f"{r['id']}: good row expected to drop"
+                assert r["failure_modes"] == [], (
+                    f"{r['id']}: good row lists failure modes {r['failure_modes']}"
+                )
+                assert not r.get("judge_only"), f"{r['id']}: good row marked judge_only"
+
+    def test_judge_only_rows_mean_what_they_say(self):
+        """`judge_only` marks rows the DETERMINISTIC gate cannot catch: the gate
+        keeps them, and the LLM judge is what must reject them. Any other shape
+        is a mislabel, and would quietly remove the only coverage of the gap
+        between the two layers."""
+        jo = [r for r in _load_corpus() if r.get("judge_only")]
+        assert len(jo) >= 2, "the judge_only rows are the whole reason the judge exists"
+        for r in jo:
+            assert r["label"] == "filler", f"{r['id']}: judge_only row must be filler"
+            assert r["expect_gate"] == "keep", (
+                f"{r['id']}: judge_only means the deterministic gate KEEPS it — "
+                "if the gate drops it, it is not judge-only"
+            )
+            assert r["failure_modes"], f"{r['id']}: judge_only row must say what is wrong"
+
+    def test_failure_modes_explain_the_actual_drop_reason(self):
+        """The load-bearing one: a drop must fire for a reason the row predicts.
+
+        Without this, changing a _CLICHE_SOURCES pattern such that a row still
+        drops but for a DIFFERENT reason (restatement instead of cliché) passes
+        silently — the corpus would claim to pin a failure mode it no longer
+        exercises.
+        """
+        mismatches = []
+        for r in _load_corpus():
+            if r["expect_gate"] != "drop":
+                continue
+            evaluate = evaluate_background if r["field"] == "background" else evaluate_why_it_matters
+            res = evaluate(r["line"], title=r["title"], summary=r["summary"])
+            assert res.reason in self.VALID_REASONS, f"{r['id']}: unknown reason {res.reason!r}"
+            if res.reason not in r["failure_modes"]:
+                mismatches.append((r["id"], res.reason, r["failure_modes"]))
+        assert not mismatches, (
+            "rows dropped for a reason their failure_modes do not list "
+            f"(id, actual_reason, declared): {mismatches}"
+        )
+
+    def test_corpus_covers_both_fields_and_both_labels(self):
+        """A corpus that drifted to all-drop or all-why_it_matters would still
+        pass every other test here while measuring much less."""
+        rows = _load_corpus()
+        assert {r["field"] for r in rows} == {"why_it_matters", "background"}
+        assert {r["label"] for r in rows} == {"good", "filler"}
+        assert {r["expect_gate"] for r in rows} == {"keep", "drop"}
 
 
 class TestFindCliche:

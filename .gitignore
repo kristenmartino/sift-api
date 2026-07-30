@@ -21,3 +21,6 @@ data/_cache/
 # committed to the repo. The importer (`scripts/import_opensecrets_bulk.py`)
 # reads from this path locally.
 data/opensecrets/
+.coverage
+coverage.xml
+htmlcov/

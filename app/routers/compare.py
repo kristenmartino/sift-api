@@ -113,18 +113,18 @@ async def compare_sources(
             compare_graph.ainvoke(initial_state),
             timeout=COMPARE_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as e:
         logger.error("Compare workflow timed out after %ds", COMPARE_TIMEOUT)
         raise HTTPException(
             status_code=504,
             detail={"detail": "Comparison timed out. Try fewer sources or a simpler topic.", "code": "COMPARISON_TIMEOUT"},
-        )
+        ) from e
     except Exception as e:
         logger.error("Compare workflow failed: %s", e)
         raise HTTPException(
             status_code=500,
             detail={"detail": "Comparison failed", "code": "COMPARISON_FAILED"},
-        )
+        ) from e
 
     duration_ms = int((time.time() - start) * 1000)
 

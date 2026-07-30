@@ -3,17 +3,40 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from services.rss import stable_hash, _base36, parse_feed, FEEDS
+from services.rss import stable_hash, _base36, compute_content_hash, parse_feed, FEEDS
+
+# Pinned goldens. `stable_hash` is a port of `stableHash` in sift/lib/utils.ts,
+# and these EXACT values are asserted in sift/__tests__/utils.test.ts too. The
+# two implementations must never diverge:
+#
+#   workflows/pipeline_workflow.py:337  article_id = stable_hash(source_url + title)
+#                                       — the PRIMARY KEY of every `articles` row
+#   sift/app/api/news/topic/route.ts:578 computes the SAME id in TypeScript
+#
+# If either implementation changes, every stored article is orphaned and id
+# matching across the two repos breaks. The previous test here asserted only
+# `stable_hash("hello") == stable_hash("hello")`, which cannot detect that.
+GOLDEN_STABLE_HASH = {
+    "hello": "1n1e4y",
+    "world": "1vgtci",
+    "": "0",
+    "test article url": "p4glh3",
+    "https://www.npr.org/2026/06/04/x": "c9vv14",
+}
 
 
 class TestStableHash:
     """Test the djb2 hash port from JS."""
 
     def test_known_values(self):
-        # These should be deterministic and stable
-        h1 = stable_hash("hello")
-        h2 = stable_hash("hello")
-        assert h1 == h2
+        for text, expected in GOLDEN_STABLE_HASH.items():
+            assert stable_hash(text) == expected, f"stable_hash({text!r}) drifted"
+
+    def test_int32_min_boundary(self):
+        """The one input where the C-int32 wrap and JS's double-based Math.abs
+        could part ways: abs(INT32_MIN) overflows int32 but is exact in a
+        double. Both must render 2147483648 as base36 'zik0zk'."""
+        assert _base36(2147483648) == "zik0zk"
 
     def test_different_inputs_differ(self):
         assert stable_hash("hello") != stable_hash("world")
@@ -41,6 +64,49 @@ class TestBase36:
     def test_large_number(self):
         result = _base36(123456789)
         assert all(c in "0123456789abcdefghijklmnopqrstuvwxyz" for c in result)
+
+
+class TestComputeContentHash:
+    """`compute_content_hash` had no test at all, yet it drives the entire
+    content_hash dedup path in services/deduplicator.py:50-56 — the thing that
+    stops us paying Claude twice for the same syndicated wire story. A silent
+    change here either re-ingests everything or dedups nothing.
+    """
+
+    # One golden locks all four normalization steps at once: HTML stripping,
+    # whitespace collapse, lowercasing, and the 500-char prefix.
+    GOLDEN = "6bb3eb2c5a45a6a3bf0650f27ab19d0a3b25e3c078d89837a9559ff64fa79409"
+
+    def test_known_value(self):
+        assert (
+            compute_content_hash(
+                "Fed holds rates", "<p>The Federal   Reserve held rates steady.</p>"
+            )
+            == self.GOLDEN
+        )
+
+    def test_html_is_stripped(self):
+        assert compute_content_hash("t", "<b>hi</b>") == compute_content_hash("t", "hi")
+
+    def test_whitespace_runs_collapse(self):
+        assert compute_content_hash("t", "a    b") == compute_content_hash("t", "a b")
+
+    def test_case_insensitive(self):
+        assert compute_content_hash("Title", "Body") == compute_content_hash("title", "body")
+
+    def test_only_the_first_500_chars_of_content_matter(self):
+        base = "x" * 500
+        assert compute_content_hash("t", base) == compute_content_hash("t", base + "DIVERGES")
+
+    def test_content_differing_within_the_prefix_still_separates(self):
+        assert compute_content_hash("t", "a" * 499 + "b") != compute_content_hash("t", "a" * 500)
+
+    def test_title_is_part_of_the_hash(self):
+        assert compute_content_hash("one", "body") != compute_content_hash("two", "body")
+
+    def test_handles_none_content_without_raising(self):
+        # parse_feed can hand us an entry with no body.
+        assert compute_content_hash("t", "") == compute_content_hash("t", "   ")
 
 
 class TestParseFeed:
