@@ -23,8 +23,10 @@ THREE MODES, THREE COST PROFILES
 
 TYPICAL WORKFLOW
 ----------------
-    # 1. generate an unlabeled corpus (needs DATABASE_URL)
-    python scripts/eval_clustering.py --sample --batches 6 --per-batch 25
+    # 1. generate an unlabeled corpus (needs DATABASE_URL).
+    #    --per-batch 50 matches the LIMIT in workflows/story_workflow.py, so the
+    #    eval measures the same batch size production actually clusters.
+    python scripts/eval_clustering.py --sample --batches 6 --per-batch 50
 
     # 2. label it by hand: fill in "event_id" for each article
     #    (leave null for singletons), mark distractors with "hard": true
@@ -43,6 +45,7 @@ import hashlib
 import json
 import os
 import statistics
+from collections import Counter
 import sys
 from pathlib import Path
 
@@ -200,7 +203,12 @@ async def sample_corpus(
                 f"{min(dates):%Y-%m-%d %H:%M} .. {max(dates):%Y-%m-%d %H:%M}"
                 if dates else "unknown"
             )
-            n_outlets = len({r["source_name"] for r in rows if r["source_name"]})
+            outlet_counts = Counter(r["source_name"] for r in rows if r["source_name"])
+            n_outlets = len(outlet_counts)
+            top_outlet, top_n = (
+                outlet_counts.most_common(1)[0] if outlet_counts else ("", 0)
+            )
+            top_share = top_n / len(rows) if rows else 0.0
 
             out_batches.append({
                 "batch_id": f"{category}-{i + 1}",
@@ -208,10 +216,18 @@ async def sample_corpus(
                 "window_hours": window_hours,
                 "window_span": span,
                 "n_outlets": n_outlets,
+                "top_outlet_share": round(top_share, 2),
                 "note": "UNLABELED — set event_id on each article before use",
                 "articles": articles,
             })
-            diagnostics.append((f"{category}-{i + 1}", len(articles), f"{n_outlets} outlets, {span}"))
+            diagnostics.append((
+                f"{category}-{i + 1}",
+                len(articles),
+                n_outlets,
+                top_share,
+                top_outlet,
+                span,
+            ))
     finally:
         await pool.close()
 
@@ -224,27 +240,39 @@ async def sample_corpus(
     print(f"wrote {len(out_batches)} batches / {total} articles -> {out_path}")
     print()
 
-    # Sanity-check the sample BEFORE anyone spends two hours labeling it.
-    print("  batch                 articles  window")
-    for bid, n, detail in diagnostics:
+    # Sanity-check the sample BEFORE anyone spends hours labeling it.
+    print(f"  {'batch':16} {'arts':>4} {'outlets':>7} {'top outlet':>10}  window")
+    for bid, n, n_out, share, top, span in diagnostics:
         flag = ""
-        if n < per_batch * 0.5:
-            flag = "  <- THIN: window had few articles"
-        elif n < 8:
+        if n < 8:
             flag = "  <- THIN: too small to contain clusters"
-        print(f"  {bid:22} {n:>6}   {detail}{flag}")
+        elif n_out < 2:
+            flag = "  <- SINGLE OUTLET: cannot produce a story"
+        elif share > 0.4:
+            flag = f"  <- SKEWED: {top}"
+        print(f"  {bid:16} {n:>4} {n_out:>7} {share:>9.0%}  {span}{flag}")
     print()
 
-    thin = [b for b, n, _ in diagnostics if n < 8]
-    single_outlet = [b["batch_id"] for b in out_batches if b["n_outlets"] < 2]
+    thin = [b for b, n, *_ in diagnostics if n < 8]
+    single = [b for b, _, n_out, *_ in diagnostics if n_out < 2]
+    skewed = [(b, top, share) for b, _, _, share, top, _ in diagnostics if share > 0.4]
+
     if thin:
-        print(f"  WARNING: {len(thin)} batch(es) too thin to contain real clusters: {thin}")
-        print("  Widen with --window-hours, or raise --per-batch, and re-sample.")
-    if single_outlet:
-        print(f"  WARNING: single-outlet batch(es): {single_outlet}")
+        print(f"  WARNING: too thin to contain clusters: {thin}")
+        print("  Raise --per-batch or widen --window-hours, then re-sample.")
+    if single:
+        print(f"  WARNING: single-outlet batch(es): {single}")
         print("  Cross-outlet coverage is what a story IS — these cannot produce one.")
-    if not thin and not single_outlet:
-        print("  Sample looks usable: every batch has enough articles and >1 outlet.")
+    if skewed:
+        print("  NOTE: one outlet dominates these batches —")
+        for b, top, share in skewed:
+            print(f"    {b}: {share:.0%} {top}")
+        print("  Not necessarily bad: a skewed batch is the adversarial case for the")
+        print("  >=2-unique-outlets gate (the '4x same-outlet posts rendered as *how 4")
+        print("  outlets covered this*' failure). Keep ONE on purpose; more than that")
+        print("  and the corpus is mostly measuring the outlet gate, not clustering.")
+    if not (thin or single or skewed):
+        print("  Sample looks usable: enough articles, and no single outlet dominates.")
     print()
     print("Next: label it. For each article set \"event_id\" to a short slug shared")
     print("by every article covering the SAME SPECIFIC EVENT. Leave it null for")
