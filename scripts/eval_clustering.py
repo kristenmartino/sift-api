@@ -290,6 +290,166 @@ async def sample_corpus(
     print("protects against over-clustering a slow news day.")
 
 
+# ─── annotator provenance ─────────────────────────────────
+
+# Recorded INSIDE every labeled batch, not only in prose, so the corpus cannot
+# be quoted as human-labeled by someone who never read the docs. Whoever reports
+# a number off this corpus has to say what produced the ground truth.
+ANNOTATION_PROVENANCE = {
+    "annotator": "claude-opus-5",
+    "method": "machine",
+    "date": "2026-07-30",
+    "basis": "title + Sift-generated summary only",
+    "not_used": ["story_id", "embedding", "entities"],
+    "caveat": (
+        "MACHINE-ANNOTATED. The clusterer under test is also an LLM (Haiku), so any "
+        "score against this corpus measures LLM-vs-LLM agreement, not human-validated "
+        "accuracy. Report it as such. Run --review-sample / --agreement to attach a "
+        "human spot-check and a Cohen's kappa before quoting the number anywhere."
+    ),
+}
+
+
+# ─── human spot-check (modes: --review-sample / --agreement) ──
+
+def review_sample(corpus_path: Path, out_path: Path, n_pairs: int = 40) -> None:
+    """Emit a small set of article PAIRS for a human to adjudicate independently.
+
+    Pairs, not articles: a binary same-event/different-event call on 40 pairs is
+    perhaps 15 minutes, where re-labeling 50 articles is an hour — and pairs are
+    exactly the unit the pairwise metrics are computed over.
+
+    Negatives are NOT sampled at random. A random pair of articles is trivially
+    "different" and would inflate agreement toward 1.0 while measuring nothing.
+    They are drawn from the highest lexical-similarity pairs the machine labeled
+    as different — i.e. the genuinely confusable ones, where an annotator
+    disagreement is informative.
+    """
+    batches = [
+        json.loads(line) for line in corpus_path.read_text().splitlines() if line.strip()
+    ]
+    positives, negatives = [], []
+    for b in batches:
+        arts = b["articles"]
+        n = len(arts)
+        words = {a["idx"]: _content_words(a["title"]) for a in arts}
+        df = Counter(w for ws in words.values() for w in ws)
+        ceiling = max(2, n // 4)
+        for i, a in enumerate(arts):
+            for c in arts[i + 1:]:
+                same = bool(a.get("event_id")) and a.get("event_id") == c.get("event_id")
+                shared = {w for w in words[a["idx"]] & words[c["idx"]] if 2 <= df[w] <= ceiling}
+                score = sum(math.log(n / df[w]) for w in shared) if shared else 0.0
+                rec = (score, b["batch_id"], a, c)
+                (positives if same else negatives).append(rec)
+
+    if not positives:
+        raise SystemExit("corpus has no labeled clusters — nothing to review")
+
+    # Evenly spaced across the positives so one huge cluster cannot dominate.
+    step = max(1, len(positives) // (n_pairs // 2))
+    pos = positives[::step][: n_pairs // 2]
+    negatives.sort(key=lambda r: -r[0])
+    neg = negatives[: n_pairs - len(pos)]
+
+    rows = pos + neg
+    with out_path.open("w", newline="", encoding=CSV_ENCODING) as f:
+        w = csv.writer(f)
+        w.writerow([
+            "pair_id", "batch_id", "idx_a", "source_a", "title_a",
+            "idx_b", "source_b", "title_b", "your_verdict",
+        ])
+        for i, (_score, bid, a, c) in enumerate(rows, 1):
+            w.writerow([
+                i, bid, a["idx"], a["source_name"], a["title"],
+                c["idx"], c["source_name"], c["title"], "",
+            ])
+
+    print(f"wrote {len(rows)} pairs -> {out_path}\n")
+    print("For each pair put `same` or `different` in your_verdict — do these two")
+    print("articles cover the SAME specific event? The machine's answer is not shown,")
+    print("deliberately: seeing it would anchor you and destroy the measurement.")
+    print("\nNegatives are the most lexically similar non-matches, not random pairs,")
+    print("so this is a hard test rather than a flattering one.")
+    print(f"\nThen:  python scripts/eval_clustering.py --agreement {out_path}")
+
+
+def agreement(corpus_path: Path, review_path: Path) -> None:
+    """Compare a human's pair verdicts to the machine labels; report Cohen's kappa."""
+    batches = [
+        json.loads(line) for line in corpus_path.read_text().splitlines() if line.strip()
+    ]
+    idx = {
+        (b["batch_id"], a["idx"]): a.get("event_id")
+        for b in batches for a in b["articles"]
+    }
+    with review_path.open(newline="", encoding=CSV_ENCODING) as f:
+        rows = list(csv.DictReader(f))
+
+    both_same = both_diff = human_same_only = machine_same_only = 0
+    disagreements = []
+    scored = 0
+    for r in rows:
+        v = (r.get("your_verdict") or "").strip().lower()
+        if v not in {"same", "different", "s", "d"}:
+            continue
+        scored += 1
+        human = v.startswith("s")
+        ea = idx.get((r["batch_id"], int(r["idx_a"])))
+        eb = idx.get((r["batch_id"], int(r["idx_b"])))
+        machine = bool(ea) and ea == eb
+        if human and machine:
+            both_same += 1
+        elif not human and not machine:
+            both_diff += 1
+        elif human:
+            human_same_only += 1
+            disagreements.append(("human=same machine=different", r))
+        else:
+            machine_same_only += 1
+            disagreements.append(("human=different machine=same", r))
+
+    if not scored:
+        raise SystemExit(
+            f"no verdicts found in {review_path} — fill in the your_verdict column "
+            "with `same` or `different`"
+        )
+
+    n = scored
+    po = (both_same + both_diff) / n
+    # Cohen's kappa: agreement corrected for what chance alone would produce.
+    p_h = (both_same + human_same_only) / n
+    p_m = (both_same + machine_same_only) / n
+    pe = p_h * p_m + (1 - p_h) * (1 - p_m)
+    kappa = 1.0 if pe == 1 else (po - pe) / (1 - pe)
+
+    print(f"  pairs adjudicated:      {n}")
+    print(f"  raw agreement:          {po:.1%}")
+    print(f"  Cohen's kappa:          {kappa:.3f}")
+    print()
+    print(f"  both said same:         {both_same}")
+    print(f"  both said different:    {both_diff}")
+    print(f"  human same / machine different: {human_same_only}")
+    print(f"  human different / machine same: {machine_same_only}")
+
+    if kappa >= 0.80:
+        verdict = "strong — machine labels are a reasonable stand-in for human ground truth"
+    elif kappa >= 0.60:
+        verdict = "moderate — usable, but report the kappa alongside any accuracy number"
+    else:
+        verdict = ("weak — do NOT quote accuracy off this corpus without relabeling "
+                   "the disputed cases by hand")
+    print(f"\n  {verdict}")
+
+    if disagreements:
+        print(f"\n  disagreements ({len(disagreements)}) — these are the cases worth "
+              "resolving by hand:")
+        for kind, r in disagreements[:10]:
+            print(f"    [{kind}]  {r['batch_id']}  {r['idx_a']} ~ {r['idx_b']}")
+            print(f"      {r['title_a'][:66]}")
+            print(f"      {r['title_b'][:66]}")
+
+
 # ─── labeling aid (mode: --candidates) ────────────────────
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’\-]{2,}")
@@ -583,6 +743,7 @@ def ingest_labels(corpus_path: Path, csv_path: Path) -> None:
     with corpus_path.open("w") as f:
         for b in batches:
             b["note"] = "labeled"
+            b["annotation"] = ANNOTATION_PROVENANCE
             f.write(json.dumps(b) + "\n")
 
     # ── is this corpus actually worth running? ──
@@ -887,6 +1048,10 @@ def main() -> None:
                       help="regenerate the labeling CSV from an existing corpus (no DB, no re-sample)")
     mode.add_argument("--candidates", action="store_true",
                       help="suggest likely-related articles to speed up labeling (lexical only)")
+    mode.add_argument("--review-sample", type=Path, metavar="CSV",
+                      help="emit article PAIRS for an independent human spot-check")
+    mode.add_argument("--agreement", type=Path, metavar="CSV",
+                      help="score a completed review CSV against the corpus (Cohen's kappa)")
 
     p.add_argument("--batches", type=int, default=6, help="--sample: number of batches (default 6)")
     p.add_argument("--per-batch", type=int, default=25, help="--sample: articles per batch (default 25)")
@@ -894,6 +1059,8 @@ def main() -> None:
         "--window-hours", type=int, default=WINDOW_HOURS,
         help=f"--sample: hours per batch window (default {WINDOW_HOURS}, matching production)",
     )
+    p.add_argument("--review-pairs", type=int, default=40,
+                   help="--review-sample: how many pairs to emit (default 40)")
     p.add_argument(
         "--threshold", type=float, default=4.5,
         help="--candidates: IDF score cutoff (default 4.5; lower surfaces more, noisier)",
@@ -905,6 +1072,14 @@ def main() -> None:
     p.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     p.add_argument("--json", type=Path, help="write the aggregate report to this path")
     args = p.parse_args()
+
+    if args.review_sample:
+        review_sample(args.corpus, args.review_sample, args.review_pairs)
+        return
+
+    if args.agreement:
+        agreement(args.corpus, args.agreement)
+        return
 
     if args.candidates:
         show_candidates(args.corpus, args.threshold)
