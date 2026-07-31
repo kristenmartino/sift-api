@@ -238,24 +238,7 @@ async def sample_corpus(
         for b in out_batches:
             f.write(json.dumps(b) + "\n")
 
-    # The JSONL is the machine format: one batch per line, which means a single
-    # 25k-character line per 50 articles. Nobody should hand-edit that. Emit a
-    # flat CSV alongside it — one row per article, sortable in a spreadsheet,
-    # which is the natural interface for a grouping task: sort by title, eyeball
-    # the clusters, type a slug. `--ingest-labels` merges it back.
-    csv_path = out_path.with_suffix(".labels.csv")
-    with csv_path.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow([
-            "batch_id", "idx", "source_name", "title", "summary",
-            "event_id", "hard", "distractor_of",
-        ])
-        for b in out_batches:
-            for a in b["articles"]:
-                w.writerow([
-                    b["batch_id"], a["idx"], a["source_name"], a["title"],
-                    a["summary"], "", "", "",
-                ])
+    csv_path = write_labels_csv(out_batches, out_path)
 
     total = sum(len(b["articles"]) for b in out_batches)
     print(f"wrote {len(out_batches)} batches / {total} articles")
@@ -305,6 +288,89 @@ async def sample_corpus(
     print("protects against over-clustering a slow news day.")
 
 
+# ─── label CSV export (mode: --export-labels) ─────────────
+
+LABEL_COLUMNS = [
+    "batch_id", "idx", "source_name", "title", "summary",
+    "event_id", "hard", "distractor_of",
+]
+
+# Excel — especially on macOS — reads a plain UTF-8 CSV as the system legacy
+# encoding and mangles anything non-ASCII. Article titles are full of curly
+# quotes, em-dashes and accented names, so the BOM that "utf-8-sig" prepends is
+# what makes the file open correctly by double-click. Python's csv reader
+# strips the BOM transparently when the file is read back with the same codec.
+CSV_ENCODING = "utf-8-sig"
+
+
+def write_labels_csv(batches: list[dict], corpus_path: Path) -> Path:
+    """Write the flat, hand-editable labeling CSV for `batches`.
+
+    The corpus JSONL is the machine format: one batch per line, which at
+    --per-batch 50 is a single ~25,000-character line. Hand-editing that to
+    find each "event_id": null is miserable and error-prone. This is the
+    interface a grouping task actually wants — one row per article, sortable,
+    so you can sort by title, see the clusters line up, and type a slug.
+    """
+    csv_path = corpus_path.with_suffix(".labels.csv")
+    with csv_path.open("w", newline="", encoding=CSV_ENCODING) as f:
+        w = csv.writer(f)
+        w.writerow(LABEL_COLUMNS)
+        for b in batches:
+            for a in b["articles"]:
+                w.writerow([
+                    b["batch_id"], a["idx"], a["source_name"], a["title"],
+                    a["summary"],
+                    a.get("event_id") or "",
+                    "yes" if a.get("hard") else "",
+                    a.get("distractor_of") or "",
+                ])
+    return csv_path
+
+
+def export_labels(corpus_path: Path) -> None:
+    """Regenerate the labeling CSV from an existing corpus.
+
+    Exists because the corpus and its CSV can drift apart: --sample writes both,
+    but a corpus generated before the CSV feature existed (or one whose CSV was
+    deleted) would otherwise need a full re-sample to get one — and re-sampling
+    produces a DIFFERENT set of articles, since the windows walk back from the
+    current time. This regenerates the CSV in place, preserving the sample.
+
+    Any labels already present in the corpus are carried into the CSV, so this
+    is also the safe way to resume a partially-labeled corpus.
+    """
+    if not corpus_path.exists():
+        raise SystemExit(
+            f"corpus not found: {corpus_path}\n"
+            "Generate one first:  python scripts/eval_clustering.py --sample"
+        )
+    batches = [
+        json.loads(line)
+        for line in corpus_path.read_text().splitlines()
+        if line.strip()
+    ]
+    csv_path = write_labels_csv(batches, corpus_path)
+
+    n_articles = sum(len(b["articles"]) for b in batches)
+    n_labeled = sum(
+        1 for b in batches for a in b["articles"] if a.get("event_id")
+    )
+    print(f"wrote {n_articles} rows -> {csv_path}")
+    if n_labeled:
+        print(f"  ({n_labeled} existing labels carried over)")
+    print()
+    print("Open it in Excel, Numbers or Sheets — NOT the .jsonl, which is JSON")
+    print("Lines (one object per line) and is not a single JSON document, so")
+    print("Power Query reports \"extra characters at the end of the JSON input\".")
+    print()
+    print("Sort by title within a batch: same-event articles land next to each")
+    print("other. Put a shared slug in event_id, leave singletons blank, and mark")
+    print("same-topic/different-event traps with hard=yes + distractor_of.")
+    print()
+    print(f"Then:  python scripts/eval_clustering.py --ingest-labels {csv_path}")
+
+
 # ─── label ingest (mode: --ingest-labels) ─────────────────
 
 def ingest_labels(corpus_path: Path, csv_path: Path) -> None:
@@ -321,7 +387,7 @@ def ingest_labels(corpus_path: Path, csv_path: Path) -> None:
     ]
     by_id = {b["batch_id"]: b for b in batches}
 
-    with csv_path.open(newline="") as f:
+    with csv_path.open(newline="", encoding=CSV_ENCODING) as f:
         rows = list(csv.DictReader(f))
 
     errors: list[str] = []
@@ -683,6 +749,8 @@ def main() -> None:
     mode.add_argument("--live", action="store_true", help="real Haiku calls (~$0.024/run)")
     mode.add_argument("--ingest-labels", type=Path, metavar="CSV",
                       help="merge a hand-labeled CSV back into the corpus, then validate")
+    mode.add_argument("--export-labels", action="store_true",
+                      help="regenerate the labeling CSV from an existing corpus (no DB, no re-sample)")
 
     p.add_argument("--batches", type=int, default=6, help="--sample: number of batches (default 6)")
     p.add_argument("--per-batch", type=int, default=25, help="--sample: articles per batch (default 25)")
@@ -697,6 +765,10 @@ def main() -> None:
     p.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     p.add_argument("--json", type=Path, help="write the aggregate report to this path")
     args = p.parse_args()
+
+    if args.export_labels:
+        export_labels(args.corpus)
+        return
 
     if args.ingest_labels:
         ingest_labels(args.corpus, args.ingest_labels)
