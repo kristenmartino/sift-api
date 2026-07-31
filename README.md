@@ -113,7 +113,7 @@ sift-api/
 │   ├── story_workflow.py    # LangGraph: fetch_articles→extract_entities→cluster→synthesize_and_store (nested in pipeline)
 │   └── compare_workflow.py  # LangGraph: search_sources→extract_and_compare→format_response
 ├── services/
-│   ├── rss.py               # 58 RSS feeds across the spectrum, feedparser, image extraction
+│   ├── rss.py               # 59 RSS feeds (56 outlets) across the spectrum, feedparser, image extraction
 │   ├── summarizer.py        # Claude Haiku 4.5 batch summarization
 │   ├── context_generator.py # why_it_matters line + importance score
 │   ├── primer_generator.py  # context_primer: background + glossary terms

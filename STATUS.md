@@ -21,7 +21,7 @@ Four live unknowns (one — #3 — now resolved below). None block current work;
 
 ### 1. When does sift-api need to scale beyond Railway hobby tier?
 
-Pipeline runs every 30 min, ingests **58 RSS feeds** (`len(services.rss.FEEDS)`; corrected 2026-07-27 from "~135 sources", which was wrong and had propagated into sift/docs/OPERATING_CONTEXT.md — see #104's README fix + drift guard), calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
+Pipeline runs every 30 min, ingests **59 RSS feeds** (`len(services.rss.FEEDS)`; corrected 2026-07-27 from "~135 sources", which was wrong and had propagated into sift/docs/OPERATING_CONTEXT.md — see #104's README fix + drift guard). **Feeds are no longer 1:1 with outlets: 59 feeds = 56 outlets**, because Washington Post now takes four section feeds (#122). Quote the outlet number, not the feed number, in anything user-facing. Calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
 
 Watch for:
 - Pipeline run time approaches the 30-min cadence (e.g. exceeds ~25 min)
@@ -66,6 +66,14 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 - **Pipeline cost decisions** — blocked on a week of `ai_usage_daily` (Next 3 #2).
 
 ## Recent decisions
+
+- **2026-07-31** — **Three dead RSS feeds fixed or dropped; ingest is 59 feeds / 56 outlets ([#122](https://github.com/kristenmartino/sift-api/issues/122), [#123](https://github.com/kristenmartino/sift-api/pull/123)).** A `feed_stats` event now reports per-run feed outcomes, because nothing did: `_fetch_single_feed` swallowed errors into an empty list, `return_exceptions=True` hid the rest, and the run logged success either way — the same "reports success while producing nothing" shape as #113 and #117. On its first real run it found that **4 of 58 feeds were contributing nothing**, and prod confirmed: Washington Post dead 15 days (HTTP 400), Inside Climate News 11 days (HTTP 403), **USA Today never ingested a single article in its entire life in `FEEDS`**, WHO quiet 3 days (genuinely low-volume).
+
+  **Washington Post kept**, moved from the dead `/rss/homepage` to four section feeds (world / politics / business / national) — the first outlet with multiple feed rows. **USA Today and Inside Climate News removed.** Gannett retired USA Today's public RSS entirely (every path 301s to HTML or 404s), and ICN sits behind a Cloudflare block that returns 403 to our agent, a bare request, curl, and desktop Chrome alike — a bot block, not a UA filter, so there is no honest URL. Both dossiers stay in `outlet_profiles`, so a mention of either in someone else's copy still resolves. Removing them costs nothing in coverage: they were already producing zero.
+
+  Also raised `FETCH_TIMEOUT` 10s → 20s. The WaPo section feeds answer in 8–10s serially *and* concurrently, so they sat exactly on the old ceiling and randomly dropped one or two of the four per run. Fetches are concurrent, so the ceiling costs the slowest feed, not the sum. **Verified: 59/59 feeds green across three consecutive live runs, ~11s total.**
+
+  **Carry this:** "58 vetted outlets across the political spectrum" was 55 in practice for weeks, and the drift guard could not catch it — `tests/test_status_drift.py` pins the *configured* count, and a feed can sit in `FEEDS` forever producing nothing. `articles_by_source` in the new event is the raw material for a real staleness check; the threshold is unbuilt because "low-volume vs dead" needs a number worth choosing (WHO legitimately publishes ~1 article/week).
 
 - **2026-07-31** — **Summaries could be attached to the wrong article; batch alignment is now enforced, not assumed (`services/summarizer.py`).** Same failure class as #113's missing `zip(..., strict=True)` — a batch response was trusted to line up with its input. `_parse_summaries` mapped each summary back via the **model's own returned index** and validated only that the index was in range: a repeated, skipped, or shifted index silently attached a summary to the WRONG article while the pipeline reported success. The JSON-parse-failure path was worse — it mapped raw output lines **positionally**, so one preamble line ("Here are the summaries:") shifted every article's summary by one.
 
