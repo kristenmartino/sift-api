@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import re
@@ -8,6 +9,12 @@ import anthropic
 
 from app.config import settings
 from app.models import RSSArticle
+from services.index_alignment import (
+    MAX_BATCH_ATTEMPTS,
+    AlignmentError,
+    aligned_entries,
+    with_alignment_retry,
+)
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.summarizer")
@@ -18,34 +25,87 @@ MODEL = "claude-haiku-4-5-20251001"
 VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
 
 
-async def summarize_articles(articles: list[RSSArticle]) -> dict[str, dict]:
+async def summarize_articles(
+    articles: list[RSSArticle],
+    *,
+    client: anthropic.AsyncAnthropic | None = None,
+) -> dict[str, dict]:
     """
     Summarize and classify articles in batches using Claude Haiku.
     Returns a dict mapping source_url to {"summary": str, "category": str}.
+
+    Optional injected client so tests (and any future eval harness) can replay
+    a recorded response instead of paying for a live call. Mirrors the same
+    kwarg on services.story_clusterer.cluster_articles.
     """
     if not articles:
         return {}
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
+    if client is None:
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
     results: dict[str, dict] = {}
+    misaligned_batches = 0
 
     for i in range(0, len(articles), BATCH_SIZE):
         batch = articles[i : i + BATCH_SIZE]
+        batch_index = i // BATCH_SIZE
         try:
-            batch_results = await _summarize_batch(client, batch)
-            results.update(batch_results)
+            results.update(await _summarize_batch_with_retry(client, batch, batch_index))
+        except AlignmentError as e:
+            misaligned_batches += 1
+            logger.error(
+                "Summarization batch %d abandoned after %d misaligned attempts: %s",
+                batch_index,
+                MAX_BATCH_ATTEMPTS,
+                e,
+            )
+            results.update(_raw_content_fallback(batch))
         except Exception as e:
-            logger.error("Summarization failed for batch %d: %s", i // BATCH_SIZE, e)
-            # Fall back to raw content for this batch
-            for article in batch:
-                if article.raw_content:
-                    results[article.source_url] = {
-                        "summary": _truncate(article.raw_content, 200),
-                        "category": "top",
-                    }
+            logger.error("Summarization failed for batch %d: %s", batch_index, e)
+            results.update(_raw_content_fallback(batch))
 
-    logger.info("Summarized %d/%d articles", len(results), len(articles))
+    logger.info(
+        "Summarized %d/%d articles (%d batches fell back after misalignment)",
+        len(results),
+        len(articles),
+        misaligned_batches,
+    )
     return results
+
+
+async def _summarize_batch_with_retry(
+    client: anthropic.AsyncAnthropic,
+    batch: list[RSSArticle],
+    batch_index: int,
+) -> dict[str, dict]:
+    """Ask for a batch, re-asking while the response cannot be proven aligned."""
+    return await with_alignment_retry(
+        functools.partial(_summarize_batch, client, batch),
+        logger=logger,
+        event="summary_batch_misaligned",
+        batch_index=batch_index,
+        ids=[a.source_url for a in batch],
+    )
+
+
+def _raw_content_fallback(batch: list[RSSArticle]) -> dict[str, dict]:
+    """Degraded per-article summaries: the article's own RSS content, truncated.
+
+    Crude, but alignment-proof — each summary is built from the article it is
+    keyed to, so no cross-article mix-up is possible. Preferred over writing
+    nothing because `services.deduplicator` drops known source_urls before
+    summarization, so an article stored with an empty summary is never
+    re-summarized on a later cycle; "the next run will fix it" is not true at
+    the pipeline level.
+    """
+    return {
+        article.source_url: {
+            "summary": _truncate(article.raw_content, 200),
+            "category": "top",
+        }
+        for article in batch
+        if article.raw_content
+    }
 
 
 async def _summarize_batch(
@@ -119,33 +179,37 @@ Return ONLY the JSON array, no other text."""
 
 
 def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
-    """Parse Claude's response into a url -> {summary, category} mapping."""
-    results: dict[str, dict] = {}
+    """Parse Claude's response into a url -> {summary, category} mapping.
 
+    All-or-nothing by design: the indices must form exactly {1..len(batch)}
+    (enforced by services.index_alignment.aligned_entries) and every article
+    must get a non-empty summary. Anything else raises and the caller re-asks
+    rather than writing a summary that may belong to a different article.
+
+    There is deliberately no positional line-by-line fallback. Mapping raw
+    output lines to articles by position turns a single preamble line ("Here
+    are the summaries:") into an off-by-one across the whole batch. Callers
+    retry, then degrade to _raw_content_fallback, which cannot misalign.
+    """
     parsed = _extract_json_array(text)
-    if parsed:
-        for item in parsed:
-            # Accept short keys (new) and fall back to long keys (legacy prompt form).
-            idx = item.get("i", item.get("index"))
-            summary = item.get("s", item.get("summary", ""))
-            category = item.get("c", item.get("category", "top"))
-            if category not in VALID_CATEGORIES:
-                category = "top"
-            if isinstance(idx, int) and 1 <= idx <= len(batch) and summary:
-                results[batch[idx - 1].source_url] = {
-                    "summary": summary,
-                    "category": category,
-                }
-    else:
-        logger.warning("Failed to parse summary JSON, using raw text fallback")
-        lines = [line.strip() for line in text.strip().split("\n") if line.strip()]
-        for i, line in enumerate(lines[: len(batch)]):
-            line = re.sub(r"^\d+[\.\):\-]\s*", "", line)
-            if line:
-                results[batch[i].source_url] = {
-                    "summary": line,
-                    "category": "top",
-                }
+    if parsed is None:
+        raise AlignmentError("response was not a parseable JSON array")
+
+    results: dict[str, dict] = {}
+    for idx, entry in aligned_entries(parsed, len(batch)).items():
+        # Accept short keys (new) and fall back to long keys (legacy prompt form).
+        summary = entry.get("s", entry.get("summary", ""))
+        category = entry.get("c", entry.get("category", "top"))
+        # An unrecognized category label says nothing about alignment; coerce
+        # it as before rather than throwing the batch away.
+        if category not in VALID_CATEGORIES:
+            category = "top"
+        # An article with no summary of its own is a missing entry wearing a
+        # valid index — same evidence of a shift, same all-or-nothing answer.
+        if not isinstance(summary, str) or not summary.strip():
+            raise AlignmentError(f"empty summary at index {idx}")
+
+        results[batch[idx - 1].source_url] = {"summary": summary, "category": category}
 
     return results
 

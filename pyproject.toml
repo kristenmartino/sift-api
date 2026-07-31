@@ -17,6 +17,16 @@ filterwarnings = [
     # Starlette's TestClient imports httpx and warns; we do not control it.
     "ignore::DeprecationWarning:starlette.*",
     "ignore:Using `httpx` with `starlette.testclient` is deprecated:UserWarning",
+    # pytest-asyncio 0.24 hands its per-test event loop to the garbage
+    # collector instead of closing it, so the loop's self-pipe socketpair
+    # emits "unclosed <socket ...>" whenever GC happens to run. Under `error`
+    # that became a failure in whichever unrelated test was executing at the
+    # time — it landed on test_meta_suite once the async test count grew
+    # (2026-07-31). The socket belongs to the plugin, not to us: every network
+    # client in the suite is mocked, so nothing here opens an app-owned
+    # socket that this could mask. Revisit on a pytest-asyncio upgrade.
+    "ignore:unclosed event loop:ResourceWarning",
+    "ignore:unclosed <socket:ResourceWarning",
 ]
 
 [tool.ruff]

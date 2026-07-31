@@ -1,6 +1,6 @@
 # sift-api — STATUS
 
-**Updated:** 2026-07-30
+**Updated:** 2026-07-31
 **Tier:** v1.5 (civic-literacy pivot backend) — **feature work paused per [`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md); evidence-gathering only**
 **Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
@@ -66,6 +66,29 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 - **Pipeline cost decisions** — blocked on a week of `ai_usage_daily` (Next 3 #2).
 
 ## Recent decisions
+
+- **2026-07-31** — **Summaries could be attached to the wrong article; batch alignment is now enforced, not assumed (`services/summarizer.py`).** Same failure class as #113's missing `zip(..., strict=True)` — a batch response was trusted to line up with its input. `_parse_summaries` mapped each summary back via the **model's own returned index** and validated only that the index was in range: a repeated, skipped, or shifted index silently attached a summary to the WRONG article while the pipeline reported success. The JSON-parse-failure path was worse — it mapped raw output lines **positionally**, so one preamble line ("Here are the summaries:") shifted every article's summary by one.
+
+  **Production evidence (2026-07-30):** "Missouri couple murdered in Guatemala after husband was deported" carried a summary about Todd Blanche's stalled DOJ nomination; "This Insane New Therapy Trend Is Destroying Families" carried a summary opening "This article appears to be a reframing of the playground incident from art…" — the model naming a different article in its own batch. A crude zero-content-word-overlap detector flags 208 / 12,436 rows over 7 days (**1.67%**), but that **overstates** the bug: most flags are legitimate oblique headlines ("Liars and Loons" correctly summarized as a Fauci opinion piece). **Do not quote 1.67% as the bug rate** — the true rate needs hand-triage of the 208.
+
+  **Fix.** A batch result is accepted only if its indices are exactly `{1..len(batch)}` — no duplicates, no gaps, nothing out of range, one non-empty summary each — otherwise `SummaryAlignmentError` and the batch is **re-asked** (`MAX_BATCH_ATTEMPTS = 2`), with a `summary_batch_misaligned` structured event carrying the batch's `source_urls`. The positional line fallback is **deleted**. Persistent misalignment degrades to each article's own truncated RSS content, which is alignment-proof by construction — chosen over writing nothing because `deduplicator` drops known `source_url`s, so an article stored with an empty summary is never re-summarized ("the next run will fix it" is false here). `summarize_articles` gained a `client=` kwarg (mirrors `cluster_articles`) so the retry path is testable on replay; `tests/test_summarizer.py` 8 → 31 tests.
+
+  **Swept the rest of the repo the same day.** The identical range-only check existed at **seven** more call sites; all now go through one shared validator, `services/index_alignment.py` (`aligned_entries` + `with_alignment_retry` + `log_misaligned_sub_batch`), which the summarizer was refactored onto so there is a single implementation of "prove this response lines up."
+
+  | Module | Live path | Batch API path (poller) |
+  |---|---|---|
+  | `context_generator` | re-ask, then write nothing (`why_it_matters`/`importance_score` stay NULL) | skip sub-batch, `batch_context_misaligned` |
+  | `primer_generator` | re-ask, then write nothing (`context_primer` stays NULL) | skip sub-batch, `batch_primer_misaligned` |
+  | `entity_extractor` | re-ask, then empty entities per article | skip sub-batch, `batch_entity_misaligned` |
+  | `judge` | discard the response → all items unscored | n/a |
+
+  The Batch API paths cannot re-ask — results arrive asynchronously with no live request to repeat — so a sub-batch that cannot be proven aligned is skipped whole and its `source_urls` logged; `scripts/backfill_context.py` / `backfill_primers.py` are the repair path. Those handlers also gained an explicit guard for a missing `custom_id` → URL manifest, which previously made every entry fail the range check silently. `generate_context` / `generate_primers` / `extract_entities` gained the `client=` kwarg (matching `cluster_articles`) so the retry paths are testable on replay. `judge._parse_judge` discarding a misaligned response degrades to the deterministic gate's result, which is its existing documented behaviour for an unscored line — a shifted verdict there NULLs a good line rather than showing wrong text, so the stakes are quality, not integrity.
+
+  **Deliberately not changed:** `workflows/story_workflow.py:184` maps cluster `article_indices` to articles with a range check, but a cluster is a SUBSET of the window by design, so completeness does not apply; `story_clusterer._parse_clusters` already rejects any group containing an out-of-range index, and a duplicated index inside a group is caught downstream by the `>=2 unique outlets` gate.
+
+  **Also fixed en route:** `filterwarnings = ["error"]` plus pytest-asyncio 0.24 leaving its per-test event loop to the GC meant an "unclosed event loop / socket" ResourceWarning could fail whichever unrelated test was running when collection happened. It began landing on `test_meta_suite` once the async test count grew. Two narrow `ignore:` entries in `pyproject.toml`, to revisit on a pytest-asyncio upgrade. Suite: 329 → 364 tests.
+
+  **Repair pass:** `scripts/find_misaligned_summaries.py` (read-only) emits triage candidates — zero title/summary content-word overlap, ranked by whether a *neighbouring* article from the same pipeline run has a title that explains the summary (`swap_score`, the actual smoking gun). Re-summarization of confirmed rows is deliberately not written yet: triage first.
 
 - **2026-07-30** — **Two silent clustering bugs fixed; deterministic eval + test-verification layer shipped ([#113](https://github.com/kristenmartino/sift-api/pull/113), with [sift#190](https://github.com/kristenmartino/sift/pull/190) and [sift-mcp#19](https://github.com/kristenmartino/sift-mcp/pull/19)).**
 

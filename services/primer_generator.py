@@ -19,6 +19,7 @@ the sift frontend for the full voice doc.
 """
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from datetime import datetime, timezone
@@ -28,6 +29,13 @@ import anthropic
 from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
+from services.index_alignment import (
+    MAX_BATCH_ATTEMPTS,
+    AlignmentError,
+    aligned_entries,
+    log_misaligned_sub_batch,
+    with_alignment_retry,
+)
 from services.quality_gate import gate_background
 from services.usage_tracker import log_usage
 
@@ -129,7 +137,11 @@ def _build_prompt(batch: list[dict]) -> str:
 # Live path (used for backfill and as a manual fallback)
 # ---------------------------------------------------------------------------
 
-async def generate_primers(articles: list[dict]) -> dict[str, dict]:
+async def generate_primers(
+    articles: list[dict],
+    *,
+    client: anthropic.AsyncAnthropic | None = None,
+) -> dict[str, dict]:
     """Generate primers for a list of articles via the live Messages API.
 
     Input: list of dicts with keys: source_url, title, summary, source_name (optional)
@@ -142,16 +154,32 @@ async def generate_primers(articles: list[dict]) -> dict[str, dict]:
     if not articles:
         return {}
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
+    if client is None:
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
     results: dict[str, dict] = {}
 
     for i in range(0, len(articles), BATCH_SIZE):
         batch = articles[i : i + BATCH_SIZE]
+        batch_index = i // BATCH_SIZE
         try:
-            batch_results = await _generate_batch_live(client, batch)
-            results.update(batch_results)
+            results.update(await with_alignment_retry(
+                functools.partial(_generate_batch_live, client, batch),
+                logger=logger,
+                event="primer_batch_misaligned",
+                batch_index=batch_index,
+                ids=[a["source_url"] for a in batch],
+            ))
+        except AlignmentError as e:
+            # Writing nothing leaves context_primer NULL — the UI hides the
+            # panel, and scripts/backfill_primers.py can regenerate. A primer
+            # attached to the wrong article teaches the reader background for
+            # a story they are not reading.
+            logger.error(
+                "Primer generation batch %d abandoned after %d misaligned attempts: %s",
+                batch_index, MAX_BATCH_ATTEMPTS, e,
+            )
         except Exception as e:
-            logger.error("Primer generation failed for batch %d: %s", i // BATCH_SIZE, e)
+            logger.error("Primer generation failed for batch %d: %s", batch_index, e)
 
     logger.info("Generated primers for %d/%d articles", len(results), len(articles))
     return results
@@ -173,22 +201,23 @@ async def _generate_batch_live(
 
 
 def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
-    """Parse Claude's primer JSON response into the canonical persisted shape."""
-    results: dict[str, dict] = {}
+    """Parse Claude's primer JSON response into the canonical persisted shape.
 
+    Raises AlignmentError unless the response carries exactly one entry per
+    article — see services/index_alignment.py for why a range check alone is
+    not enough. An entry that comes back fully empty is still an entry: only
+    the index structure is enforced here, and empty payloads are skipped
+    below as before.
+    """
     parsed = _extract_json_array(text)
-    if not parsed:
-        logger.warning("Failed to parse primer generation JSON")
-        return results
+    if parsed is None:
+        raise AlignmentError("response was not a parseable JSON array")
 
+    results: dict[str, dict] = {}
     now_iso = datetime.now(timezone.utc).isoformat()
-    for item in parsed:
-        idx = item.get("i", item.get("index"))
+    for idx, item in aligned_entries(parsed, len(batch)).items():
         background = item.get("b", item.get("background", "")) or ""
         terms_raw = item.get("t", item.get("terms", [])) or []
-
-        if not (isinstance(idx, int) and 1 <= idx <= len(batch)):
-            continue
 
         # Cliché-gate the background (sift-api#90). Lighter touch than
         # why_it_matters: clichés only, never restatement — and terms are kept
@@ -306,11 +335,20 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
     updated = 0
     failed = 0
     bg_dropped = 0
+    misaligned = 0
     for item in results:
         custom_id = item.get("custom_id", "")
         urls = custom_id_to_urls.get(custom_id, [])
         result = item.get("result", {})
         if result.get("type") != "succeeded":
+            failed += 1
+            continue
+
+        if not urls:
+            # No URL manifest for this custom_id — nothing can be mapped back.
+            logger.error(
+                "No metadata URLs for %s in batch %s; skipping sub-batch", custom_id, batch_id,
+            )
             failed += 1
             continue
 
@@ -324,14 +362,28 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
             failed += 1
             continue
 
+        # No live request to re-ask here (results arrive via the poller), so a
+        # sub-batch that cannot be proven aligned is skipped whole:
+        # context_primer stays NULL and scripts/backfill_primers.py can
+        # regenerate it. A primer on the wrong article is not recoverable.
+        try:
+            entries = aligned_entries(parsed, len(urls))
+        except AlignmentError as e:
+            misaligned += 1
+            log_misaligned_sub_batch(
+                logger,
+                event="batch_primer_misaligned",
+                batch_id=batch_id,
+                custom_id=custom_id,
+                urls=urls,
+                error=e,
+            )
+            continue
+
         now_iso = datetime.now(timezone.utc).isoformat()
-        for entry in parsed:
-            idx = entry.get("i", entry.get("index"))
+        for idx, entry in entries.items():
             background = entry.get("b", entry.get("background", "")) or ""
             terms_raw = entry.get("t", entry.get("terms", [])) or []
-
-            if not (isinstance(idx, int) and 1 <= idx <= len(urls)):
-                continue
 
             # Cliché-gate the background (sift-api#90). Cliché-only — needs no
             # title/summary — so no extra DB read here; terms are kept regardless.
@@ -380,4 +432,5 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
         "updated": updated,
         "backgrounds_dropped_by_gate": bg_dropped,
         "failed": failed,
+        "misaligned_sub_batches": misaligned,
     }))
