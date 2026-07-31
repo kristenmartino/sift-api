@@ -4,10 +4,12 @@ import asyncio
 import calendar
 import ctypes
 import hashlib
+import json
 import logging
 import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from typing import NamedTuple
 
 import feedparser
 import httpx
@@ -178,6 +180,16 @@ def _base36(n: int) -> str:
     return result
 
 
+class FeedResult(NamedTuple):
+    """One feed's outcome. `error` distinguishes "the fetch failed" from "the
+    feed answered and had nothing", which an empty list alone cannot."""
+
+    source_name: str
+    feed_url: str
+    articles: list[RSSArticle]
+    error: str = ""
+
+
 async def fetch_feeds() -> list[RSSArticle]:
     """Fetch all RSS feeds in parallel. Articles have category="" until AI classifies them."""
     tasks = []
@@ -186,12 +198,60 @@ async def fetch_feeds() -> list[RSSArticle]:
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    articles = []
-    for result in results:
-        if isinstance(result, Exception):
-            logger.warning("Feed fetch failed: %s", result)
+    articles: list[RSSArticle] = []
+    failed: list[dict] = []
+    empty: list[str] = []
+    # Every configured source starts at 0, so a feed that has quietly stopped
+    # producing shows up as a zero rather than as an absent key.
+    by_source: dict[str, int] = {source_name: 0 for source_name, _ in FEEDS}
+
+    # strict=True: gather preserves input order, and this pairs each result
+    # with the feed it came from. Same rule as everywhere else in this repo —
+    # if the two ever diverge, fail loudly rather than mislabel a feed's
+    # outcome (see services/index_alignment.py, #113, #117).
+    for (source_name, feed_url), result in zip(FEEDS, results, strict=True):
+        if isinstance(result, BaseException):
+            failed.append({
+                "source": source_name,
+                "url": feed_url,
+                "error": f"{type(result).__name__}: {result}"[:200],
+            })
             continue
-        articles.extend(result)
+
+        articles.extend(result.articles)
+        by_source[result.source_name] = by_source.get(result.source_name, 0) + len(result.articles)
+        if result.error:
+            failed.append({"source": source_name, "url": feed_url, "error": result.error[:200]})
+        elif not result.articles:
+            empty.append(source_name)
+
+    # Structured so a feed dying is visible without reading 58 warning lines.
+    # The Washington Post feed returned HTTP 400 for ~15 days (#122) and
+    # nothing noticed: the failure was logged per-feed at WARNING, swallowed by
+    # return_exceptions=True, and the run still reported success. Same shape as
+    # the silent clustering (#113) and summary-misalignment (#117) bugs — the
+    # pipeline reporting success while producing nothing.
+    logger.info(json.dumps({
+        "event": "feed_stats",
+        "feeds_total": len(FEEDS),
+        "feeds_ok": len(FEEDS) - len(failed) - len(empty),
+        "feeds_failed": len(failed),
+        "feeds_empty": len(empty),
+        "articles": len(articles),
+        "failed": failed,
+        "empty": empty,
+        "articles_by_source": by_source,
+    }))
+    if failed or empty:
+        # Human-readable too, so this shows up without log parsing.
+        logger.warning(
+            "%d/%d feeds produced nothing (%d errored, %d empty): %s",
+            len(failed) + len(empty),
+            len(FEEDS),
+            len(failed),
+            len(empty),
+            ", ".join([f["source"] for f in failed] + empty),
+        )
 
     logger.info("Fetched %d articles from %d feeds", len(articles), len(tasks))
     return articles
@@ -200,8 +260,13 @@ async def fetch_feeds() -> list[RSSArticle]:
 async def _fetch_single_feed(
     source_name: str,
     feed_url: str,
-) -> list[RSSArticle]:
-    """Fetch and parse a single RSS feed."""
+) -> FeedResult:
+    """Fetch and parse a single RSS feed.
+
+    Returns a FeedResult rather than raising, so one dead feed cannot take
+    down the run — but the error is carried out rather than swallowed, so
+    fetch_feeds can report it.
+    """
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(
@@ -213,9 +278,9 @@ async def _fetch_single_feed(
             resp.raise_for_status()
         except Exception as e:
             logger.warning("Failed to fetch %s (%s): %s", source_name, feed_url, e)
-            return []
+            return FeedResult(source_name, feed_url, [], f"{type(e).__name__}: {e}")
 
-    return parse_feed(resp.content, source_name)
+    return FeedResult(source_name, feed_url, parse_feed(resp.content, source_name))
 
 
 def parse_feed(data: bytes, source_name: str) -> list[RSSArticle]:
