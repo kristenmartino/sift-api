@@ -1,12 +1,19 @@
 # sift-api — STATUS
 
-**Updated:** 2026-06-04
-**Tier:** v1.5 (civic-literacy pivot backend)
-**Velocity:** High (10+ PRs / week)
+**Updated:** 2026-07-30
+**Tier:** v1.5 (civic-literacy pivot backend) — **feature work paused per [`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md); evidence-gathering only**
+**Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
 ## Active focus
 
-Civic-literacy pivot backend, with two threads surfacing this week (2026-06): **content quality** — a generation quality gate for `whyItMatters` / `contextPrimer` (rubric + LLM-judge eval, #90 — **shipped 2026-06-04**, see Recent decisions) after a 500-article audit found those AI lines inconsistent (restatement + editorializing); and **outlet-data integrity** — prod `outlet_profiles` cleanup shipped (#91, 77→72), with the seed-CSV↔prod divergence + an authoritative seeder queued (#93). Also open: topic search → sift-api (#79/#80), a NULL-embedding repair pass (#76), and an outlet ingestion-status field (#73). Recently shipped: entity linker fix (LLM-gated, A/B-able) in `services/entity_linker_llm.py`; 170 new dossier entries via seed scripts in `data/` + `scripts/`; `coverage_audit.py` archived measuring post-fix link rate.
+**Story clustering correctness + measurement** (#113, shipped 2026-07-30). Two silent bugs were suppressing clustering across the largest categories, and there was no measurement that would have caught either. Fixed, with a deterministic eval harness and a test-verification layer now in place — see Recent decisions.
+
+Two things are now waiting on data rather than on code:
+
+1. **Cost attribution.** `AI_COST_GUARD_ENABLED=true` (limit raised to $100/day so it records without blocking) was set 2026-07-30 to populate `ai_usage_daily`, which had never been written to. Give it ~a week, then break spend down by operation. This gates whether to batch the entity linker and whether to raise `LIMIT 50`.
+2. **Clustering eval corpus.** `scripts/eval_clustering.py --sample` generated 300 articles across 6 windows; needs ~3–4h of hand-labeling, then `--live --record` (~$0.024) produces the first real accuracy number. Until then, event-clustering accuracy is **unmeasured** and should not be quoted.
+
+Still open from the prior focus: topic search → sift-api (#79/#80), NULL-embedding repair (#76 — now a prerequisite, not a nice-to-have, since `story_workflow` excludes NULL-embedding articles from threading entirely), outlet ingestion-status field (#73), authoritative outlet seeder (#93).
 
 ## Open strategic questions
 
@@ -18,7 +25,7 @@ Pipeline runs every 30 min, ingests **58 RSS feeds** (`len(services.rss.FEEDS)`;
 
 Watch for:
 - Pipeline run time approaches the 30-min cadence (e.g. exceeds ~25 min)
-- Anthropic monthly bill from pipeline crosses $50/mo (today: ~$15)
+- ~~Anthropic monthly bill from pipeline crosses $50/mo (today: ~$15)~~ — **corrected 2026-07-30: actual is ~$10/day (~$300/mo)** on a Sift-dedicated key. The $50/mo threshold was passed long ago; this line was ~20× stale. The per-operation breakdown is not yet known because `usage_tracker._record_to_ledger` short-circuits unless `ai_cost_guard_enabled` is true and it defaulted to false, so `ai_usage_daily` had never been populated. Enabled 2026-07-30 with a $100/day ceiling (records, never blocks). **Re-baseline this bullet once a week of ledger data exists.**
 - Neon Postgres connection pool `max=5` starts queuing requests visibly
 - Native app launches and pushes write volume up
 
@@ -27,6 +34,10 @@ Watch for:
 Phase 3.G.2 shipped the LLM linker with disambiguation rules added since. It's working but it's a moving target — every dossier expansion changes its catalog, and the prompt keeps needing tweaks.
 
 What would resolve this: a stable eval set with target precision/recall numbers, run on every PR that touches `services/entity_linker_llm.py`. Until that exists, the linker stays in "iterate fast" mode.
+
+**Update 2026-07-30:** the machinery for that eval now exists and is reusable — `scripts/eval_clustering.py` established the pattern (labeled corpus → deterministic metrics → committed response fixtures with a `prompt_sha256` tripwire → free CI replay + a manual `--live` mode). A linker eval is now mostly corpus-labeling work rather than harness-building. Still the honest blocker: no labeled data.
+
+Separately, the linker is also the **largest single cost lever** in the repo: `link_articles_llm` makes one realtime call *per article*, re-sending a ~6,500-token catalog as a cache read each time. Batching to ~10 articles/call models out at roughly −60% on that call site. Sequenced behind cost attribution so the saving is measured, not assumed.
 
 ### 3. Does `sift-mcp` eventually merge into `sift-api` as one service with two surfaces?
 
@@ -40,17 +51,35 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
 ## Next 3
 
-1. **[committed]** Dossier expansion — completion (see Issues tab). Close out the 170-entry seed; coverage targets per category; promote entity linker out of A/B once link-rate hits target. Tier `v1.5` · `effort-week`.
-2. **[committed]** DMCA audit + methodology update (see Issues tab). Verify `services/` doesn't persist source HTML/images on Railway disk or in logs; add transformative-use paragraph + symmetric-application note to `/methodology` (sibling `sift` repo); pre-draft DMCA counter-notice template. Tier `v1.5` · `effort-day`.
-3. **[sketch]** `/v1/*` mobile API endpoints — deferred until native platform direction is settled. See `sift/docs/IOS_APP_ASSESSMENT.md` for why this is not the right time. Tier `v2` · `effort-weeks`.
+1. **[committed]** Label the clustering eval corpus + record the first baseline. 300 articles on disk (gitignored until labeled); ~3–4h in the spreadsheet flow (`--sample` emits a CSV, `--ingest-labels` merges + validates), then `--live --repeats 3 --record` (~$0.024). Output replaces the retracted accuracy claim in `sift/docs/DECISIONS.md` D26/D27 with a measured ARI + pairwise P/R. Tier `v1.5` · `effort-day`.
+2. **[committed]** Cost attribution → act on it. One week of `ai_usage_daily`, then the per-operation breakdown decides the order of: batching `entity_linker_llm` (largest modeled lever), a near-duplicate cosine gate pre-summarize, and whether `LIMIT 50` is worth raising. Do not optimize before this returns — the previous cost figure was ~20× wrong. Tier `v1.5` · `effort-day` to measure.
+3. **[sketch — deferred by D46]** Raise `LIMIT 50` in `story_workflow.py` — **the remaining clustering constraint.** It caps sports at ~4.4% grouping no matter how well the clusterer works. Raising it needs candidate pooling first (otherwise 300 articles is a ~30k-token prompt that cannot serialize into the output ceiling), i.e. the vector-blocking design. That is `effort-week` build work, which does not fit the 6 hrs/wk evidence-only budget — so it stays a sketch until the pause lifts or the data makes it urgent. Tier `v1.5` · `effort-week`.
 
-*Newly surfaced this week: content-quality gate (#90) — **shipped** (see Recent decisions 2026-06-04); outlet-data integrity (#93 — the authoritative seeder), which is the foundation for sift's deliberate source expansion (kristenmartino/sift#151).*
+*Items 1 and 2 are measurement, not features, so they sit inside D46's evidence-gathering budget (~4–5h combined). Item 3 does not, and is explicitly deferred.*
+
+*Displaced from Next 3 (still committed, see Issues tab): dossier expansion completion; DMCA audit + `/methodology` update. `/v1/*` mobile API remains deferred pending native platform direction.*
 
 ## Blocked-on
 
 - Native platform direction (mobile API surface depends on which client comes first — currently leaning Android-first per `sift/docs/IOS_VS_ANDROID.md`)
+- **Clustering accuracy number** — blocked on hand-labeling the corpus (Next 3 #1). Nothing else can proceed on clustering quality without ground truth.
+- **Pipeline cost decisions** — blocked on a week of `ai_usage_daily` (Next 3 #2).
 
 ## Recent decisions
+
+- **2026-07-30** — **Two silent clustering bugs fixed; deterministic eval + test-verification layer shipped ([#113](https://github.com/kristenmartino/sift-api/pull/113), with [sift#190](https://github.com/kristenmartino/sift/pull/190) and [sift-mcp#19](https://github.com/kristenmartino/sift-mcp/pull/19)).**
+
+  **The bugs.** `services/story_clusterer.py` sent up to 50 articles with a fixed `max_tokens=1024`; an overflowing response truncated to invalid JSON → `_extract_json_array` returned `None` → `_parse_clusters` returned `[]` → the entire category produced **zero stories with nothing logged**. Now scales with input, plus a `cluster_stats` event carrying `stop_reason`. Separately, `pipeline_workflow` zipped articles against embedding vectors without `strict=True`, so any length mismatch would silently attach embeddings to the **wrong** articles.
+
+  **Production evidence (measured pre-fix, 48h window):** sports 1131 articles → **0.9%** grouped; politics 840 → **1.2%**; entertainment 829 → **1.1%**; health 137 → 13.9%; energy 67 → **23.9%**. A near-perfect inverse between category volume and grouping rate — the signature of both the token ceiling and `LIMIT 50`. Seven articles across six outlets on one event (Seattle police chief) were grouped into nothing. **Story threading was effectively not working on the three largest categories.** Post-deploy re-measurement is scheduled; expect sports to approach but not exceed its ~4.4% `LIMIT 50` ceiling, which is why item 3 in Next 3 exists.
+
+  **Measurement.** `services/cluster_metrics.py` — ARI, V-measure (homogeneity/completeness reported separately), pairwise P/R/F1, plus Sift-specific `multi_outlet_precision` (applies the `>=2 unique outlets` gate to both partitions, i.e. scores what users actually see) and `topic_conflation_rate` (the prompt's central same-topic/different-event claim). Hand-implemented to keep numpy+scipy out of the Railway image; verified against sklearn 1.9.0 to 1e-9. ARI is the headline because it is chance-corrected — an all-singletons prediction, this system's actual failure mode, scores ~0.0 rather than looking respectable. Purity is deliberately **not** a gate (it scores that failure 1.0); NMI is omitted (identical to V-measure under arithmetic-mean normalization). `scripts/eval_clustering.py` provides `--sample` / `--ingest-labels` / `--replay` / `--live`; replay is free and deterministic for CI, and each fixture stores `prompt_sha256` so a changed prompt fails loudly rather than being scored against a stale response.
+
+  **Test verification.** `tests/test_meta_suite.py` walks the AST of every test and fails on any that *cannot fail*. `test_rss.py::test_known_values` had asserted `stable_hash("hello") == stable_hash("hello")` — a tautology guarding the primary key of every `articles` row, which is independently reimplemented in TypeScript; now pinned to goldens cross-asserted in `sift`. Same for the duplicated Anthropic price table ($7.38 synthetic payload, both languages). `story_clusterer` went from zero tests to 21. First `pyproject.toml` (ruff had been running on defaults; adds `B`/`PT`), `requirements-dev.txt` split so pytest/ruff stop shipping to Railway, coverage gated at 55% against a measured 57%.
+
+  **Mutation testing** (`setup.cfg`, mutmut): `cluster_metrics` **82%**, `quality_gate` **62%**. Found a real gap — `fn += 1` → `fn = 1` survived every test — now covered. `services/rss.py` cannot be mutation-tested under mutmut 3.x (it imports `app.models`, and the tool runs tests in a workspace containing only mutated files); the pinned golden hashes are its protection instead.
+
+  **Caveat worth carrying:** the multi-agent review on #113 found that `test_no_duplicate_test_names_within_a_module` was itself tautological (`all("::" in d ...)` was true by construction) — a test that could not fail, inside the file whose purpose is catching tests that cannot fail. The meta-guard could not catch it because it checks assertion *presence*, not *strength*. Fixed in `98845ce`. Treat the meta-suite as a floor, not a ceiling.
 
 - **2026-07-13** — **feed-perf tripwire (#16) fired → 30-day recency floor shipped.** `business/standalone` hit 2374 ms (warn ≥ 2000 ms). Root cause: the standalone/articles feed queries sort by a computed importance × EXP(-age) score no index can serve, so Postgres fetched every feed-quality row per category (29k business, 73k sports — back to 2020) on each request; cold Neon heap reads dominated and grow with daily ingestion. Fix per #16 item 1(c): 30-day recency floor in `sift/lib/db.ts` ([sift#172](https://github.com/kristenmartino/sift/pull/172)), OR-form (`published_date > cutoff OR (published_date IS NULL AND created_at > cutoff)`) so `idx_articles_feed` serves both branches via BitmapOr; mirrored into `scripts/explain_feed_queries.py` (#106). Result parity verified (business top-50 identical — the decay already made >30d rows unrankable, ~1e-13 at 30 days). All 30 shapes now ≤ 140 ms against prod; politics/sports/entertainment seq scans gone. #16 items 2 (pool bump) + 3 (statement_timeout) remain deferred — metrics still don't justify them.
 - **2026-06-04** — **#90 rollout refinements (follow-up).** Applying the gate to prod surfaced two things. (1) **Bugfix:** the deterministic background cliché-blank was too blunt — it nuked whole *good* 40–55-word paragraphs whose closing clause was "…raising questions about <specific X>" (legitimate in a paragraph, filler only in a one-liner). `gate_background` now blanks on cliché **only for short paragraphs** (`BACKGROUND_CLICHE_MAX_WORDS`); long informative paragraphs are kept (the audit validated background as good). (2) **Runtime judge shipped** behind `WHY_IT_MATTERS_JUDGE_ENABLED` (default off): when on, lines surviving the deterministic gate are judged in the batch-result path and dropped on restatement/non-neutrality only (not the fuzzy significance axis), targeting the ~38% paraphrase residual; respects the cost guard, degrades to the deterministic result on budget-block/judge-error. Also ran the `why_it_matters` prod cleanup — `scripts/regate_existing.py --apply` NULLed **3,238** cliché/restatement lines (background cleanup deferred to post-fix, now ~0).
