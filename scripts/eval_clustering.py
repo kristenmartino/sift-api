@@ -44,9 +44,11 @@ import asyncio
 import csv
 import hashlib
 import json
+import math
 import os
+import re
 import statistics
-from collections import Counter
+from collections import Counter, defaultdict
 import sys
 from pathlib import Path
 
@@ -288,6 +290,298 @@ async def sample_corpus(
     print("protects against over-clustering a slow news day.")
 
 
+# ─── annotator provenance ─────────────────────────────────
+
+# Recorded INSIDE every labeled batch, not only in prose, so the corpus cannot
+# be quoted as human-labeled by someone who never read the docs. Whoever reports
+# a number off this corpus has to say what produced the ground truth.
+ANNOTATION_PROVENANCE = {
+    "annotator": "claude-opus-5",
+    "method": "machine",
+    "date": "2026-07-30",
+    "basis": "title + Sift-generated summary only",
+    "not_used": ["story_id", "embedding", "entities"],
+    "caveat": (
+        "MACHINE-ANNOTATED. The clusterer under test is also an LLM (Haiku), so any "
+        "score against this corpus measures LLM-vs-LLM agreement, not human-validated "
+        "accuracy. Report it as such. Run --review-sample / --agreement to attach a "
+        "human spot-check and a Cohen's kappa before quoting the number anywhere."
+    ),
+}
+
+
+# ─── human spot-check (modes: --review-sample / --agreement) ──
+
+def review_sample(corpus_path: Path, out_path: Path, n_pairs: int = 40) -> None:
+    """Emit a small set of article PAIRS for a human to adjudicate independently.
+
+    Pairs, not articles: a binary same-event/different-event call on 40 pairs is
+    perhaps 15 minutes, where re-labeling 50 articles is an hour — and pairs are
+    exactly the unit the pairwise metrics are computed over.
+
+    Negatives are NOT sampled at random. A random pair of articles is trivially
+    "different" and would inflate agreement toward 1.0 while measuring nothing.
+    They are drawn from the highest lexical-similarity pairs the machine labeled
+    as different — i.e. the genuinely confusable ones, where an annotator
+    disagreement is informative.
+    """
+    batches = [
+        json.loads(line) for line in corpus_path.read_text().splitlines() if line.strip()
+    ]
+    positives, negatives = [], []
+    for b in batches:
+        arts = b["articles"]
+        n = len(arts)
+        words = {a["idx"]: _content_words(a["title"]) for a in arts}
+        df = Counter(w for ws in words.values() for w in ws)
+        ceiling = max(2, n // 4)
+        for i, a in enumerate(arts):
+            for c in arts[i + 1:]:
+                same = bool(a.get("event_id")) and a.get("event_id") == c.get("event_id")
+                shared = {w for w in words[a["idx"]] & words[c["idx"]] if 2 <= df[w] <= ceiling}
+                score = sum(math.log(n / df[w]) for w in shared) if shared else 0.0
+                rec = (score, b["batch_id"], a, c)
+                (positives if same else negatives).append(rec)
+
+    if not positives:
+        raise SystemExit("corpus has no labeled clusters — nothing to review")
+
+    # Evenly spaced across the positives so one huge cluster cannot dominate.
+    step = max(1, len(positives) // (n_pairs // 2))
+    pos = positives[::step][: n_pairs // 2]
+    negatives.sort(key=lambda r: -r[0])
+    neg = negatives[: n_pairs - len(pos)]
+
+    rows = pos + neg
+    with out_path.open("w", newline="", encoding=CSV_ENCODING) as f:
+        w = csv.writer(f)
+        w.writerow([
+            "pair_id", "batch_id", "idx_a", "source_a", "title_a",
+            "idx_b", "source_b", "title_b", "your_verdict",
+        ])
+        for i, (_score, bid, a, c) in enumerate(rows, 1):
+            w.writerow([
+                i, bid, a["idx"], a["source_name"], a["title"],
+                c["idx"], c["source_name"], c["title"], "",
+            ])
+
+    print(f"wrote {len(rows)} pairs -> {out_path}\n")
+    print("For each pair put `same` or `different` in your_verdict — do these two")
+    print("articles cover the SAME specific event? The machine's answer is not shown,")
+    print("deliberately: seeing it would anchor you and destroy the measurement.")
+    print("\nNegatives are the most lexically similar non-matches, not random pairs,")
+    print("so this is a hard test rather than a flattering one.")
+    print(f"\nThen:  python scripts/eval_clustering.py --agreement {out_path}")
+
+
+def agreement(corpus_path: Path, review_path: Path) -> None:
+    """Compare a human's pair verdicts to the machine labels; report Cohen's kappa."""
+    batches = [
+        json.loads(line) for line in corpus_path.read_text().splitlines() if line.strip()
+    ]
+    idx = {
+        (b["batch_id"], a["idx"]): a.get("event_id")
+        for b in batches for a in b["articles"]
+    }
+    with review_path.open(newline="", encoding=CSV_ENCODING) as f:
+        rows = list(csv.DictReader(f))
+
+    both_same = both_diff = human_same_only = machine_same_only = 0
+    disagreements = []
+    scored = 0
+    for r in rows:
+        v = (r.get("your_verdict") or "").strip().lower()
+        if v not in {"same", "different", "s", "d"}:
+            continue
+        scored += 1
+        human = v.startswith("s")
+        ea = idx.get((r["batch_id"], int(r["idx_a"])))
+        eb = idx.get((r["batch_id"], int(r["idx_b"])))
+        machine = bool(ea) and ea == eb
+        if human and machine:
+            both_same += 1
+        elif not human and not machine:
+            both_diff += 1
+        elif human:
+            human_same_only += 1
+            disagreements.append(("human=same machine=different", r))
+        else:
+            machine_same_only += 1
+            disagreements.append(("human=different machine=same", r))
+
+    if not scored:
+        raise SystemExit(
+            f"no verdicts found in {review_path} — fill in the your_verdict column "
+            "with `same` or `different`"
+        )
+
+    n = scored
+    po = (both_same + both_diff) / n
+    # Cohen's kappa: agreement corrected for what chance alone would produce.
+    p_h = (both_same + human_same_only) / n
+    p_m = (both_same + machine_same_only) / n
+    pe = p_h * p_m + (1 - p_h) * (1 - p_m)
+    kappa = 1.0 if pe == 1 else (po - pe) / (1 - pe)
+
+    print(f"  pairs adjudicated:      {n}")
+    print(f"  raw agreement:          {po:.1%}")
+    print(f"  Cohen's kappa:          {kappa:.3f}")
+    print()
+    print(f"  both said same:         {both_same}")
+    print(f"  both said different:    {both_diff}")
+    print(f"  human same / machine different: {human_same_only}")
+    print(f"  human different / machine same: {machine_same_only}")
+
+    if kappa >= 0.80:
+        verdict = "strong — machine labels are a reasonable stand-in for human ground truth"
+    elif kappa >= 0.60:
+        verdict = "moderate — usable, but report the kappa alongside any accuracy number"
+    else:
+        verdict = ("weak — do NOT quote accuracy off this corpus without relabeling "
+                   "the disputed cases by hand")
+    print(f"\n  {verdict}")
+
+    if disagreements:
+        print(f"\n  disagreements ({len(disagreements)}) — these are the cases worth "
+              "resolving by hand:")
+        for kind, r in disagreements[:10]:
+            print(f"    [{kind}]  {r['batch_id']}  {r['idx_a']} ~ {r['idx_b']}")
+            print(f"      {r['title_a'][:66]}")
+            print(f"      {r['title_b'][:66]}")
+
+
+# ─── labeling aid (mode: --candidates) ────────────────────
+
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’\-]{2,}")
+
+# Ordinary English function words. Not a topic stoplist — deliberately no
+# political or news vocabulary here, because "which words are too generic" is a
+# judgment that belongs to the person labeling, not baked into the tool.
+_STOPWORDS = set("""
+the this that what how why when where who new after before his her its their not but and for with from
+into over under here there these those said says could would should will can has have had was were are
+is be been being out off down up all any more most other some such only own same than too very one two
+you your they them then now about against between during through above below over into while because
+""".split())
+
+
+def _content_words(text: str) -> set[str]:
+    return {w.lower() for w in _WORD_RE.findall(text)} - _STOPWORDS
+
+
+def _find(parent: dict[int, int], x: int) -> int:
+    """Union-find root with path compression. Module-level so it does not close
+    over a loop variable (ruff B023)."""
+    parent.setdefault(x, x)
+    while parent[x] != x:
+        parent[x] = parent[parent[x]]
+        x = parent[x]
+    return x
+
+
+def show_candidates(corpus_path: Path, threshold: float) -> None:
+    """Surface likely-related articles so labeling is scanning, not hunting.
+
+    WHAT THIS IS NOT: it is not the clusterer's output, and it does not use
+    embeddings, `entities`, or `story_id`. Using any of those to build ground
+    truth would make the eval circular — you would be measuring whether the
+    system agrees with itself. This is plain lexical overlap on TITLE text
+    (publisher-written, the most neutral signal available), scored by inverse
+    document frequency within a batch.
+
+    Sorting the CSV alphabetically already puts same-event articles adjacent
+    when their titles share a leading word ("Seattle ..."), but misses clusters
+    whose titles start differently — the Blanche nomination articles begin
+    "Senate", "Steve" and "Trump" and are scattered across the batch.
+
+    Everything printed is a CANDIDATE. Some are real clusters, some are
+    same-topic/different-event pairs — the second kind are exactly what should
+    be marked `hard` + `distractor_of`. The call is yours on every one.
+    """
+    if not corpus_path.exists():
+        raise SystemExit(f"corpus not found: {corpus_path}")
+    batches = [
+        json.loads(line)
+        for line in corpus_path.read_text().splitlines()
+        if line.strip()
+    ]
+
+    for b in batches:
+        articles = b["articles"]
+        n = len(articles)
+        words = {a["idx"]: _content_words(a["title"]) for a in articles}
+        df = Counter(w for ws in words.values() for w in ws)
+        by_idx = {a["idx"]: a for a in articles}
+
+        # Ignore words appearing in more than a quarter of the batch: within one
+        # category "senate"/"trump" carry almost no information about WHICH
+        # event an article covers.
+        ceiling = max(2, n // 4)
+        scored = []
+        for i, a in enumerate(articles):
+            for c in articles[i + 1:]:
+                shared = {
+                    w for w in words[a["idx"]] & words[c["idx"]]
+                    if 2 <= df[w] <= ceiling
+                }
+                if not shared:
+                    continue
+                score = sum(math.log(n / df[w]) for w in shared)
+                scored.append((score, a["idx"], c["idx"], shared))
+        scored.sort(reverse=True)
+
+        # Union-find over above-threshold pairs, so a 3-article event shows as
+        # one group rather than three separate pairs.
+        parent: dict[int, int] = {}
+        terms: dict[tuple[int, int], set[str]] = {}
+        for score, x, y, shared in scored:
+            if score < threshold:
+                continue
+            terms[(x, y)] = shared
+            parent[_find(parent, x)] = _find(parent, y)
+
+        grouped: dict[int, list[int]] = defaultdict(list)
+        for idx in list(parent):
+            grouped[_find(parent, idx)].append(idx)
+        groups = {k: sorted(v) for k, v in grouped.items() if len(v) >= 2}
+
+        print(f"\n{'=' * 78}\n{b['batch_id']}  —  {n} articles, "
+              f"{len(groups)} candidate group(s) at score >= {threshold}\n{'=' * 78}")
+        if not groups:
+            print("  (none — either a genuinely quiet window, or lower --threshold)")
+
+        for gi, members in enumerate(sorted(groups.values(), key=len, reverse=True), 1):
+            linking = sorted(
+                {w for (x, y), s in terms.items() if x in members and y in members for w in s},
+                key=lambda w: df[w],
+            )
+            outlets = {by_idx[m]["source_name"] for m in members}
+            flag = "" if len(outlets) >= 2 else "   [single outlet — cannot be a story]"
+            print(f"\n  candidate {gi}: {len(members)} articles, "
+                  f"{len(outlets)} outlet(s){flag}")
+            print(f"    linked by: {', '.join(linking[:8])}")
+            for m in members:
+                a = by_idx[m]
+                print(f"      idx {m:>3}  [{a['source_name'][:16]:16}] {a['title'][:62]}")
+
+        # Pairs just below the line: the richest source of `hard` distractors,
+        # because "shares vocabulary but is a different event" is exactly what
+        # topic_conflation_rate measures.
+        near = [p for p in scored if threshold * 0.6 <= p[0] < threshold][:5]
+        if near:
+            print("\n  borderline — check these for same-topic/different-event traps:")
+            for score, x, y, shared in near:
+                print(f"    {score:5.1f}  idx {x} ~ {y}  ({', '.join(sorted(shared)[:3])})")
+                print(f"           {by_idx[x]['title'][:64]}")
+                print(f"           {by_idx[y]['title'][:64]}")
+
+    print(f"\n{'=' * 78}")
+    print("These are CANDIDATES from title-word overlap only — not the clusterer's")
+    print("output, and not embeddings. Real clusters and same-topic traps both show")
+    print("up here; telling them apart is the judgment the eval is built to capture.")
+    print("Put a shared slug in event_id for real ones; mark traps hard=yes.")
+
+
 # ─── label CSV export (mode: --export-labels) ─────────────
 
 LABEL_COLUMNS = [
@@ -449,6 +743,7 @@ def ingest_labels(corpus_path: Path, csv_path: Path) -> None:
     with corpus_path.open("w") as f:
         for b in batches:
             b["note"] = "labeled"
+            b["annotation"] = ANNOTATION_PROVENANCE
             f.write(json.dumps(b) + "\n")
 
     # ── is this corpus actually worth running? ──
@@ -751,12 +1046,24 @@ def main() -> None:
                       help="merge a hand-labeled CSV back into the corpus, then validate")
     mode.add_argument("--export-labels", action="store_true",
                       help="regenerate the labeling CSV from an existing corpus (no DB, no re-sample)")
+    mode.add_argument("--candidates", action="store_true",
+                      help="suggest likely-related articles to speed up labeling (lexical only)")
+    mode.add_argument("--review-sample", type=Path, metavar="CSV",
+                      help="emit article PAIRS for an independent human spot-check")
+    mode.add_argument("--agreement", type=Path, metavar="CSV",
+                      help="score a completed review CSV against the corpus (Cohen's kappa)")
 
     p.add_argument("--batches", type=int, default=6, help="--sample: number of batches (default 6)")
     p.add_argument("--per-batch", type=int, default=25, help="--sample: articles per batch (default 25)")
     p.add_argument(
         "--window-hours", type=int, default=WINDOW_HOURS,
         help=f"--sample: hours per batch window (default {WINDOW_HOURS}, matching production)",
+    )
+    p.add_argument("--review-pairs", type=int, default=40,
+                   help="--review-sample: how many pairs to emit (default 40)")
+    p.add_argument(
+        "--threshold", type=float, default=4.5,
+        help="--candidates: IDF score cutoff (default 4.5; lower surfaces more, noisier)",
     )
     p.add_argument("--repeats", type=int, default=1, help="--live: repeat runs to measure spread")
     p.add_argument("--record", action="store_true", help="--live: (re)write response fixtures + baseline")
@@ -765,6 +1072,18 @@ def main() -> None:
     p.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     p.add_argument("--json", type=Path, help="write the aggregate report to this path")
     args = p.parse_args()
+
+    if args.review_sample:
+        review_sample(args.corpus, args.review_sample, args.review_pairs)
+        return
+
+    if args.agreement:
+        agreement(args.corpus, args.agreement)
+        return
+
+    if args.candidates:
+        show_candidates(args.corpus, args.threshold)
+        return
 
     if args.export_labels:
         export_labels(args.corpus)
