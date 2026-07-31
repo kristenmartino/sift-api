@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
+import logging
 import re
 from pathlib import Path
+
+import httpx
+import pytest
 
 from services.rss import stable_hash, _base36, compute_content_hash, parse_feed, FEEDS
 
@@ -196,3 +201,160 @@ class TestFeedConfig:
             f"README says {match.group(1)} RSS feeds but FEEDS has {len(FEEDS)}. "
             "Update the count in sift-api/README.md to match."
         )
+
+
+class TestFeedStats:
+    """The `feed_stats` event (#122).
+
+    The Washington Post feed returned HTTP 400 for ~15 days and nothing
+    noticed: `_fetch_single_feed` swallowed the error and returned an empty
+    list, `return_exceptions=True` hid the rest, and the run reported success.
+    An empty list cannot distinguish "the fetch failed" from "the feed answered
+    and had nothing" — these pin the distinction and the reporting.
+    """
+
+    @staticmethod
+    def _articles(n: int, source: str) -> list:
+        from app.models import RSSArticle
+
+        return [
+            RSSArticle(
+                title=f"{source} {i}",
+                source_url=f"https://example.com/{source}/{i}",
+                source_name=source,
+                raw_content="body",
+            )
+            for i in range(n)
+        ]
+
+    @staticmethod
+    def _events(caplog) -> list[dict]:
+        return [
+            json.loads(r.message)
+            for r in caplog.records
+            if r.message.startswith("{") and '"feed_stats"' in r.message
+        ]
+
+    async def _run(self, monkeypatch, caplog, outcome):
+        """Replace the per-feed fetch, then run the real aggregation."""
+        from services import rss
+
+        async def fake(source_name, feed_url):
+            return outcome(source_name, feed_url)
+
+        monkeypatch.setattr(rss, "_fetch_single_feed", fake)
+        with caplog.at_level(logging.INFO, logger="sift-api.rss"):
+            articles = await rss.fetch_feeds()
+        return articles, self._events(caplog)
+
+    @pytest.mark.asyncio
+    async def test_healthy_run_reports_every_feed_ok(self, monkeypatch, caplog):
+        from services.rss import FeedResult
+
+        articles, events = await self._run(
+            monkeypatch, caplog,
+            lambda s, u: FeedResult(s, u, self._articles(2, s)),
+        )
+        assert len(articles) == 2 * len(FEEDS)
+        assert events, "no feed_stats event was emitted"
+        stats = events[0]
+        assert stats["feeds_total"] == len(FEEDS)
+        assert stats["feeds_ok"] == len(FEEDS)
+        assert stats["feeds_failed"] == 0
+        assert stats["feeds_empty"] == 0
+        assert stats["articles"] == 2 * len(FEEDS)
+
+    @pytest.mark.asyncio
+    async def test_http_error_is_named_not_swallowed(self, monkeypatch, caplog):
+        """The #122 case: one feed 400s and the run still succeeds."""
+        from services.rss import FeedResult
+
+        dead = FEEDS[0][0]
+
+        def outcome(s, u):
+            if s == dead:
+                return FeedResult(s, u, [], "HTTPStatusError: 400 Bad Request")
+            return FeedResult(s, u, self._articles(1, s))
+
+        articles, events = await self._run(monkeypatch, caplog, outcome)
+
+        assert len(articles) == len(FEEDS) - 1  # the run still produces
+        stats = events[0]
+        assert stats["feeds_failed"] == 1
+        assert stats["failed"][0]["source"] == dead
+        assert "400" in stats["failed"][0]["error"]
+        assert stats["articles_by_source"][dead] == 0
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_a_feed_that_answers_with_nothing_is_distinguished_from_one_that_errored(
+        self, monkeypatch, caplog
+    ):
+        from services.rss import FeedResult
+
+        quiet = FEEDS[1][0]
+
+        def outcome(s, u):
+            if s == quiet:
+                return FeedResult(s, u, [])  # HTTP 200, zero usable entries
+            return FeedResult(s, u, self._articles(1, s))
+
+        _, events = await self._run(monkeypatch, caplog, outcome)
+        stats = events[0]
+        assert stats["feeds_empty"] == 1
+        assert stats["empty"] == [quiet]
+        assert stats["feeds_failed"] == 0, "an empty feed is not a failed feed"
+
+    @pytest.mark.asyncio
+    async def test_a_raised_exception_is_attributed_to_the_right_feed(self, monkeypatch, caplog):
+        """gather(return_exceptions=True) loses the feed identity unless the
+        results are paired back against FEEDS in order."""
+        from services.rss import FeedResult
+
+        boom = FEEDS[2][0]
+
+        def outcome(s, u):
+            if s == boom:
+                raise RuntimeError("connection reset")
+            return FeedResult(s, u, self._articles(1, s))
+
+        _, events = await self._run(monkeypatch, caplog, outcome)
+        stats = events[0]
+        assert stats["feeds_failed"] == 1
+        assert stats["failed"][0]["source"] == boom
+        assert "connection reset" in stats["failed"][0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_every_configured_source_appears_in_the_counts(self, monkeypatch, caplog):
+        """A dying feed has to show up as a zero, not as an absent key."""
+        from services.rss import FeedResult
+
+        _, events = await self._run(
+            monkeypatch, caplog, lambda s, u: FeedResult(s, u, []),
+        )
+        counts = events[0]["articles_by_source"]
+        assert set(counts) == {name for name, _ in FEEDS}
+        assert set(counts.values()) == {0}
+
+    @pytest.mark.asyncio
+    async def test_fetch_failure_carries_the_error_out_instead_of_returning_bare_empty(
+        self, monkeypatch
+    ):
+        """_fetch_single_feed's own contract — the half that used to swallow."""
+        from services import rss
+
+        class Boom:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, *a, **kw):
+                raise httpx.ConnectTimeout("timed out")
+
+        monkeypatch.setattr(rss.httpx, "AsyncClient", lambda *a, **kw: Boom())
+        result = await rss._fetch_single_feed("Test", "https://example.com/feed")
+        assert result.articles == []
+        assert "ConnectTimeout" in result.error
+        assert result.source_name == "Test"
