@@ -44,9 +44,11 @@ import asyncio
 import csv
 import hashlib
 import json
+import math
 import os
+import re
 import statistics
-from collections import Counter
+from collections import Counter, defaultdict
 import sys
 from pathlib import Path
 
@@ -286,6 +288,138 @@ async def sample_corpus(
     print()
     print("Aim for at least one batch with NO real clusters — nothing currently")
     print("protects against over-clustering a slow news day.")
+
+
+# ─── labeling aid (mode: --candidates) ────────────────────
+
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’\-]{2,}")
+
+# Ordinary English function words. Not a topic stoplist — deliberately no
+# political or news vocabulary here, because "which words are too generic" is a
+# judgment that belongs to the person labeling, not baked into the tool.
+_STOPWORDS = set("""
+the this that what how why when where who new after before his her its their not but and for with from
+into over under here there these those said says could would should will can has have had was were are
+is be been being out off down up all any more most other some such only own same than too very one two
+you your they them then now about against between during through above below over into while because
+""".split())
+
+
+def _content_words(text: str) -> set[str]:
+    return {w.lower() for w in _WORD_RE.findall(text)} - _STOPWORDS
+
+
+def _find(parent: dict[int, int], x: int) -> int:
+    """Union-find root with path compression. Module-level so it does not close
+    over a loop variable (ruff B023)."""
+    parent.setdefault(x, x)
+    while parent[x] != x:
+        parent[x] = parent[parent[x]]
+        x = parent[x]
+    return x
+
+
+def show_candidates(corpus_path: Path, threshold: float) -> None:
+    """Surface likely-related articles so labeling is scanning, not hunting.
+
+    WHAT THIS IS NOT: it is not the clusterer's output, and it does not use
+    embeddings, `entities`, or `story_id`. Using any of those to build ground
+    truth would make the eval circular — you would be measuring whether the
+    system agrees with itself. This is plain lexical overlap on TITLE text
+    (publisher-written, the most neutral signal available), scored by inverse
+    document frequency within a batch.
+
+    Sorting the CSV alphabetically already puts same-event articles adjacent
+    when their titles share a leading word ("Seattle ..."), but misses clusters
+    whose titles start differently — the Blanche nomination articles begin
+    "Senate", "Steve" and "Trump" and are scattered across the batch.
+
+    Everything printed is a CANDIDATE. Some are real clusters, some are
+    same-topic/different-event pairs — the second kind are exactly what should
+    be marked `hard` + `distractor_of`. The call is yours on every one.
+    """
+    if not corpus_path.exists():
+        raise SystemExit(f"corpus not found: {corpus_path}")
+    batches = [
+        json.loads(line)
+        for line in corpus_path.read_text().splitlines()
+        if line.strip()
+    ]
+
+    for b in batches:
+        articles = b["articles"]
+        n = len(articles)
+        words = {a["idx"]: _content_words(a["title"]) for a in articles}
+        df = Counter(w for ws in words.values() for w in ws)
+        by_idx = {a["idx"]: a for a in articles}
+
+        # Ignore words appearing in more than a quarter of the batch: within one
+        # category "senate"/"trump" carry almost no information about WHICH
+        # event an article covers.
+        ceiling = max(2, n // 4)
+        scored = []
+        for i, a in enumerate(articles):
+            for c in articles[i + 1:]:
+                shared = {
+                    w for w in words[a["idx"]] & words[c["idx"]]
+                    if 2 <= df[w] <= ceiling
+                }
+                if not shared:
+                    continue
+                score = sum(math.log(n / df[w]) for w in shared)
+                scored.append((score, a["idx"], c["idx"], shared))
+        scored.sort(reverse=True)
+
+        # Union-find over above-threshold pairs, so a 3-article event shows as
+        # one group rather than three separate pairs.
+        parent: dict[int, int] = {}
+        terms: dict[tuple[int, int], set[str]] = {}
+        for score, x, y, shared in scored:
+            if score < threshold:
+                continue
+            terms[(x, y)] = shared
+            parent[_find(parent, x)] = _find(parent, y)
+
+        grouped: dict[int, list[int]] = defaultdict(list)
+        for idx in list(parent):
+            grouped[_find(parent, idx)].append(idx)
+        groups = {k: sorted(v) for k, v in grouped.items() if len(v) >= 2}
+
+        print(f"\n{'=' * 78}\n{b['batch_id']}  —  {n} articles, "
+              f"{len(groups)} candidate group(s) at score >= {threshold}\n{'=' * 78}")
+        if not groups:
+            print("  (none — either a genuinely quiet window, or lower --threshold)")
+
+        for gi, members in enumerate(sorted(groups.values(), key=len, reverse=True), 1):
+            linking = sorted(
+                {w for (x, y), s in terms.items() if x in members and y in members for w in s},
+                key=lambda w: df[w],
+            )
+            outlets = {by_idx[m]["source_name"] for m in members}
+            flag = "" if len(outlets) >= 2 else "   [single outlet — cannot be a story]"
+            print(f"\n  candidate {gi}: {len(members)} articles, "
+                  f"{len(outlets)} outlet(s){flag}")
+            print(f"    linked by: {', '.join(linking[:8])}")
+            for m in members:
+                a = by_idx[m]
+                print(f"      idx {m:>3}  [{a['source_name'][:16]:16}] {a['title'][:62]}")
+
+        # Pairs just below the line: the richest source of `hard` distractors,
+        # because "shares vocabulary but is a different event" is exactly what
+        # topic_conflation_rate measures.
+        near = [p for p in scored if threshold * 0.6 <= p[0] < threshold][:5]
+        if near:
+            print("\n  borderline — check these for same-topic/different-event traps:")
+            for score, x, y, shared in near:
+                print(f"    {score:5.1f}  idx {x} ~ {y}  ({', '.join(sorted(shared)[:3])})")
+                print(f"           {by_idx[x]['title'][:64]}")
+                print(f"           {by_idx[y]['title'][:64]}")
+
+    print(f"\n{'=' * 78}")
+    print("These are CANDIDATES from title-word overlap only — not the clusterer's")
+    print("output, and not embeddings. Real clusters and same-topic traps both show")
+    print("up here; telling them apart is the judgment the eval is built to capture.")
+    print("Put a shared slug in event_id for real ones; mark traps hard=yes.")
 
 
 # ─── label CSV export (mode: --export-labels) ─────────────
@@ -751,12 +885,18 @@ def main() -> None:
                       help="merge a hand-labeled CSV back into the corpus, then validate")
     mode.add_argument("--export-labels", action="store_true",
                       help="regenerate the labeling CSV from an existing corpus (no DB, no re-sample)")
+    mode.add_argument("--candidates", action="store_true",
+                      help="suggest likely-related articles to speed up labeling (lexical only)")
 
     p.add_argument("--batches", type=int, default=6, help="--sample: number of batches (default 6)")
     p.add_argument("--per-batch", type=int, default=25, help="--sample: articles per batch (default 25)")
     p.add_argument(
         "--window-hours", type=int, default=WINDOW_HOURS,
         help=f"--sample: hours per batch window (default {WINDOW_HOURS}, matching production)",
+    )
+    p.add_argument(
+        "--threshold", type=float, default=4.5,
+        help="--candidates: IDF score cutoff (default 4.5; lower surfaces more, noisier)",
     )
     p.add_argument("--repeats", type=int, default=1, help="--live: repeat runs to measure spread")
     p.add_argument("--record", action="store_true", help="--live: (re)write response fixtures + baseline")
@@ -765,6 +905,10 @@ def main() -> None:
     p.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     p.add_argument("--json", type=Path, help="write the aggregate report to this path")
     args = p.parse_args()
+
+    if args.candidates:
+        show_candidates(args.corpus, args.threshold)
+        return
 
     if args.export_labels:
         export_labels(args.corpus)
