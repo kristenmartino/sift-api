@@ -10,6 +10,7 @@ import pytest
 from services.index_alignment import MAX_BATCH_ATTEMPTS, AlignmentError
 from services.summarizer import (
     _extract_json_array,
+    _has_summarizable_content,
     _build_prompt,
     _parse_summaries,
     _truncate,
@@ -328,3 +329,59 @@ class TestTruncate:
     def test_exact_limit(self):
         text = "one two three"
         assert _truncate(text, 3) == "one two three"
+
+
+class TestRefusalHandling:
+    """#118: the model's apologies must not reach a card."""
+
+    def test_a_refusal_summary_is_blanked_not_stored(self):
+        batch = [_make_article(1)]
+        text = _response({"i": 1, "s": "Insufficient content provided to summarize.", "c": "top"})
+        assert _parse_summaries(text, batch)["https://example.com/article-1"]["summary"] == ""
+
+    def test_blanking_a_refusal_is_not_treated_as_misalignment(self):
+        """The alignment check runs on the RAW text: a refusal is a bad answer
+        FOR THIS ARTICLE, not evidence the batch shifted. Retrying would just
+        buy another apology."""
+        batch = [_make_article(1), _make_article(2)]
+        text = _response(
+            {"i": 1, "s": "Unable to summarize — no content provided.", "c": "top"},
+            {"i": 2, "s": "A real summary of the second article, with enough words.", "c": "top"},
+        )
+        results = _parse_summaries(text, batch)  # must not raise
+        assert results["https://example.com/article-1"]["summary"] == ""
+        assert results["https://example.com/article-2"]["summary"].startswith("A real summary")
+
+    def test_an_article_with_no_body_is_never_sent_to_the_model(self):
+        empty = RSSArticle(
+            title="Horizons Middle East & Africa (Video)",
+            source_url="https://example.com/video",
+            source_name="Bloomberg",
+            category="world",
+            raw_content="",
+        )
+        assert not _has_summarizable_content(empty)
+
+    def test_a_body_that_merely_repeats_the_headline_is_not_summarizable(self):
+        echo = RSSArticle(
+            title="Drones Over Egypt",
+            source_url="https://example.com/drones",
+            source_name="Reason",
+            category="world",
+            raw_content="<p>Drones Over Egypt</p>",
+        )
+        assert not _has_summarizable_content(echo)
+
+    def test_a_real_body_is_summarizable(self):
+        assert _has_summarizable_content(_make_article(1))
+
+    @pytest.mark.asyncio
+    async def test_bodyless_articles_are_skipped_without_a_model_call(self):
+        empty = RSSArticle(
+            title="Video placeholder", source_url="https://example.com/v",
+            source_name="Bloomberg", category="world", raw_content="",
+        )
+        client = _mock_client()
+        results = await summarize_articles([empty], client=client)
+        client.messages.create.assert_not_called()
+        assert results == {}

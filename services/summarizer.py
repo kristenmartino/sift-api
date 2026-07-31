@@ -9,6 +9,7 @@ import anthropic
 
 from app.config import settings
 from app.models import RSSArticle
+from services.quality_gate import gate_summary
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
     AlignmentError,
@@ -46,8 +47,21 @@ async def summarize_articles(
     results: dict[str, dict] = {}
     misaligned_batches = 0
 
-    for i in range(0, len(articles), BATCH_SIZE):
-        batch = articles[i : i + BATCH_SIZE]
+    # Articles whose RSS entry is a headline and nothing else cannot be
+    # summarized, and asking anyway is how apologies ended up on cards
+    # (#118): the model answers "Insufficient content provided to summarize."
+    # and that gets stored. Skipping is also free — these were paying for a
+    # model call to produce something unusable.
+    summarizable = [a for a in articles if _has_summarizable_content(a)]
+    skipped_empty = len(articles) - len(summarizable)
+    if skipped_empty:
+        logger.info(
+            "Skipping %d/%d articles whose RSS entry carries no body text",
+            skipped_empty, len(articles),
+        )
+
+    for i in range(0, len(summarizable), BATCH_SIZE):
+        batch = summarizable[i : i + BATCH_SIZE]
         batch_index = i // BATCH_SIZE
         try:
             results.update(await _summarize_batch_with_retry(client, batch, batch_index))
@@ -86,6 +100,22 @@ async def _summarize_batch_with_retry(
         batch_index=batch_index,
         ids=[a.source_url for a in batch],
     )
+
+
+def _has_summarizable_content(article: RSSArticle) -> bool:
+    """False when the RSS entry gives us nothing beyond the headline.
+
+    `_build_prompt` falls back to the title when raw_content is empty, which
+    asks the model to summarize a headline from itself — it answers with an
+    apology, and that apology used to be stored (#118). Deliberately narrow:
+    only genuinely empty or title-duplicate bodies are skipped, because thin
+    content can still summarize fine and quality_gate.gate_summary catches
+    whatever slips through.
+    """
+    content = re.sub(r"<[^>]+>", "", article.raw_content or "").strip()
+    if not content:
+        return False
+    return content.casefold() != (article.title or "").strip().casefold()
 
 
 def _raw_content_fallback(batch: list[RSSArticle]) -> dict[str, dict]:
@@ -206,8 +236,15 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
             category = "top"
         # An article with no summary of its own is a missing entry wearing a
         # valid index — same evidence of a shift, same all-or-nothing answer.
+        # Checked on the RAW text, BEFORE the refusal gate: a refusal is a
+        # (bad) answer for this article, not evidence that the batch shifted.
         if not isinstance(summary, str) or not summary.strip():
             raise AlignmentError(f"empty summary at index {idx}")
+
+        # Drop the model's own apologies for articles it could not summarize
+        # (#118). May legitimately empty the summary; store_node writes "" and
+        # the feed skips it, which beats showing the apology.
+        summary = gate_summary(summary)
 
         results[batch[idx - 1].source_url] = {"summary": summary, "category": category}
 

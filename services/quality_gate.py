@@ -105,6 +105,40 @@ _CLICHE_SOURCES = [
 
 _CLICHE_RE = [re.compile(p, re.IGNORECASE) for p in _CLICHE_SOURCES]
 
+# What the model says instead of a summary when the RSS entry has no body
+# (sift-api#118). Each phrase declares the ARTICLE unsummarizable — deliberately
+# not looser. "may not provide sufficient votes" is a real summary and appears
+# in prod 97 times; a pattern like `not provide sufficient` would eat it.
+_REFUSAL_SOURCES = [
+    r"\bunable to summarize\b",
+    r"\bunable to provide (?:a |an accurate )?summary\b",
+    r"\bcannot be summarized\b",
+    r"\bcannot summarize\b",
+    r"\bsummary (?:is )?(?:not available|unavailable|cannot be (?:determined|provided|generated))\b",
+    r"\b(?:no|insufficient|incomplete) (?:substantive )?(?:article )?content "
+    r"(?:was |is |been )?(?:provided|available|present)\b",
+    r"\binsufficient content\b",
+    r"\b(?:no|without|lacking|lacks) substantive content\b",
+    r"\bcontent not provided\b",
+    r"\bno content (?:to summarize|provided)\b",
+    r"\b(?:article |the )?content (?:is|appears) (?:to be )?incomplete\b",
+    r"\barticle appears incomplete\b",
+    r"\bincomplete article content\b",
+    r"\bprevents? summarization\b",
+    r"\binsufficient (?:information|detail) to summarize\b",
+    r"\b(?:without|lacks) sufficient content\b",
+    r"\bdoes not contain (?:sufficient|substantive|coherent)\b",
+    r"\bno (?:article )?text (?:was )?provided\b",
+]
+_REFUSAL_RE = [re.compile(p, re.IGNORECASE) for p in _REFUSAL_SOURCES]
+
+# A summary shorter than this after the apologies are removed is not a summary.
+# Deliberately low: real summaries run 1-2 sentences, and the goal is to drop
+# leftovers like "No content." rather than to enforce a length policy.
+MIN_SUMMARY_WORDS = 10
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
 
 # Strings models sometimes emit to mean "no line" — treated as a drop.
@@ -152,6 +186,62 @@ def find_cliche(line: str) -> str | None:
         if m:
             return m.group(0)
     return None
+
+
+def find_refusal(text: str) -> str | None:
+    """Return the first matched refusal phrase, or None. See gate_summary."""
+    for rx in _REFUSAL_RE:
+        m = rx.search(text or "")
+        if m:
+            return m.group(0)
+    return None
+
+
+def gate_summary(summary: str | None) -> str:
+    """Strip the model's own apologies out of an article summary (sift-api#118).
+
+    When an article's RSS entry carries no usable body, Haiku answers with a
+    refusal rather than a summary — "Insufficient content provided to
+    summarize." — and it was stored and shown to readers verbatim. 109 rows
+    over 30 days of prod (0.2%), concentrated in feeds whose RSS is
+    headline-only.
+
+    Sentence-level, not all-or-nothing, because the failure is often MIXED. A
+    real case from prod:
+
+        "Treasury Secretary Scott Bessent said in a Fox News interview that
+         President Trump predicted the Democratic Party's shift toward
+         democratic socialism as its center of gravity. The article's content
+         appears incomplete and does not provide full context."
+
+    The first sentence is the summary; the second is the apology. Dropping the
+    whole thing to kill the apology would throw away real reporting — the same
+    reasoning that makes gate_background spare long paragraphs.
+
+    What survives must still be a summary, so a remainder under
+    MIN_SUMMARY_WORDS is blanked entirely. An empty summary is not a blank
+    card: every feed query in sift/lib/db.ts filters
+    `summary IS NOT NULL AND summary != ''`, so the article simply stops being
+    served — which is the right outcome for an article nobody could summarize.
+
+    Patterns are high precision by design, matching this module's existing
+    posture. "…even a simple majority may not provide sufficient votes" is a
+    real summary and must not trip: phrases here name the ARTICLE as
+    unsummarizable rather than merely using the words.
+    """
+    text = (summary or "").strip()
+    if not text or not find_refusal(text):
+        # Inert unless the model actually apologized. Note the early return:
+        # MIN_SUMMARY_WORDS must never touch a summary that was fine, or a
+        # terse-but-correct one ("The Fed held rates steady at 4.25%.") would
+        # be destroyed by a gate aimed at something else entirely.
+        return text
+
+    kept = [s for s in _SENTENCE_SPLIT_RE.split(text) if s.strip() and not find_refusal(s)]
+    remainder = " ".join(kept).strip()
+    if len(remainder.split()) < MIN_SUMMARY_WORDS:
+        return ""
+    return remainder
 
 
 def is_near_restatement(
