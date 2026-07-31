@@ -14,21 +14,29 @@ This script FINDS candidates. It does not repair anything and never writes.
   ("Liars and Loons" correctly summarized as a Fauci opinion piece). Do not
   quote that rate as the bug rate.
 
-  Detector B (the useful one): for each row flagged by A, look for a
-  NEIGHBOURING article — one written by the same pipeline run, i.e. an
-  adjacent created_at — whose TITLE overlaps this row's summary. A batch is 5
-  consecutive new articles, so a swapped summary almost always lands on a
-  neighbour. `swap_score` > 0 with a named `best_match_url` is the smoking
-  gun; those rows are worth re-summarizing. A high `swap_score` on a row whose
-  own title genuinely shares no words with its summary is still a judgement
-  call — hence "candidates", not "hits".
+  Detector B (the useful one): for each row flagged by A, look for another
+  article from the SAME PIPELINE RUN — anything inserted within
+  --window-seconds of it — whose TITLE overlaps this row's summary. A swapped
+  summary belongs to one of the run's own articles, so the true owner is in
+  that burst. `swap_score` >= 2 with a named `best_match_url` is the smoking
+  gun.
+
+  Beware the converse: two outlets covering the same event also score high,
+  because their titles legitimately overlap each other's summaries. A high
+  score means "look at this", not "this is broken".
+
+  This started as a +/-5-row scan, which MISSED a confirmed production case:
+  the true owner of the misplaced summary sat 8 rows away (verified
+  2026-07-31 — the Guatemala/Blanche pair scored 0 and would have been
+  triaged last). One run inserts ~60 rows in a couple of minutes and scoring
+  them all is cheap, so the window is now time-based.
 
 Output is a CSV for hand-triage. Add a `verdict` column in the spreadsheet,
 then feed the confirmed rows to a re-summarization pass (not written yet —
 the honest sequencing is triage first, repair second).
 
 Examples:
-  ./.venv/bin/python3 scripts/find_misaligned_summaries.py --days 7
+  ./.venv/bin/python3 scripts/find_misaligned_summaries.py --days 7 --out data/_cache/c.csv
   ./.venv/bin/python3 scripts/find_misaligned_summaries.py --days 30 --out /tmp/candidates.csv
 """
 from __future__ import annotations
@@ -61,19 +69,36 @@ STOPWORDS = {
     "who", "why", "will", "with", "would", "you", "your",
 }
 
-TOKEN_RE = re.compile(r"[a-z0-9']+")
+TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+# Order matters: longest suffix first, so "communities" stems past "es".
+_SUFFIXES = ("ies", "ing", "ory", "ers", "ed", "es", "s")
 
 
 def content_words(text: str) -> set[str]:
-    """Lowercased, de-pluralized content words. Crude stemming on purpose —
-    matching "senators" to "senator" matters more here than linguistic rigor."""
+    """Lowercased, stemmed content words. Crude on purpose — matching
+    "senators" to "senator" matters more here than linguistic rigor.
+
+    Three things the first version got wrong, each of which inflated the flag
+    count with articles whose summary was fine (measured 2026-07-31: 186
+    flagged, 123 after these fixes):
+
+      - apostrophes were kept, so "Blanche's" never matched "Blanche";
+      - a 3-character floor dropped "AI", "US", "EU" — the entire subject of
+        some headlines;
+      - only a trailing "s" was stripped, so "regulate"/"regulatory" and
+        "protest"/"protesters" read as unrelated.
+    """
     words = set()
-    for token in TOKEN_RE.findall((text or "").lower()):
-        token = token.strip("'")
-        if len(token) < 3 or token in STOPWORDS:
+    # Drop apostrophes before tokenizing so possessives collapse into the
+    # base word ("blanche's" -> "blanches" -> "blanche").
+    for token in TOKEN_RE.findall((text or "").lower().replace("'", "").replace("’", "")):
+        if len(token) < 2 or token in STOPWORDS:
             continue
-        if len(token) > 4 and token.endswith("s") and not token.endswith("ss"):
-            token = token[:-1]
+        for suffix in _SUFFIXES:
+            if len(token) > len(suffix) + 3 and token.endswith(suffix):
+                token = token[: -len(suffix)]
+                break
         words.add(token)
     return words
 
@@ -84,7 +109,7 @@ async def _connect() -> asyncpg.Pool:
     return await asyncpg.create_pool(db_url, min_size=1, max_size=4, ssl=ssl_mode)
 
 
-async def find_candidates(pool: asyncpg.Pool, days: int, neighbours: int) -> list[dict]:
+async def find_candidates(pool: asyncpg.Pool, days: int, window_seconds: int) -> list[dict]:
     rows = await pool.fetch(
         """
         SELECT source_url, source_name, category, title, summary, created_at
@@ -106,22 +131,24 @@ async def find_candidates(pool: asyncpg.Pool, days: int, neighbours: int) -> lis
         if title_words[i] & summary_words[i]:
             continue  # title and summary share something — not a candidate
 
-        # Detector B: does a neighbour's title explain this summary? Rows are
-        # ordered by created_at, and a batch is BATCH_SIZE consecutive new
-        # articles from one run, so the culprit is nearby.
+        # Detector B: does another article from the same pipeline run explain
+        # this summary? Rows are ordered by created_at; walk outward until the
+        # timestamps leave the run's insert burst.
         best_score = 0
         best_url = ""
         best_title = ""
-        lo = max(0, i - neighbours)
-        hi = min(len(rows), i + neighbours + 1)
-        for j in range(lo, hi):
-            if j == i:
-                continue
-            score = len(title_words[j] & summary_words[i])
-            if score > best_score:
-                best_score = score
-                best_url = rows[j]["source_url"]
-                best_title = rows[j]["title"]
+        for step in (-1, 1):
+            j = i + step
+            while 0 <= j < len(rows):
+                gap = abs((rows[j]["created_at"] - row["created_at"]).total_seconds())
+                if gap > window_seconds:
+                    break
+                score = len(title_words[j] & summary_words[i])
+                if score > best_score:
+                    best_score = score
+                    best_url = rows[j]["source_url"]
+                    best_title = rows[j]["title"]
+                j += step
 
         candidates.append({
             "source_url": row["source_url"],
@@ -143,15 +170,20 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=7, help="lookback window (default 7)")
     parser.add_argument(
-        "--neighbours", type=int, default=5,
-        help="rows either side to test as the true owner of the summary (default 5, ~one batch)",
+        "--window-seconds", type=int, default=300,
+        help="how far either side, in insert time, to look for the summary's true owner "
+             "(default 300 — one pipeline run's insert burst)",
     )
-    parser.add_argument("--out", default="data/misaligned_candidates.csv", help="CSV output path")
+    parser.add_argument(
+        "--out", default="data/_cache/misaligned_candidates.csv",
+        help="CSV output path. Defaults under data/_cache/, which is gitignored — "
+             "the rows carry prod article text.",
+    )
     args = parser.parse_args()
 
     pool = await _connect()
     try:
-        candidates = await find_candidates(pool, args.days, args.neighbours)
+        candidates = await find_candidates(pool, args.days, args.window_seconds)
     finally:
         await pool.close()
 
