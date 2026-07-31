@@ -71,6 +71,7 @@ async def lifespan(app: FastAPI):
     # Start background scheduler in production
     cron_task = None
     poller_task = None
+    feed_health_task = None
     if settings.environment == "production":
         cron_task = asyncio.create_task(_scheduled_refresh())
         logger.info("Scheduled refresh enabled (every %ds)", REFRESH_INTERVAL)
@@ -80,6 +81,13 @@ async def lifespan(app: FastAPI):
         from services.batch_poller import run_batch_poller
         poller_task = asyncio.create_task(run_batch_poller())
 
+        # #125: notice when a configured outlet stops producing. Daily, not
+        # per-run — it is a question about days, and rss.py's per-run
+        # feed_stats cannot answer it (that counts articles fetched, and a
+        # frozen feed keeps serving the same ones).
+        from services.feed_health import run_feed_health_monitor
+        feed_health_task = asyncio.create_task(run_feed_health_monitor())
+
     yield
 
     # Shutdown
@@ -87,6 +95,8 @@ async def lifespan(app: FastAPI):
         cron_task.cancel()
     if poller_task:
         poller_task.cancel()
+    if feed_health_task:
+        feed_health_task.cancel()
     await close_pool()
     logger.info("sift-api shut down")
 
