@@ -62,6 +62,7 @@ def _has_assertion(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _test_functions() -> list[tuple[pathlib.Path, ast.FunctionDef | ast.AsyncFunctionDef]]:
+    """Every test function in the suite, including methods inside test classes."""
     found = []
     for path in sorted(TESTS_DIR.glob("test_*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -70,6 +71,20 @@ def _test_functions() -> list[tuple[pathlib.Path, ast.FunctionDef | ast.AsyncFun
                 "test_"
             ):
                 found.append((path, node))
+    return found
+
+
+def _module_level_test_functions() -> list[tuple[pathlib.Path, str]]:
+    """Only `def test_x` at module scope — `ast.walk` would flatten methods out
+    of their classes, and two classes may each legitimately define `test_empty`."""
+    found = []
+    for path in sorted(TESTS_DIR.glob("test_*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+                "test_"
+            ):
+                found.append((path, node.name))
     return found
 
 
@@ -104,15 +119,17 @@ def test_no_duplicate_test_names_within_a_module():
     body never runs, and the suite still reports a passing count."""
     seen: dict[str, set[str]] = {}
     dupes = []
-    for path, fn in _test_functions():
+    for path, name in _module_level_test_functions():
         names = seen.setdefault(path.name, set())
-        # Qualify by class so two classes may each define test_empty.
-        if fn.name in names:
-            dupes.append(f"{path.name}::{fn.name}")
-        names.add(fn.name)
-    # Only flag module-level collisions; same-named methods across classes are
-    # legitimate and common.
-    assert not dupes or all("::" in d for d in dupes)
+        if name in names:
+            dupes.append(f"{path.name}::{name}")
+        names.add(name)
+
+    assert not dupes, (
+        "These test names are defined twice at module level — the second "
+        "definition shadows the first, so the first body never runs and the "
+        f"suite still reports it as passing: {dupes}"
+    )
 
 
 def test_eval_corpora_parse_and_have_unique_ids():

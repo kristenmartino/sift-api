@@ -157,7 +157,8 @@ async def sample_corpus(
     pool = await asyncpg.create_pool(db_url, min_size=1, max_size=4, ssl=ssl_mode)
     try:
         out_batches = []
-        diagnostics: list[tuple[str, int, str]] = []
+        # (batch_id, n_articles, n_outlets, top_outlet_share, top_outlet, window)
+        diagnostics: list[tuple[str, int, int, float, str, str]] = []
         for i in range(batches):
             category = SAMPLE_CATEGORIES[i % len(SAMPLE_CATEGORIES)]
             # Batch i covers [now - (i+1)*window, now - i*window).
@@ -263,7 +264,7 @@ async def sample_corpus(
     print()
 
     # Sanity-check the sample BEFORE anyone spends hours labeling it.
-    print(f"  {'batch':16} {'arts':>4} {'outlets':>7} {'top outlet':>10}  window")
+    print(f"  {'batch':16} {'arts':>4} {'outlets':>7} {'top %':>9}  window")
     for bid, n, n_out, share, top, span in diagnostics:
         flag = ""
         if n < 8:
