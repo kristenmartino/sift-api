@@ -8,7 +8,16 @@
 
 -r requirements.txt
 
-pytest==8.3.5
-pytest-asyncio==0.24.0
+# 8.4 is the floor pytest-asyncio 1.x requires (`pytest<10,>=8.4`), not a want.
+# Staying on 8.x keeps the move to pytest 9 (dependabot #89) a separate,
+# deliberate decision — 9.1.1 also passes this suite, it just is not pinned here.
+pytest==8.4.2
+# 1.x closes the per-test event loop instead of leaving it to the garbage
+# collector. Under 0.24 the loop's self-pipe socketpair emitted an "unclosed
+# event loop" ResourceWarning at whatever later moment GC ran, and
+# filterwarnings=["error"] turned that into a failure in whichever unrelated
+# test was executing — it started landing on test_meta_suite once the async
+# test count grew. Verified: 0 live sockets after a full run, was 2.
+pytest-asyncio==1.4.0
 pytest-cov==6.0.0
 ruff==0.8.6

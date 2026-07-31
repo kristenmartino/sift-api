@@ -100,6 +100,32 @@ class TestParseJudge:
     def test_malformed_json_returns_empty(self):
         assert _parse_judge("not json at all", 2) == {}
 
+    def test_duplicate_index_discards_the_whole_response(self):
+        # One verdict would land on a line it was not written about. Every item
+        # comes back unscored instead, and judge_rejects keeps unscored lines —
+        # i.e. this degrades to the deterministic gate's result.
+        text = json.dumps([
+            {"i": 1, "r": True, "a": False, "n": True},
+            {"i": 1, "r": False, "a": True, "n": True},
+        ])
+        assert _parse_judge(text, 2) == {}
+
+    def test_missing_index_discards_the_whole_response(self):
+        # A gap is indistinguishable from a shift: the verdict labelled 1 may
+        # belong to item 2.
+        text = json.dumps([{"i": 1, "r": True, "a": False, "n": True}])
+        assert _parse_judge(text, 2) == {}
+
+    def test_out_of_order_response_is_still_accepted(self):
+        # Order carries nothing; only the index does.
+        text = json.dumps([
+            {"i": 2, "r": False, "a": True, "n": True},
+            {"i": 1, "r": True, "a": False, "n": True},
+        ])
+        out = _parse_judge(text, 2)
+        assert out[1]["verdict"] == "fail"
+        assert out[2]["verdict"] == "pass"
+
 
 class TestTally:
     def test_rates(self):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import logging
 
@@ -9,6 +10,13 @@ from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
 from services.cost_guard import check_budget
+from services.index_alignment import (
+    MAX_BATCH_ATTEMPTS,
+    AlignmentError,
+    aligned_entries,
+    log_misaligned_sub_batch,
+    with_alignment_retry,
+)
 from services.judge import judge_lines, judge_rejects
 from services.quality_gate import gate_why_it_matters
 from services.usage_tracker import log_usage
@@ -106,7 +114,11 @@ Return ONLY the JSON array, no other text."""
 # uses the Batch API path below for the 50% discount.
 # ---------------------------------------------------------------------------
 
-async def generate_context(articles: list[dict]) -> dict[str, dict]:
+async def generate_context(
+    articles: list[dict],
+    *,
+    client: anthropic.AsyncAnthropic | None = None,
+) -> dict[str, dict]:
     """
     Batch-generate 'why it matters' one-liners and importance scores via Claude Haiku.
 
@@ -119,16 +131,32 @@ async def generate_context(articles: list[dict]) -> dict[str, dict]:
     if not articles:
         return {}
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    if client is None:
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     results: dict[str, dict] = {}
 
     for i in range(0, len(articles), BATCH_SIZE):
         batch = articles[i : i + BATCH_SIZE]
+        batch_index = i // BATCH_SIZE
         try:
-            batch_results = await _generate_batch(client, batch)
-            results.update(batch_results)
+            results.update(await with_alignment_retry(
+                functools.partial(_generate_batch, client, batch),
+                logger=logger,
+                event="context_batch_misaligned",
+                batch_index=batch_index,
+                ids=[a["source_url"] for a in batch],
+            ))
+        except AlignmentError as e:
+            # Writing nothing leaves why_it_matters / importance_score NULL,
+            # which the UI already tolerates and scripts/backfill_context.py
+            # can regenerate. A line written against the wrong article is not
+            # recoverable, because nothing downstream knows it is wrong.
+            logger.error(
+                "Context generation batch %d abandoned after %d misaligned attempts: %s",
+                batch_index, MAX_BATCH_ATTEMPTS, e,
+            )
         except Exception as e:
-            logger.error("Context generation failed for batch %d: %s", i // BATCH_SIZE, e)
+            logger.error("Context generation failed for batch %d: %s", batch_index, e)
 
     kept = sum(1 for r in results.values() if r["context"])
     logger.info(
@@ -160,21 +188,22 @@ def _parse_context(text: str, batch: list[dict]) -> dict[str, dict]:
     The line and the score are decoupled: a line dropped by the gate (or returned
     empty by the model) still yields a row carrying the importance score, with
     context=None so the caller writes NULL why_it_matters.
+
+    Raises AlignmentError unless the response carries exactly one entry per
+    article — see services/index_alignment.py for why a range check alone is
+    not enough. An EMPTY line is not a misalignment: the rubric asks for ""
+    when there is no real stake (null-over-filler), so only the index
+    structure is enforced here.
     """
-    results: dict[str, dict] = {}
-
     parsed = _extract_json_array(text)
-    if not parsed:
-        logger.warning("Failed to parse context generation JSON")
-        return results
+    if parsed is None:
+        raise AlignmentError("response was not a parseable JSON array")
 
-    for item in parsed:
+    results: dict[str, dict] = {}
+    for idx, item in aligned_entries(parsed, len(batch)).items():
         # Accept short keys (new) and fall back to long keys (legacy prompt form).
-        idx = item.get("i", item.get("index"))
         raw_context = item.get("c", item.get("context", ""))
         score = item.get("s", item.get("score", 3))
-        if not (isinstance(idx, int) and 1 <= idx <= len(batch)):
-            continue
 
         # Clamp score to 1-5 (always recorded, independent of the line).
         if not isinstance(score, int) or score < 1 or score > 5:
@@ -285,11 +314,21 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
     dropped = 0
     judge_dropped = 0
     failed = 0
+    misaligned = 0
     for item in results:
         custom_id = item.get("custom_id", "")
         urls = custom_id_to_urls.get(custom_id, [])
         result = item.get("result", {})
         if result.get("type") != "succeeded":
+            failed += 1
+            continue
+
+        if not urls:
+            # No URL manifest for this custom_id — nothing can be mapped back.
+            # Previously every entry just failed the range check silently.
+            logger.error(
+                "No metadata URLs for %s in batch %s; skipping sub-batch", custom_id, batch_id,
+            )
             failed += 1
             continue
 
@@ -301,6 +340,25 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
         parsed = _extract_json_array(text)
         if not parsed:
             failed += 1
+            continue
+
+        # Batch API results arrive asynchronously through the poller, so there
+        # is no live request to re-ask: a sub-batch that cannot be proven
+        # aligned is skipped whole. why_it_matters/importance_score stay NULL
+        # (tolerated by the UI, regenerable via scripts/backfill_context.py);
+        # a line written against the wrong article would not be recoverable.
+        try:
+            entries = aligned_entries(parsed, len(urls))
+        except AlignmentError as e:
+            misaligned += 1
+            log_misaligned_sub_batch(
+                logger,
+                event="batch_context_misaligned",
+                batch_id=batch_id,
+                custom_id=custom_id,
+                urls=urls,
+                error=e,
+            )
             continue
 
         # One read for the whole sub-batch: title/summary feed the gate.
@@ -321,12 +379,9 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
 
         # Deterministic gate first; collect per-row results for this sub-batch.
         pending: list[dict] = []
-        for entry in parsed:
-            idx = entry.get("i", entry.get("index"))
+        for idx, entry in entries.items():
             raw_context = entry.get("c", entry.get("context", ""))
             score = entry.get("s", entry.get("score", 3))
-            if not (isinstance(idx, int) and 1 <= idx <= len(urls)):
-                continue
             if not isinstance(score, int) or score < 1 or score > 5:
                 score = 3
 
@@ -385,4 +440,5 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
         "dropped_by_gate": dropped,
         "dropped_by_judge": judge_dropped,
         "failed": failed,
+        "misaligned_sub_batches": misaligned,
     }))

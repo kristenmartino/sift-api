@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import logging
 
@@ -8,6 +9,13 @@ import anthropic
 from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
+from services.index_alignment import (
+    MAX_BATCH_ATTEMPTS,
+    AlignmentError,
+    aligned_entries,
+    log_misaligned_sub_batch,
+    with_alignment_retry,
+)
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.entity_extractor")
@@ -18,7 +26,11 @@ BATCH_SIZE = 15  # More articles per call since extraction is lighter than summa
 BATCH_KIND = "entity"  # identifier persisted to api_batches.kind
 
 
-async def extract_entities(articles: list[dict]) -> dict[str, dict]:
+async def extract_entities(
+    articles: list[dict],
+    *,
+    client: anthropic.AsyncAnthropic | None = None,
+) -> dict[str, dict]:
     """
     Batch entity extraction via Claude Haiku.
 
@@ -28,16 +40,35 @@ async def extract_entities(articles: list[dict]) -> dict[str, dict]:
     if not articles:
         return {}
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    if client is None:
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     results: dict[str, dict] = {}
 
     for i in range(0, len(articles), BATCH_SIZE):
         batch = articles[i : i + BATCH_SIZE]
+        batch_index = i // BATCH_SIZE
         try:
-            batch_results = await _extract_batch(client, batch)
-            results.update(batch_results)
+            results.update(await with_alignment_retry(
+                functools.partial(_extract_batch, client, batch),
+                logger=logger,
+                event="entity_batch_misaligned",
+                batch_index=batch_index,
+                ids=[a["source_url"] for a in batch],
+            ))
+        except AlignmentError as e:
+            # Empty entities per article: crude but alignment-proof, and the
+            # same degraded shape this path already used for API errors. One
+            # article's people/orgs/locations on another article's row would
+            # corrupt story clustering, which reads entities to decide what
+            # covers the same event.
+            logger.error(
+                "Entity extraction batch %d abandoned after %d misaligned attempts: %s",
+                batch_index, MAX_BATCH_ATTEMPTS, e,
+            )
+            for article in batch:
+                results[article["source_url"]] = _empty_entities()
         except Exception as e:
-            logger.error("Entity extraction failed for batch %d: %s", i // BATCH_SIZE, e)
+            logger.error("Entity extraction failed for batch %d: %s", batch_index, e)
             for article in batch:
                 results[article["source_url"]] = _empty_entities()
 
@@ -87,25 +118,27 @@ Return ONLY the JSON array, no other text."""
 
 
 def _parse_entities(text: str, batch: list[dict]) -> dict[str, dict]:
-    """Parse Claude's entity extraction response."""
-    results: dict[str, dict] = {}
+    """Parse Claude's entity extraction response.
 
+    Raises AlignmentError unless the response carries exactly one entry per
+    article — see services/index_alignment.py for why a range check alone is
+    not enough. An article with no entities at all is legitimate, so only the
+    index structure is enforced. The caller retries, then degrades to
+    _empty_entities per article.
+    """
     parsed = _extract_json_array(text)
-    if parsed:
-        for item in parsed:
-            # Accept short keys (new) and fall back to long keys (legacy prompt form).
-            idx = item.get("i", item.get("index"))
-            if isinstance(idx, int) and 1 <= idx <= len(batch):
-                results[batch[idx - 1]["source_url"]] = {
-                    "people": item.get("p", item.get("people", [])),
-                    "organizations": item.get("o", item.get("organizations", [])),
-                    "locations": item.get("l", item.get("locations", [])),
-                    "event_description": item.get("e", item.get("event_description", "")),
-                }
-    else:
-        logger.warning("Failed to parse entity extraction JSON")
-        for article in batch:
-            results[article["source_url"]] = _empty_entities()
+    if parsed is None:
+        raise AlignmentError("response was not a parseable JSON array")
+
+    results: dict[str, dict] = {}
+    for idx, item in aligned_entries(parsed, len(batch)).items():
+        # Accept short keys (new) and fall back to long keys (legacy prompt form).
+        results[batch[idx - 1]["source_url"]] = {
+            "people": item.get("p", item.get("people", [])),
+            "organizations": item.get("o", item.get("organizations", [])),
+            "locations": item.get("l", item.get("locations", [])),
+            "event_description": item.get("e", item.get("event_description", "")),
+        }
 
     return results
 
@@ -223,11 +256,20 @@ async def process_entity_batch_results(batch_id: str, results: list[dict]) -> No
 
     updated = 0
     failed = 0
+    misaligned = 0
     for item in results:
         custom_id = item.get("custom_id", "")
         urls = custom_id_to_urls.get(custom_id, [])
         result = item.get("result", {})
         if result.get("type") != "succeeded":
+            failed += 1
+            continue
+
+        if not urls:
+            # No URL manifest for this custom_id — nothing can be mapped back.
+            logger.error(
+                "No metadata URLs for %s in batch %s; skipping sub-batch", custom_id, batch_id,
+            )
             failed += 1
             continue
 
@@ -241,10 +283,27 @@ async def process_entity_batch_results(batch_id: str, results: list[dict]) -> No
             failed += 1
             continue
 
-        for entry in parsed:
-            idx = entry.get("i", entry.get("index"))
-            if not (isinstance(idx, int) and 1 <= idx <= len(urls)):
-                continue
+        # No live request to re-ask here (results arrive via the poller), so a
+        # sub-batch that cannot be proven aligned is skipped whole. Those rows
+        # keep the default '[]' entities and are simply excluded from this
+        # cycle's story threading — the same outcome as a batch that has not
+        # landed yet. Entities on the wrong article would instead corrupt
+        # clustering, which uses them to decide what covers the same event.
+        try:
+            entries = aligned_entries(parsed, len(urls))
+        except AlignmentError as e:
+            misaligned += 1
+            log_misaligned_sub_batch(
+                logger,
+                event="batch_entity_misaligned",
+                batch_id=batch_id,
+                custom_id=custom_id,
+                urls=urls,
+                error=e,
+            )
+            continue
+
+        for idx, entry in entries.items():
             entities = {
                 "people": entry.get("p", entry.get("people", [])),
                 "organizations": entry.get("o", entry.get("organizations", [])),
@@ -272,4 +331,5 @@ async def process_entity_batch_results(batch_id: str, results: list[dict]) -> No
         "batch_id": batch_id,
         "updated": updated,
         "failed": failed,
+        "misaligned_sub_batches": misaligned,
     }))

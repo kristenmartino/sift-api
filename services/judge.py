@@ -29,6 +29,7 @@ import logging
 import anthropic
 
 from app.config import settings
+from services.index_alignment import AlignmentError, aligned_entries
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.judge")
@@ -123,17 +124,32 @@ def _derive_verdict(restates: bool | None, adds: bool | None, neutral: bool | No
 
 
 def _parse_judge(text: str, n_items: int) -> dict[int, dict]:
-    """Parse the judge's JSON array into {1-based index -> axes dict}."""
+    """Parse the judge's JSON array into {1-based index -> axes dict}.
+
+    Same alignment rule as the generation paths (services/index_alignment.py):
+    a duplicate, missing, or out-of-range index means no verdict can be trusted
+    to belong to the line it would be applied to, so the whole response is
+    discarded. Every item then comes back unscored — identical to the
+    unparseable-response path above, which callers already handle by keeping
+    the deterministic result (see judge_rejects on verdict="error").
+
+    The stakes differ from the summarizer's: a shifted verdict does not put
+    wrong text in front of a reader, it NULLs a good why_it_matters line and
+    keeps a bad one. Still wrong, and cheaper to refuse than to detect later.
+    """
     parsed = _extract_json_array(text)
     if not parsed:
         logger.warning("Failed to parse judge JSON")
         return {}
 
+    try:
+        entries = aligned_entries(parsed, n_items)
+    except AlignmentError as e:
+        logger.warning("Judge response does not line up with its items (%s); discarding", e)
+        return {}
+
     out: dict[int, dict] = {}
-    for item in parsed:
-        idx = item.get("i", item.get("index"))
-        if not (isinstance(idx, int) and 1 <= idx <= n_items):
-            continue
+    for idx, item in entries.items():
         restates = _coerce_bool(item.get("r", item.get("restates")))
         adds = _coerce_bool(item.get("a", item.get("adds_significance")))
         neutral = _coerce_bool(item.get("n", item.get("neutral_cliche_free")))
