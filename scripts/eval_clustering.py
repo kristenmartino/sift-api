@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import hashlib
 import json
 import os
@@ -236,8 +237,29 @@ async def sample_corpus(
         for b in out_batches:
             f.write(json.dumps(b) + "\n")
 
+    # The JSONL is the machine format: one batch per line, which means a single
+    # 25k-character line per 50 articles. Nobody should hand-edit that. Emit a
+    # flat CSV alongside it — one row per article, sortable in a spreadsheet,
+    # which is the natural interface for a grouping task: sort by title, eyeball
+    # the clusters, type a slug. `--ingest-labels` merges it back.
+    csv_path = out_path.with_suffix(".labels.csv")
+    with csv_path.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([
+            "batch_id", "idx", "source_name", "title", "summary",
+            "event_id", "hard", "distractor_of",
+        ])
+        for b in out_batches:
+            for a in b["articles"]:
+                w.writerow([
+                    b["batch_id"], a["idx"], a["source_name"], a["title"],
+                    a["summary"], "", "", "",
+                ])
+
     total = sum(len(b["articles"]) for b in out_batches)
-    print(f"wrote {len(out_batches)} batches / {total} articles -> {out_path}")
+    print(f"wrote {len(out_batches)} batches / {total} articles")
+    print(f"  corpus (machine):  {out_path}")
+    print(f"  labels (edit me):  {csv_path}")
     print()
 
     # Sanity-check the sample BEFORE anyone spends hours labeling it.
@@ -280,6 +302,135 @@ async def sample_corpus(
     print()
     print("Aim for at least one batch with NO real clusters — nothing currently")
     print("protects against over-clustering a slow news day.")
+
+
+# ─── label ingest (mode: --ingest-labels) ─────────────────
+
+def ingest_labels(corpus_path: Path, csv_path: Path) -> None:
+    """Merge a hand-labeled CSV back into the corpus JSONL, then validate.
+
+    Validation runs BEFORE anything is written and before any paid --live call,
+    because a mislabeled corpus produces confident, wrong numbers — the worst
+    possible failure for an eval.
+    """
+    batches = [
+        json.loads(line)
+        for line in corpus_path.read_text().splitlines()
+        if line.strip()
+    ]
+    by_id = {b["batch_id"]: b for b in batches}
+
+    with csv_path.open(newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    errors: list[str] = []
+    applied = 0
+    for r in rows:
+        bid, idx = r["batch_id"], r["idx"]
+        batch = by_id.get(bid)
+        if batch is None:
+            errors.append(f"unknown batch_id {bid!r}")
+            continue
+        art = next((a for a in batch["articles"] if str(a["idx"]) == str(idx)), None)
+        if art is None:
+            errors.append(f"{bid}: no article with idx {idx}")
+            continue
+
+        event_id = (r.get("event_id") or "").strip() or None
+        hard = (r.get("hard") or "").strip().lower() in {"1", "true", "yes", "y", "x"}
+        distractor_of = (r.get("distractor_of") or "").strip() or None
+
+        art["event_id"] = event_id
+        art.pop("hard", None)
+        art.pop("distractor_of", None)
+        if hard:
+            art["hard"] = True
+            art["distractor_of"] = distractor_of
+        applied += 1
+
+    # ── semantic checks ──
+    for b in batches:
+        events = {a["event_id"] for a in b["articles"] if a.get("event_id")}
+        for a in b["articles"]:
+            if not a.get("hard"):
+                continue
+            tgt = a.get("distractor_of")
+            if not tgt:
+                errors.append(
+                    f"{b['batch_id']}#{a['idx']}: marked hard but distractor_of is empty "
+                    "— a distractor must name the event it is confusable with"
+                )
+            elif tgt not in events:
+                errors.append(
+                    f"{b['batch_id']}#{a['idx']}: distractor_of={tgt!r} is not an "
+                    f"event_id in this batch (have: {sorted(events)})"
+                )
+            elif a.get("event_id") == tgt:
+                errors.append(
+                    f"{b['batch_id']}#{a['idx']}: is labeled as event {tgt!r} AND as a "
+                    "distractor of it — contradictory; a distractor is a DIFFERENT event"
+                )
+
+    if errors:
+        print("LABEL ERRORS — nothing was written:\n", file=sys.stderr)
+        for e in errors[:40]:
+            print(f"  {e}", file=sys.stderr)
+        if len(errors) > 40:
+            print(f"  ... and {len(errors) - 40} more", file=sys.stderr)
+        raise SystemExit(1)
+
+    with corpus_path.open("w") as f:
+        for b in batches:
+            b["note"] = "labeled"
+            f.write(json.dumps(b) + "\n")
+
+    # ── is this corpus actually worth running? ──
+    print(f"applied {applied} labels -> {corpus_path}\n")
+    print(f"  {'batch':16} {'arts':>4} {'clusters':>8} {'largest':>7} {'pairs':>6} {'x-outlet':>8}")
+    total_pairs = 0
+    total_clusters = 0
+    total_cross = 0
+    all_singleton_batches = 0
+    for b in batches:
+        groups: dict[str, list[dict]] = {}
+        for a in b["articles"]:
+            if a.get("event_id"):
+                groups.setdefault(a["event_id"], []).append(a)
+        real = {k: v for k, v in groups.items() if len(v) >= 2}
+        pairs = sum(len(v) * (len(v) - 1) // 2 for v in real.values())
+        cross = sum(
+            1 for v in real.values()
+            if len({a["source_name"] for a in v}) >= 2
+        )
+        largest = max((len(v) for v in real.values()), default=0)
+        total_pairs += pairs
+        total_clusters += len(real)
+        total_cross += cross
+        if not real:
+            all_singleton_batches += 1
+        print(
+            f"  {b['batch_id']:16} {len(b['articles']):>4} {len(real):>8} "
+            f"{largest:>7} {pairs:>6} {cross:>8}"
+        )
+
+    n_hard = sum(1 for b in batches for a in b["articles"] if a.get("hard"))
+    n_arts = sum(len(b["articles"]) for b in batches)
+    print(f"\n  {total_clusters} clusters, {total_pairs} positive pairs out of "
+          f"{n_arts * (n_arts - 1) // 2} possible, {n_hard} distractors marked")
+
+    if total_pairs < 20:
+        print("\n  WARNING: fewer than 20 positive pairs. Pairwise recall will be very")
+        print("  noisy — each mistake moves it several percent. Consider labeling more")
+        print("  batches before recording a baseline you intend to gate on.")
+    if total_clusters and total_cross == 0:
+        print("\n  WARNING: no cross-outlet clusters. multi_outlet_precision measures "
+              "what users actually see, and will be meaningless without them.")
+    if n_hard == 0:
+        print("\n  NOTE: no distractors marked. topic_conflation_rate will report 0.0 "
+              "and measure nothing — it is the metric for the prompt's central claim.")
+    if all_singleton_batches == 0:
+        print("\n  NOTE: every batch has at least one cluster. Consider labeling one "
+              "batch as all-singletons — nothing else here punishes over-clustering.")
 
 
 # ─── corpus loading + prompt hashing ──────────────────────
@@ -529,6 +680,8 @@ def main() -> None:
     mode.add_argument("--sample", action="store_true", help="pull an UNLABELED corpus from the DB (free, read-only)")
     mode.add_argument("--replay", action="store_true", help="score committed fixtures (free, deterministic — what CI runs)")
     mode.add_argument("--live", action="store_true", help="real Haiku calls (~$0.024/run)")
+    mode.add_argument("--ingest-labels", type=Path, metavar="CSV",
+                      help="merge a hand-labeled CSV back into the corpus, then validate")
 
     p.add_argument("--batches", type=int, default=6, help="--sample: number of batches (default 6)")
     p.add_argument("--per-batch", type=int, default=25, help="--sample: articles per batch (default 25)")
@@ -543,6 +696,10 @@ def main() -> None:
     p.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     p.add_argument("--json", type=Path, help="write the aggregate report to this path")
     args = p.parse_args()
+
+    if args.ingest_labels:
+        ingest_labels(args.corpus, args.ingest_labels)
+        return
 
     if args.sample:
         asyncio.run(

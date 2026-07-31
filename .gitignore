@@ -24,3 +24,6 @@ data/opensecrets/
 .coverage
 coverage.xml
 htmlcov/
+
+# unlabeled sampler output — commit the LABELED corpus, not the scratch CSV
+data/eval/*.labels.csv
