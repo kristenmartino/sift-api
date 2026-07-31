@@ -52,8 +52,8 @@ FEEDS: list[tuple[str, str]] = [
     # AP News and Reuters retired their public RSS feeds (AP behind an
     # auth-walled API; Reuters killed RSS in 2020). The openrss.org
     # wrapper for Reuters is now rate-limiting us (HTTP 429). Wire copy
-    # from both still reaches Sift via NPR / CBS / USA Today / ABC /
-    # BBC / Guardian, all of which run AP and Reuters syndication.
+    # from both still reaches Sift via NPR / CBS / ABC / BBC / Guardian,
+    # all of which run AP and Reuters syndication.
     # TODO: revisit if/when we acquire AP API or Reuters Connect access.
     ("NPR", "https://feeds.npr.org/1001/rss.xml"),
     ("BBC", "http://feeds.bbci.co.uk/news/rss.xml"),
@@ -62,13 +62,26 @@ FEEDS: list[tuple[str, str]] = [
     ("Politico", "https://rss.politico.com/politics-news.xml"),
     ("PBS NewsHour", "https://www.pbs.org/newshour/feeds/rss/headlines"),
     ("The Guardian US", "https://www.theguardian.com/us-news/rss"),
-    ("USA Today", "http://rss.usatoday.com/usatoday-newstopstories"),
+    # USA Today removed 2026-07-31 (#122). Gannett retired its public RSS:
+    # rss.usatoday.com/* and rssfeeds.usatoday.com/* both 301 to the HTML
+    # homepage, and every /rss/ path under www.usatoday.com 404s. It had
+    # produced ZERO articles for its entire life in this list — the feed_stats
+    # event (#123) is what finally surfaced that. Same posture as AP/Reuters
+    # above: listed nowhere rather than listed and silently empty.
     ("ABC News", "https://abcnews.go.com/abcnews/topstories"),
     ("CBS News", "https://www.cbsnews.com/latest/rss/main"),
     ("New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"),
     # WaPo: /rss/national was returning ~5 items (and intermittently empty
     # on Railway egress); /rss/homepage is the full firehose (~70 items).
-    ("Washington Post", "https://feeds.washingtonpost.com/rss/homepage"),
+    # /rss/homepage started returning HTTP 400 around 2026-07-16 and cost us
+    # ~15 days of WaPo (#122). The section feeds still serve, with content in
+    # every entry; together they roughly replace the homepage firehose. First
+    # outlet with multiple feed rows — dedup is by source_url + content_hash,
+    # so overlap between sections is handled.
+    ("Washington Post", "https://feeds.washingtonpost.com/rss/world"),
+    ("Washington Post", "https://feeds.washingtonpost.com/rss/politics"),
+    ("Washington Post", "https://feeds.washingtonpost.com/rss/business"),
+    ("Washington Post", "https://feeds.washingtonpost.com/rss/national"),
     # Fox News' Google Publisher Center feed — Atom-style, ~25 entries
     # per fetch. Their direct RSS at /rss/* is paywalled/auth-walled.
     ("Fox News", "https://moxie.foxnews.com/google-publisher/latest.xml"),
@@ -90,7 +103,12 @@ FEEDS: list[tuple[str, str]] = [
     # ── Energy & Climate ─────────────────────────────────
     ("Canary Media", "https://www.canarymedia.com/rss.rss"),
     ("Carbon Brief", "https://www.carbonbrief.org/feed"),
-    ("Inside Climate News", "https://insideclimatenews.org/feed/"),
+    # Inside Climate News removed 2026-07-31 (#122). Cloudflare returns 403
+    # to /feed/, /rss/, /feed/atom/ and every category feed — for OUR agent, a
+    # bare request, curl, and a desktop Chrome UA alike. It is a bot block, not
+    # a UA filter, so there is no honest URL that works; last ingest was
+    # 2026-07-20. Their dossier stays in outlet_profiles, so an ICN mention in
+    # someone else's copy still resolves. Revisit if they whitelist us.
     # ── World & Geopolitics ──────────────────────────────
     ("BBC World", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("The Guardian World", "https://www.theguardian.com/world/rss"),
@@ -136,7 +154,13 @@ FEEDS: list[tuple[str, str]] = [
 ]
 
 MAX_ENTRIES_PER_FEED = 10
-FETCH_TIMEOUT = 10.0
+# Raised from 10.0 on 2026-07-31 (#122). The Washington Post section feeds
+# answer in 8-10s — serially and concurrently alike, so it is the origin, not
+# contention — which sat exactly on the old ceiling and dropped a random one
+# or two of the four per run. Fetches run concurrently, so the cost of a higher
+# ceiling is bounded by the slowest single feed, not the sum: worst case adds
+# ~10s to a run that happens every 30 minutes.
+FETCH_TIMEOUT = 20.0
 
 
 def stable_hash(s: str) -> str:
