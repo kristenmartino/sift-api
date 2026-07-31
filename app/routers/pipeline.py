@@ -57,7 +57,7 @@ async def refresh_pipeline(
         raise HTTPException(
             status_code=500,
             detail={"detail": "Pipeline execution failed", "code": "PIPELINE_FAILED"},
-        )
+        ) from e
 
     duration_ms = int((time.time() - start) * 1000)
 

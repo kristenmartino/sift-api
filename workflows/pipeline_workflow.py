@@ -233,9 +233,13 @@ async def embed_node(state: PipelineState) -> dict:
         # Skip articles whose embedding batch failed: omit them from the dict so
         # store_node writes NULL (not a zero vector). They stay browsable but are
         # excluded from vector search until a future re-embed pass.
+        # strict=True enforces the embed_texts contract: it returns one entry
+        # per input, using None for failures rather than dropping them. If that
+        # ever breaks, silent truncation here would attach embeddings to the
+        # WRONG articles — a data-corruption bug invisible in logs. Fail loudly.
         embeddings = {
             article.source_url: vector
-            for article, vector in zip(new_articles, vectors)
+            for article, vector in zip(new_articles, vectors, strict=True)
             if vector is not None
         }
         skipped = len(new_articles) - len(embeddings)

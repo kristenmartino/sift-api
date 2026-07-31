@@ -51,10 +51,10 @@ python scripts/regate_existing.py --apply    # NULL failing lines / blank clich√
 # Start Postgres
 docker compose up -d
 
-# Create virtualenv and install deps
+# Create virtualenv and install deps (dev file pulls in requirements.txt too)
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Configure environment
 cp .env.example .env

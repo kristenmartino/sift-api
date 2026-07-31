@@ -1,0 +1,70 @@
+# Tooling configuration for sift-api.
+#
+# There was no pyproject.toml / pytest.ini / ruff.toml before this, which meant
+# ruff ran on its defaults (E4/E7/E9 + F only — essentially syntax errors and
+# undefined names) and pytest had no settings at all. This file is config only:
+# it declares no package and changes no runtime behavior.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+# Pin the fixture loop scope explicitly. Leaving it unset emits a
+# PytestDeprecationWarning on every run, which would trip the "error" filter
+# below and is noise besides.
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "error",
+    # Starlette's TestClient imports httpx and warns; we do not control it.
+    "ignore::DeprecationWarning:starlette.*",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:UserWarning",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+# `mutants/` is mutmut's generated workspace — thousands of deliberately-broken
+# copies of real modules. Linting them is meaningless and drowns real findings.
+exclude = [".venv", "__pycache__", "mutants"]
+
+[tool.ruff.lint]
+# Defaults are E4/E7/E9 + F only. The additions that matter here:
+#   B  (flake8-bugbear)      — real bug patterns, e.g. mutable default args
+#   PT (flake8-pytest-style) — bad test shapes: PT015 asserts on a constant,
+#                              PT011 over-broad pytest.raises(Exception)
+# B and PT are the ones that catch weak tests, which is the point of the
+# tests/test_meta_suite.py work this accompanies.
+select = ["E4", "E7", "E9", "F", "B", "PT"]
+
+ignore = [
+    # PT018 wants `assert a and b` split into two asserts. That is a style
+    # preference, not a defect detector — `assert isinstance(url, str) and
+    # url.startswith("http")` reads fine and splitting it adds noise without
+    # adding signal. Disabled deliberately rather than suppressed per-site.
+    "PT018",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts are operator tools run by hand, not imported; a few long lines and
+# broad excepts there are acceptable.
+"scripts/*" = ["E501"]
+
+[tool.coverage.run]
+source = ["app", "services", "workflows"]
+omit = ["*/__pycache__/*", "tests/*", "scripts/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+# A RATCHET, not a target. 57% was the measured value when coverage was first
+# turned on (2026-07-30); this floor sits just under it so the gate is real
+# from day one rather than aspirational. Raise it as coverage improves — never
+# lower it to make a red build green.
+#
+# Known zeros worth attacking first, all on the story path:
+#   workflows/story_workflow.py   0%
+#   services/story_synthesizer.py 0%
+#   services/deduplicator.py      0%
+fail_under = 55

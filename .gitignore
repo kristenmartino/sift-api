@@ -21,3 +21,13 @@ data/_cache/
 # committed to the repo. The importer (`scripts/import_opensecrets_bulk.py`)
 # reads from this path locally.
 data/opensecrets/
+.coverage
+coverage.xml
+htmlcov/
+
+# unlabeled sampler output — commit the LABELED corpus, not the scratch CSV
+data/eval/*.labels.csv
+
+# Unlabeled sampler output. Commit the LABELED corpus deliberately (git add -f)
+# once event_id is filled in — not the scratch snapshot.
+data/eval/clustering_corpus.jsonl

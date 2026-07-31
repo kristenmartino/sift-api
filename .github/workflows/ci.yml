@@ -19,13 +19,19 @@ jobs:
           python-version-file: '.python-version'
           cache: 'pip'
 
-      - run: pip install -r requirements.txt
+      # Dev tooling is split out so it never ships to the Railway image (the
+      # Dockerfile installs requirements.txt only). requirements-dev.txt
+      # includes requirements.txt via -r.
+      - run: pip install -r requirements-dev.txt
 
       - name: Lint
         run: ruff check .
 
+      # Coverage floor lives in pyproject.toml ([tool.coverage.report]
+      # fail_under). It is a ratchet set just under the measured value, not an
+      # aspirational target.
       - name: Test
-        run: pytest tests/ -v
+        run: pytest tests/ -v --cov --cov-report=term-missing
 
   feed-perf:
     name: Feed Query Perf

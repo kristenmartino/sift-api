@@ -13,17 +13,26 @@ logger = logging.getLogger("sift-api.story_synthesizer")
 MODEL = "claude-haiku-4-5-20251001"
 
 
-async def synthesize_story(articles: list[dict]) -> dict:
+async def synthesize_story(
+    articles: list[dict],
+    *,
+    client: anthropic.AsyncAnthropic | None = None,
+    model: str = MODEL,
+) -> dict:
     """
     Generate unified headline, summary, and per-source framings for a story cluster.
 
     Input: list of dicts with keys: title, summary, source_name, source_url
     Output: {headline, summary, framings: [{source_name, framing, tone}]}
+
+    Optional reusable client so an eval run shares one connection and can replay
+    a recorded response. Mirrors services.judge.judge_lines.
     """
     if len(articles) < 2:
         return _fallback(articles)
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    if client is None:
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     articles_text = ""
     for i, article in enumerate(articles, 1):
@@ -63,11 +72,11 @@ Return ONLY a JSON object:
 
     try:
         response = await client.messages.create(
-            model=MODEL,
+            model=model,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
-        log_usage("story_synthesizer.synthesize", response, model=MODEL)
+        log_usage("story_synthesizer.synthesize", response, model=model)
 
         text = "".join(b.text for b in response.content if b.type == "text")
         result = _extract_json_object(text)

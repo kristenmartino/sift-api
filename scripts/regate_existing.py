@@ -82,7 +82,7 @@ async def regate_why_it_matters(pool: asyncpg.Pool, args) -> None:
         by_reason[key] = by_reason.get(key, 0) + 1
     print(f"  would drop {len(drops)}/{len(rows)} ({(len(drops) / len(rows) * 100) if rows else 0:.0f}%)"
           f"  by reason={by_reason or '{}'}")
-    for u, reason, line in drops[:8]:
+    for _url, reason, line in drops[:8]:
         print(f"    - [{reason}] {line[:80]}")
 
     if args.apply and drops:
@@ -119,7 +119,7 @@ async def regate_background(pool: asyncpg.Pool, args) -> None:
 
     print(f"  would blank {len(drops)}/{len(rows)} ({(len(drops) / len(rows) * 100) if rows else 0:.0f}%)"
           f" backgrounds (terms kept)")
-    for u, bg in drops[:8]:
+    for _url, bg in drops[:8]:
         print(f"    - {bg[:90]}")
 
     if args.apply and drops:

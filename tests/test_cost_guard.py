@@ -142,9 +142,13 @@ class TestRecordUsage:
         pool.execute.assert_called_once()
 
     def test_write_error_is_swallowed(self):
+        fake_pool = AsyncMock(side_effect=RuntimeError("db down"))
         with patch.object(cost_guard.settings, "ai_cost_guard_enabled", True):
-            with patch.object(
-                cost_guard, "get_pool", AsyncMock(side_effect=RuntimeError("db down"))
-            ):
-                # Must not raise.
+            with patch.object(cost_guard, "get_pool", fake_pool):
+                # Must not raise — telemetry never breaks the pipeline.
                 asyncio.run(cost_guard.record_usage("anthropic", "m", "op", 0.5))
+
+        # Assert it actually reached the DB and swallowed a real failure. Without
+        # this, the test would still pass if record_usage short-circuited before
+        # the write and never attempted anything at all.
+        fake_pool.assert_called_once()

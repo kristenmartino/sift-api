@@ -83,7 +83,7 @@ async def main():
                     continue
                 raise
 
-            for r, vec in zip(rows, vectors):
+            for r, vec in zip(rows, vectors, strict=True):
                 embedding_str = "[" + ",".join(str(x) for x in vec) + "]"
                 await pool.execute(
                     "UPDATE articles SET embedding = $1::vector, updated_at = NOW() WHERE id = $2",
