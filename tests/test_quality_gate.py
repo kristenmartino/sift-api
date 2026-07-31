@@ -20,6 +20,8 @@ import json
 import os
 
 from services.quality_gate import (
+    find_refusal,
+    gate_summary,
     NEAR_RESTATEMENT_MAX_NOVELTY,
     evaluate_background,
     evaluate_why_it_matters,
@@ -243,3 +245,69 @@ class TestBackgroundGate:
         ref = "The Federal Reserve held interest rates steady."
         res = evaluate_background("The Federal Reserve held interest rates steady.", title="", summary=ref)
         assert not res.dropped
+
+
+class TestGateSummary:
+    """Refusal gate for article summaries (sift-api#118).
+
+    When an RSS entry carries no body, Haiku answers with an apology instead of
+    a summary and it was stored and shown verbatim — 109 rows over 30 days of
+    prod. Every string below is a real one from that set, or a real one from
+    the healthy set that must NOT be touched.
+    """
+
+    def test_a_pure_refusal_is_blanked(self):
+        assert gate_summary("Insufficient content provided to summarize.") == ""
+
+    def test_the_em_dash_variant_is_blanked(self):
+        assert gate_summary(
+            "Unable to summarize—the provided text does not contain sufficient article "
+            "content to identify key facts."
+        ) == ""
+
+    def test_no_content_provided_is_blanked(self):
+        assert gate_summary("No content provided to summarize.") == ""
+
+    def test_a_mixed_summary_keeps_the_reporting_and_drops_the_apology(self):
+        """The case that rules out blanket-dropping: sentence one is real."""
+        out = gate_summary(
+            "Treasury Secretary Scott Bessent said in a Fox News interview that President "
+            "Trump predicted the Democratic Party's shift toward democratic socialism as "
+            "its center of gravity. The article's content appears incomplete and does not "
+            "provide full context for Bessent's remarks."
+        )
+        assert out.startswith("Treasury Secretary Scott Bessent said")
+        assert "appears incomplete" not in out
+
+    def test_a_real_summary_using_the_words_is_untouched(self):
+        """97 prod rows contain this phrasing. A looser pattern ate it."""
+        line = (
+            "Columnist Joe Concha warns that failure to pass the SAVE America Act would "
+            "indicate fundamental governmental dysfunction, noting that even a simple "
+            "majority may not provide sufficient votes to advance it."
+        )
+        assert gate_summary(line) == line
+
+    def test_a_terse_but_correct_summary_survives(self):
+        """The gate must be INERT on clean input — MIN_SUMMARY_WORDS applies
+        only after an apology is removed, never as a length policy."""
+        line = "The Fed held rates steady at 4.25%."
+        assert gate_summary(line) == line
+
+    def test_an_ordinary_summary_mentioning_a_summary_is_untouched(self):
+        line = (
+            "The committee published a summary of its findings on Tuesday, and Senator "
+            "Cornyn said he would review the document before voting."
+        )
+        assert gate_summary(line) == line
+
+    def test_a_remainder_too_short_to_be_a_summary_is_blanked(self):
+        assert gate_summary("A quiz. Insufficient content provided to summarize.") == ""
+
+    def test_empty_and_none_are_safe(self):
+        assert gate_summary("") == ""
+        assert gate_summary(None) == ""
+
+    def test_find_refusal_names_the_phrase_it_matched(self):
+        assert find_refusal("Unable to summarize this one.") == "Unable to summarize"
+        assert find_refusal("The Fed held rates steady.") is None
