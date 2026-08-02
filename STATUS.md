@@ -2,11 +2,23 @@
 
 **Updated:** 2026-07-31
 **Tier:** v1.5 (civic-literacy pivot backend) — **feature work paused per [`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md); evidence-gathering only**
-**Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
+**Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). **2026-07-31: 8 PRs merged** (#116, #117, #120, #121, #123, #124, #126, #127) — a burst, not a new baseline. This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
 ## Active focus
 
-**Story clustering correctness + measurement** (#113, shipped 2026-07-30). Two silent bugs were suppressing clustering across the largest categories, and there was no measurement that would have caught either. Fixed, with a deterministic eval harness and a test-verification layer now in place — see Recent decisions.
+**Pipeline honesty — the "reports success while producing nothing" failure class.** #113 (2026-07-30) found it in clustering. 2026-07-31 found it in three more places, all with the same shape: a step fails, the failure is swallowed or unverified, and the run logs success.
+
+| Where | It looked fine while… | Now |
+|---|---|---|
+| clustering (#113) | a truncated response produced zero stories | `cluster_stats` per run |
+| summaries (#117) | summaries were attached to the **wrong articles** | indices proven `{1..n}`, else re-asked |
+| RSS feeds (#122–#124) | 4 of 58 feeds contributed nothing, one for its whole life | `feed_stats` per run |
+| outlet output (#125–#126) | a live feed served the same items forever | `feed_health` daily |
+| summaries again (#118) | the model's apology was the card copy | refusal gate at write time |
+
+All four signals verified live in prod 2026-07-31: `feed_stats` 59/59 · `feed_health` 56/56 · `Summarized 60/61 (0 batches fell back)` · `Skipping 1/61 articles whose RSS entry carries no body text`.
+
+**The lesson worth carrying** is not any single bug: it is that **every one was found by hand, weeks late, by someone looking at something else.** Two of the fixes were themselves wrong on the first attempt and were only corrected by replaying them against known-true cases (#120's triage ranked the one confirmed swap *last*; #126's first rule paged on WHO behaving normally). A detector that has never been run against a known-true case is an untested detector — same shape as #113's meta-suite caveat.
 
 Two things are now waiting on data rather than on code:
 
@@ -57,6 +69,8 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
 *Items 1 and 2 are measurement, not features, so they sit inside D46's evidence-gathering budget (~4–5h combined). Item 3 does not, and is explicitly deferred.*
 
+*Neither moved on 2026-07-31: the whole day went to the correctness and observability work in Recent decisions. That was unplanned but not off-budget — a pipeline that reports success while producing nothing makes every measurement above untrustworthy, so it had to come first. Items 1 and 2 remain the next work.*
+
 *Displaced from Next 3 (still committed, see Issues tab): dossier expansion completion; DMCA audit + `/methodology` update. `/v1/*` mobile API remains deferred pending native platform direction.*
 
 ## Blocked-on
@@ -73,7 +87,23 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
   Also raised `FETCH_TIMEOUT` 10s → 20s. The WaPo section feeds answer in 8–10s serially *and* concurrently, so they sat exactly on the old ceiling and randomly dropped one or two of the four per run. Fetches are concurrent, so the ceiling costs the slowest feed, not the sum. **Verified: 59/59 feeds green across three consecutive live runs, ~11s total.**
 
-  **Carry this:** "58 vetted outlets across the political spectrum" was 55 in practice for weeks, and the drift guard could not catch it — `tests/test_status_drift.py` pins the *configured* count, and a feed can sit in `FEEDS` forever producing nothing. `articles_by_source` in the new event is the raw material for a real staleness check; the threshold is unbuilt because "low-volume vs dead" needs a number worth choosing (WHO legitimately publishes ~1 article/week).
+  **Carry this:** "58 vetted outlets across the political spectrum" was 55 in practice for weeks, and the drift guard could not catch it — `tests/test_status_drift.py` pins the *configured* count, and a feed can sit in `FEEDS` forever producing nothing.
+
+  **Staleness check built the same day ([#125](https://github.com/kristenmartino/sift-api/issues/125), [#126](https://github.com/kristenmartino/sift-api/pull/126)).** `feed_stats` answers "did the fetch work" per run; it cannot answer "is this outlet still producing", because `articles_by_source` counts articles **fetched**, not **new** — dedup runs later, so a feed serving the same ten items forever reports as healthy. WHO does exactly that. `services/feed_health.py` queries `articles.created_at` daily instead.
+
+  The rule went through two wrong versions, both killed by evidence rather than review. #125 proposed "silent 3 days AND active on ≥4 of 14"; the tests caught it immediately, because WHO is active on 5 of 14 and would have paged on behaving normally. **No flat threshold works** — healthy outlets span 21 to 4,203 rows/14d. Each outlet is now judged against its own rhythm: active on N days ⇒ a typical gap of `14/N`, flagged after ~3 of its own gaps (floor 3 days, cap 14). NPR gets a 3.0-day leash, WHO 8.4. Then replaying it day-by-day against prod caught the second bug: measuring `active_days` up to *now* let the leash **widen as a feed stayed dead**, so Washington Post stalled on 07-20 and flickered back to "quiet" on 07-27 — getting worse looked like getting better. `active_days` is now anchored to the outlet's last row, making the verdict monotone.
+
+  **Replay over 14 days × 56 outlets (784 checks): every alarm is a real silence.** Washington Post would have fired on **07-19, 3.3 days after it died** rather than the 15 it took. It also surfaced an outage nobody knew about — **The Daily Caller was silently dead 07-11 → 07-22** and recovered on its own. WHO, ProPublica and Carbon Brief never alarm. `quiet` is reported but never alarms; that distinction is load-bearing, since without it the low-volume outlets would train everyone to ignore the warning.
+
+- **2026-07-31** — **The model's apologies were being stored and shown as article summaries ([#118](https://github.com/kristenmartino/sift-api/issues/118), [#127](https://github.com/kristenmartino/sift-api/pull/127)).** When an RSS entry carries no body, `_build_prompt` falls back to the title — asking Haiku to summarize a headline from itself — and it answers *"Insufficient content provided to summarize."*, which `store_node` persisted and the card displayed. 109 rows / 30 days, concentrated in headline-only feeds (Reason 23, The Daily Caller 16, Slate 11, ESPN 7).
+
+  **Both halves of the fix.** `_has_summarizable_content` skips articles whose entry is empty or merely repeats the headline — they were paying for a model call to produce something unusable. `quality_gate.gate_summary` strips refusal sentences at write time, **sentence-level rather than all-or-nothing**, because the failure is often mixed: one prod row opens with real reporting on Bessent's remarks and closes with an apology, and blanket-dropping would throw the reporting away.
+
+  **Two traps, both found by measuring against prod rather than guessing.** A pattern of `not provide sufficient` ate *"even a simple majority may not provide sufficient votes"* — a real summary, and 97 rows carry that phrasing. And applying `MIN_SUMMARY_WORDS` to every summary destroyed terse-but-correct ones (*"The Fed held rates steady at 4.25%."*); the existing tests caught that, so the gate is now **inert unless a refusal is actually present**. Precision verified after the fact: 172 stored summaries contain refusal-ish *words* ("families say is insufficient for his crimes") and the gate correctly leaves every one alone.
+
+  **Cleanup applied 2026-07-31** via `scripts/regate_summaries.py` (dry-run by default, idempotent): **86 blanked, 12 trimmed, 53,850 untouched**, and a second run finds nothing. Trimmed rows keep their embedding — marginally stale beats NULL, which would drop them out of vector search and threading; blanked rows have their apology-derived fields cleared. Refusal summaries served over 30 days: **109 → 0**.
+
+  **Known limit:** sentence-level trimming cannot help when the apology and the content share one sentence ("…promotes a $25 produce spray as superior to tap water, but the provided text does not contain substantive reporting"). Those blank whole.
 
 - **2026-07-31** — **Summaries could be attached to the wrong article; batch alignment is now enforced, not assumed (`services/summarizer.py`).** Same failure class as #113's missing `zip(..., strict=True)` — a batch response was trusted to line up with its input. `_parse_summaries` mapped each summary back via the **model's own returned index** and validated only that the index was in range: a repeated, skipped, or shifted index silently attached a summary to the WRONG article while the pipeline reported success. The JSON-parse-failure path was worse — it mapped raw output lines **positionally**, so one preamble line ("Here are the summaries:") shifted every article's summary by one.
 
@@ -102,9 +132,11 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
   **The triage tool itself was wrong first ([#120](https://github.com/kristenmartino/sift-api/pull/120)).** Its neighbour scan looked ±5 rows and scored the confirmed Guatemala/Blanche case **0**, sorting the one case the whole fix was written for to the *bottom* of the CSV — its true owner sat 8 rows away. Now time-windowed over one run's insert burst; that case scores 5 and sorts first. Also fixed a tokenizer that kept apostrophes (`Blanche's` ≠ `Blanche`), dropped sub-3-character tokens (`AI`, `US`), and stemmed only a trailing `s` — 186 → 136 flags. **Lesson worth carrying: a detector that has never been run against a known-true case is an untested detector.** Same shape as #113's meta-suite caveat.
 
-  **What repair can and cannot do.** `articles` stores title and summary but never the body (the DMCA posture in Open-Q #4), so a correct summary cannot be regenerated from the row. The only recovery route is the outlet's live RSS, which holds ~a day: recent rows are re-summarized, older ones are **blanked** — an empty card beats a card claiming a murdered couple's story is about a stalled DOJ nomination, and it matches the null-over-filler rule from #90. Both known cases had already aged out, so both would blank. Repair also clears every field derived from the poisoned summary — `embedding` (built from `title + summary`, so search and threading saw the wrong article), `why_it_matters`, `importance_score`, `context_primer`, `reading_levels`, `entities`, `entity_links`, `story_id` — and the backfill scripts rebuild them. **Pending: nobody has run it with `--apply` yet.**
+  **What repair can and cannot do.** `articles` stores title and summary but never the body (the DMCA posture in Open-Q #4), so a correct summary cannot be regenerated from the row. The only recovery route is the outlet's live RSS, which holds ~a day: recent rows are re-summarized, older ones are **blanked** — an empty card beats a card claiming a murdered couple's story is about a stalled DOJ nomination, and it matches the null-over-filler rule from #90. Both known cases had already aged out, so both would blank. Repair also clears every field derived from the poisoned summary — `embedding` (built from `title + summary`, so search and threading saw the wrong article), `why_it_matters`, `importance_score`, `context_primer`, `reading_levels`, `entities`, `entity_links`, `story_id` — and the backfill scripts rebuild them.
 
-  **Two unrelated bugs the hand-pass surfaced**, both filed: [#118](https://github.com/kristenmartino/sift-api/issues/118) — model refusals ("Unable to summarize…") stored and shown as summaries, 68 rows / 30 days (0.13%), concentrated in feeds whose RSS is headline-only; [#119](https://github.com/kristenmartino/sift-api/issues/119) — one summary that is the literal string ` ```json `, the deleted positional fallback's fingerprint, written hours before the fix deployed.
+  **Applied 2026-07-31.** Three rows repaired, all blanked (none still carried by a live feed): the two confirmed swaps plus the ` ```json ` row from #119. All three now drop out of the feed rather than showing wrong text, because every feed query in `sift/lib/db.ts` filters `summary IS NOT NULL AND summary != ''` — blanking is effectively unpublishing, which is the right treatment for an article carrying another article's summary. **It is permanent:** `deduplicator` will not re-ingest them and every backfill derives from the summary that no longer exists. Prior state is in `data/_cache/repair_backup_*.json` (gitignored).
+
+  **Two unrelated bugs the hand-pass surfaced**, both since fixed: [#118](https://github.com/kristenmartino/sift-api/issues/118) — model refusals stored and shown as summaries (see the entry below); [#119](https://github.com/kristenmartino/sift-api/issues/119) — one summary that is the literal string ` ```json `, the deleted positional fallback's fingerprint, written hours before the fix deployed. Its batch-mates were checked and are clean: it was the **last** write of the run and received line 1, which fits a final batch of exactly one article — `lines[:len(batch)]` had no line 2 to misplace. The fallback needs a batch of 2+ to shift anything, so that batch was lucky, not safe.
 
 - **2026-07-30** — **Two silent clustering bugs fixed; deterministic eval + test-verification layer shipped ([#113](https://github.com/kristenmartino/sift-api/pull/113), with [sift#190](https://github.com/kristenmartino/sift/pull/190) and [sift-mcp#19](https://github.com/kristenmartino/sift-mcp/pull/19)).**
 
