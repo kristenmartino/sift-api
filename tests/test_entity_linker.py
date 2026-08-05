@@ -1,6 +1,7 @@
 """Tests for services/entity_linker.py (Phase 3.G)."""
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from unittest.mock import AsyncMock
 
@@ -289,6 +290,26 @@ async def test_every_url_bearing_article_gets_a_key(monkeypatch):
     out = await _run_link_articles([gated, answered, failed], llm, monkeypatch)
 
     assert set(out) == {a["source_url"] for a in (gated, answered, failed)}
+
+
+@pytest.mark.asyncio
+async def test_duplicate_source_url_is_not_counted_as_a_failure(monkeypatch, caplog):
+    """Two articles can share a source_url — the deduplicator only dedupes
+    intra-batch by content_hash — and link_articles_llm keys by url, so they
+    collapse to one entry. Counting that against len(to_link) reported a
+    per-article failure that never happened: the first prod run after #139
+    logged "resolved 7/8 forwarded articles" with no failure behind it.
+
+    Both sides of the ratio must count urls."""
+    a1 = _article("https://e.com/dup", "The CNN Tower dominates the skyline")
+    a2 = _article("https://e.com/dup", "Chuck Schumer spoke to CNN today")
+    llm = AsyncMock(return_value={"https://e.com/dup": []})
+
+    with caplog.at_level(logging.INFO, logger="sift-api.entity_linker"):
+        await _run_link_articles([a1, a2], llm, monkeypatch)
+
+    resolved = [r.getMessage() for r in caplog.records if "LLM path resolved" in r.getMessage()]
+    assert resolved == ["entity_linker: LLM path resolved 1/1 forwarded articles"]
 
 
 # ── curated short-key exemption ─────────────────────────────
