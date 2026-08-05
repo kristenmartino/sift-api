@@ -340,7 +340,7 @@ async def link_text_llm(
     *,
     source_name: str | None = None,
     client: anthropic.AsyncAnthropic | None = None,
-) -> list[EntityLink]:
+) -> list[EntityLink] | None:
     """Single-article entity linking via Claude.
 
     `source_name` is the article's own source (e.g., "Reuters",
@@ -349,10 +349,16 @@ async def link_text_llm(
     that outlet, and (b) drop self-referencing outlet chips in
     post-processing as a backstop.
 
-    Returns [] on any failure path (API error, parse error, timeout).
-    The caller is responsible for falling back to the regex linker if
-    that matters — usually it does, since '[]' is a valid output for
-    'no entities mentioned'.
+    **Returns None on any failure path (API error, unparseable response,
+    timeout), and a list — possibly [] — only when the model actually
+    answered.** The two are not interchangeable: [] is a valid answer
+    meaning "no catalog entity is mentioned", so a caller that writes the
+    result to storage would erase good links every time the API blipped.
+    That is exactly the bug scripts/backfill_entity_links.py had.
+
+    Callers that only *read* the result (the pipeline) can treat None as
+    [] and fall back to the regex linker; callers that *write* it must
+    skip the write instead.
     """
     if not (title or summary) or not catalog:
         return []
@@ -385,14 +391,20 @@ async def link_text_llm(
         )
     except asyncio.TimeoutError:
         logger.warning("entity_linker_llm: %.1fs timeout", LLM_TIMEOUT_SECONDS)
-        return []
+        return None
     except Exception as e:  # noqa: BLE001 — log + degrade gracefully
         logger.warning("entity_linker_llm: API error: %s", e)
-        return []
+        return None
 
     log_usage("entity_linker_llm.link_text", response, model=MODEL)
 
     text = "".join(b.text for b in response.content if b.type == "text")
+    # A response we can't parse is a failure, not "no entities" — same
+    # reasoning as the timeout path above. _parse_response collapses both
+    # to [], so the unparseable case is caught before we get there.
+    if _extract_json_array(text) is None:
+        logger.warning("entity_linker_llm: unparseable response: %.120r", text)
+        return None
     return _parse_response(text, valid, source_outlet_slug=source_slug)
 
 
@@ -401,20 +413,36 @@ async def link_articles_llm(
     catalog: list[CatalogEntry],
     *,
     concurrency: int = 4,
+    omit_failures: bool = False,
 ) -> dict[str, list[EntityLink]]:
     """Batch wrapper: run link_text_llm over `articles`, keyed by
     `source_url`. Articles without a source_url are skipped.
 
     Concurrency-limited so we don't burst Claude in a single tick.
+
+    `omit_failures` controls what happens to an article whose call failed
+    (see link_text_llm: API error, unparseable response, timeout):
+
+    - False (default): the article maps to [], as it always has. Right for
+      read-path callers that only need *an* answer per article — the
+      pipeline's regex fallback fills the gap.
+    - True: the article is left out of the returned dict entirely, so the
+      caller can tell "the model said no entities" from "we never got an
+      answer". Required by anything that writes the result back to
+      storage, where the two must not be conflated.
     """
     out: dict[str, list[EntityLink]] = {}
     if not articles or not catalog:
+        # No catalog is a config failure, not an answer — under
+        # omit_failures, saying [] for every article would clear them all.
+        if omit_failures:
+            return {}
         return {a.get("source_url", ""): [] for a in articles if a.get("source_url")}
 
     client = _client()
     sem = asyncio.Semaphore(concurrency)
 
-    async def _link_one(article: dict) -> tuple[str, list[EntityLink]]:
+    async def _link_one(article: dict) -> tuple[str, list[EntityLink] | None]:
         async with sem:
             url = article.get("source_url") or ""
             if not url:
@@ -430,6 +458,11 @@ async def link_articles_llm(
 
     results = await asyncio.gather(*(_link_one(a) for a in articles))
     for url, links in results:
-        if url:
-            out[url] = links
+        if not url:
+            continue
+        if links is None:
+            if omit_failures:
+                continue
+            links = []
+        out[url] = links
     return out

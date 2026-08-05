@@ -129,14 +129,30 @@ class TestLogUsage:
         payload = log_usage("op", _response(), model="claude-sonnet-4-6")
         assert payload["model"] == "claude-sonnet-4-6"
 
-    def test_ledger_is_not_written_when_the_cost_guard_is_disabled(self):
-        """This is why ai_usage_daily is empty in prod: _record_to_ledger
-        short-circuits unless ai_cost_guard_enabled is true."""
-        with patch.object(usage_tracker.settings, "ai_cost_guard_enabled", False):
-            with patch.object(usage_tracker, "_record_to_ledger") as rec:
-                log_usage("op", _response(input_tokens=ONE_M))
-                # log_usage always calls it; the short-circuit is inside.
-                rec.assert_called_once()
+    def test_ledger_is_written_with_the_computed_cost(self):
+        with patch.object(usage_tracker, "_record_to_ledger") as rec:
+            log_usage("op", _response(input_tokens=ONE_M))
+        rec.assert_called_once()
+        assert rec.call_args.args[2] == 1.0  # $1.00/M input
+
+    def test_recording_cannot_be_gated_on_a_setting(self):
+        """The structural guard for the 20x-stale cost figure.
+
+        The predecessor of this test asserted the bug and said so in its own
+        docstring: "This is why ai_usage_daily is empty in prod."
+        `_record_to_ledger` short-circuited unless `ai_cost_guard_enabled`, so
+        the flag that turns on *blocking* also turned on *measuring* — and with
+        the default `false` the ledger was never written from its creation
+        until 2026-07-30, while STATUS.md quoted ~$15/mo against ~$300/mo real.
+
+        This module now imports no settings at all, so recording cannot be made
+        conditional on one without that becoming visible here. Enforcement
+        lives in cost_guard.check_budget and is still flag-gated, correctly.
+        """
+        assert not hasattr(usage_tracker, "settings"), (
+            "usage_tracker imported settings again — recording must not depend "
+            "on configuration. Enforcement belongs in cost_guard.check_budget."
+        )
 
 
 class TestCountWebSearches:
@@ -155,3 +171,82 @@ class TestCountWebSearches:
     def test_returns_zero_on_garbage_rather_than_raising(self):
         assert count_web_searches(object()) == 0
         assert count_web_searches(None) == 0
+
+
+# ── log_batch_usage ─────────────────────────────────────────
+#
+# The three Message Batches paths recorded nothing at all until 2026-08-05, so
+# their spend was invisible: the ledger totalled ~$8.99/day against a real bill
+# of ~$10/day, and the gap was them. These pin the two things that make batch
+# accounting different from the live path — the result shape and the price.
+
+
+def _batch_result(*, input_tokens=0, output_tokens=0, cache_read=0,
+                  cache_creation=0, succeeded=True):
+    """A parsed JSONL row as batch_client hands it back — dicts, not objects."""
+    if not succeeded:
+        return {"custom_id": "x", "result": {"type": "errored"}}
+    return {
+        "custom_id": "x",
+        "result": {
+            "type": "succeeded",
+            "message": {
+                "usage": {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "cache_read_input_tokens": cache_read,
+                    "cache_creation_input_tokens": cache_creation,
+                }
+            },
+        },
+    }
+
+
+class TestLogBatchUsage:
+    def test_applies_the_fifty_percent_batch_discount(self):
+        """Charging batch tokens at list price would overstate this spend 2x."""
+        with patch.object(usage_tracker, "_record_to_ledger"):
+            out = usage_tracker.log_batch_usage(
+                "context_generator.batch",
+                [_batch_result(input_tokens=ONE_M, output_tokens=ONE_M)],
+            )
+        # (1.00 + 5.00) at list, halved.
+        assert out["cost_usd"] == 3.0
+        assert out["batch"] is True
+
+    def test_reads_the_dict_shape_not_the_object_shape(self):
+        """log_usage's getattr access reads nothing off these dicts and would
+        silently record $0 — which is worse than not recording, because it
+        looks like data."""
+        with patch.object(usage_tracker, "_record_to_ledger"):
+            out = usage_tracker.log_batch_usage(
+                "primer_generator.batch",
+                [_batch_result(input_tokens=1000, output_tokens=500)],
+            )
+        assert out["input_tokens"] == 1000
+        assert out["output_tokens"] == 500
+        assert out["cost_usd"] > 0
+
+    def test_aggregates_and_counts_errored_separately(self):
+        with patch.object(usage_tracker, "_record_to_ledger") as rec:
+            out = usage_tracker.log_batch_usage(
+                "entity_extractor.batch",
+                [
+                    _batch_result(input_tokens=100, output_tokens=10),
+                    _batch_result(input_tokens=200, output_tokens=20),
+                    _batch_result(succeeded=False),
+                ],
+            )
+        assert out["input_tokens"] == 300
+        assert out["requests_succeeded"] == 2
+        assert out["requests_errored"] == 1
+        # call_count is the succeeded count, not len(results).
+        assert rec.call_args.kwargs["call_count"] == 2
+
+    def test_empty_and_malformed_results_do_not_raise(self):
+        with patch.object(usage_tracker, "_record_to_ledger"):
+            assert usage_tracker.log_batch_usage("op", [])["cost_usd"] == 0
+            assert usage_tracker.log_batch_usage("op", [{}])["requests_errored"] == 1
+            assert usage_tracker.log_batch_usage(
+                "op", [{"result": {"type": "succeeded"}}]
+            )["cost_usd"] == 0

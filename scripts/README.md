@@ -39,6 +39,48 @@ railway run ./.venv/bin/python3 scripts/explain_feed_queries.py
 For scripts that write (like `backfill_context.py`), prefer running them once
 locally with the prod `DATABASE_URL` exported, so you can Ctrl-C cleanly.
 
+## Audit snapshots
+
+`audit_unlinked_entities.py` writes undated working files to `data/`. Those are
+gitignored — they are regenerable, and the big one is ~1.2 MB, so leaving them
+tracked would churn the repo on every run.
+
+To keep a result, copy it to a dated name and commit that:
+
+```bash
+railway run ./.venv/bin/python3 scripts/audit_unlinked_entities.py
+cd data && for f in unlinked_entity_suggestions unlinked_entities_by_category \
+                    unmatched_search_queries; do
+  cp "$f.csv" "$f.$(date +%F).csv"
+done
+```
+
+Same convention as `data/org_profiles.prod-backup-2026-07-27.csv`.
+
+### 2026-08-05 — the run that motivated migration 014
+
+Baseline for judging whether the alias layer moved anything. Against 282,931
+articles, 207,935 with entities extracted (73.5%):
+
+| | |
+|---|---|
+| Articles carrying any `entity_links` | **21,614 — 7.6%** |
+| Distinct mentions with no catalog row | 13,556 |
+| Unlinked mention-articles | 233,364 |
+| ...of which sports + entertainment | **157,557 (67%)** — outside the civic frame |
+| Catalog at the time | 838 rows |
+
+Top civic gaps: Trump Administration (2,787), Democratic Party (1,690),
+OpenAI (1,218), Apple (1,145), Graham Platner (1,082), SpaceX (957),
+Republican Party (839), Pentagon (756 — a dossier existed, the *name* did not,
+which is what `entity_aliases` fixes).
+
+Two caveats when reading the CSV. The `substring` tier is a review heuristic,
+not data: it suggested "Iran" → `EXEC-MIRAN-S` and "U.S." →
+`us-marshals-service`, so it must never be bulk-imported. And
+`unmatched_search_queries` returned 4 rows at one search each — the search
+signal is not usable at current traffic.
+
 ## Refresh cadence (politician_profiles)
 
 The civic-literacy data on `politician_profiles` doesn't go stale at the

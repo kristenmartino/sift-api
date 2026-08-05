@@ -19,7 +19,7 @@ from services.index_alignment import (
 )
 from services.judge import judge_lines, judge_rejects
 from services.quality_gate import gate_why_it_matters
-from services.usage_tracker import log_usage
+from services.usage_tracker import log_batch_usage, log_usage
 
 logger = logging.getLogger("sift-api.context_generator")
 
@@ -292,6 +292,9 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
     gate's restatement check are read from the articles table in one query per
     sub-batch (the rows exist by now — store_node runs before the batch lands).
     """
+    # Batch spend was invisible until 2026-08-05 — this path recorded
+    # nothing, leaving ~$1/day unattributed between the ledger and the bill.
+    log_batch_usage("context_generator.batch", results)
     pool = await get_pool()
     row = await pool.fetchrow(
         "SELECT metadata FROM api_batches WHERE batch_id = $1", batch_id,

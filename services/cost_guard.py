@@ -88,11 +88,15 @@ async def record_usage(
 ) -> None:
     """Add a paid call's estimated cost to today's ledger row.
 
-    No-op when the guard is disabled or there's nothing to record. Never raises:
-    lost telemetry must not break the pipeline or a request.
+    Records unconditionally — `ai_cost_guard_enabled` gates *enforcement*
+    (`check_budget`), not measurement. It used to gate this function too, which
+    is why `ai_usage_daily` sat empty from its creation until 2026-07-30 while
+    STATUS.md quoted a figure ~20x below the real spend. A ledger you have to
+    opt into is a ledger nobody knows is missing, and you need it populated
+    *before* you can pick a sensible ceiling.
+
+    Never raises: lost telemetry must not break the pipeline or a request.
     """
-    if not settings.ai_cost_guard_enabled:
-        return
     if cost_usd <= 0 and call_count <= 0:
         return
 
