@@ -69,11 +69,12 @@ When adding a migration: write it in both places. The SQL file is documentation 
 - `psql` is **not** installed in the Railway container. Use `railway run ./.venv/bin/python3 ...` with asyncpg for one-off SQL.
 - Local Python: `./sift-api/.venv/bin/python3` (system python has no asyncpg).
 - Neon requires `ssl=require`. `scripts/explain_feed_queries.py` handles this already via `"neon.tech" in db_url` check.
-- `railway status` should show project `fortunate-charisma`, service `sift-api`, environment `production`.
+- `railway status` should show project **`sift`**, service `sift-api`, environment `production` (verified 2026-08-05; this line said `fortunate-charisma` until then, which is Railway's auto-generated name and was presumably renamed at some point).
+- Railway **auto-deploys `main`, but gates on CI** — a merge shows `Waiting for CI` and only then `Building`. Do not conclude a change is live from the merge, or unlive from a status check taken too soon: `railway status --json` carries `latestDeployment.meta.commitHash`, which is the only direct answer.
 
 ## CI
 
-`.github/workflows/ci.yml` has three jobs:
+`.github/workflows/ci.yml` has two jobs (this said "three" until 2026-08-05, while the table below it listed two):
 
 | Job         | Trigger                                        | Needs                          |
 | ----------- | ---------------------------------------------- | ------------------------------ |
