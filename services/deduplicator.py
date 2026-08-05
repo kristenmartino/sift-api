@@ -39,9 +39,11 @@ async def deduplicate(articles: list[RSSArticle]) -> list[RSSArticle]:
 
     new_articles: list[RSSArticle] = []
     seen_hashes: set[str] = set()
+    seen_urls: set[str] = set()
     dropped_url = 0
     dropped_hash_db = 0
     dropped_hash_intra = 0
+    dup_url_intra_kept = 0
 
     for a in articles:
         if a.source_url in existing_urls:
@@ -56,6 +58,21 @@ async def deduplicate(articles: list[RSSArticle]) -> list[RSSArticle]:
             continue
         if a.content_hash:
             seen_hashes.add(a.content_hash)
+        # Observation only — this article is NOT dropped. Intra-batch dedup
+        # keys on content_hash, so the same source_url with edited body text
+        # (an outlet revising a story, or WaPo's four section feeds carrying
+        # one piece) survives twice. Both copies are then summarized and
+        # entity-linked at full price before collapsing into a single row at
+        # store time, which upserts ON CONFLICT (source_url) — so the second
+        # copy is paid-for waste. It also made the linker's resolved-count
+        # ratio read as a per-article LLM failure until #144.
+        # Counting first: dropping it is a behavior change to ingest, and
+        # there is no historical rate because the collapse leaves no trace in
+        # the DB. Decide once this has a week of numbers behind it.
+        if a.source_url in seen_urls:
+            dup_url_intra_kept += 1
+        else:
+            seen_urls.add(a.source_url)
         new_articles.append(a)
 
     skipped = dropped_url + dropped_hash_db + dropped_hash_intra
@@ -67,6 +84,8 @@ async def deduplicate(articles: list[RSSArticle]) -> list[RSSArticle]:
             "dropped_url": dropped_url,
             "dropped_hash_db": dropped_hash_db,
             "dropped_hash_intra": dropped_hash_intra,
+            # Kept, not dropped — see the comment above. Included in "new".
+            "dup_url_intra_kept": dup_url_intra_kept,
         }))
 
     return new_articles
