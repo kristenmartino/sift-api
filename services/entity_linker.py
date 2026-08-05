@@ -570,12 +570,17 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
             # the LLM's real "no entities" verdict — and the fallback never
             # fired for it.
             out = await link_articles_llm(to_link, catalog, omit_failures=True)  # type: ignore[arg-type]
-            # len(to_link) - len(out) is the per-article failure count. Must
-            # stay above the gated_out fill, or len(out) stops meaning
-            # "LLM-resolved".
+            # Denominator is *unique urls*, not len(to_link). link_articles_llm
+            # keys by source_url, so two articles sharing one collapse to a
+            # single entry — and the deduplicator only dedupes intra-batch by
+            # content_hash, so a batch really can carry the same url twice.
+            # Against len(to_link) that read as "7/8 resolved", i.e. a
+            # per-article failure that never happened. Both sides count urls.
+            # The difference is the per-article failure count.
+            forwarded_urls = {a.get("source_url") for a in to_link if a.get("source_url")}
             logger.info(
                 "entity_linker: LLM path resolved %d/%d forwarded articles",
-                len(out), len(to_link),
+                len(out), len(forwarded_urls),
             )
         except Exception as e:  # noqa: BLE001 — degrade rather than block the pipeline
             logger.warning(
