@@ -46,6 +46,12 @@ Stop-word filter: surface forms shorter than 4 characters or matching
 common-English-word strings ("the", "and", "for") are dropped from the
 search dictionary at build time, so a politician named "and" couldn't
 hijack the linker even if curated by mistake.
+
+Common-English *names*: neither guard above helps when the canonical name
+is itself an ordinary phrase — "The Nation", "Foreign Policy", "Nature".
+`_REGEX_INELIGIBLE_NAMES` is the curated blocklist for those; see its
+comment for the measured false-positive rates. It withholds them from the
+regex dictionary only — they remain in the catalog the LLM linker reads.
 """
 from __future__ import annotations
 
@@ -80,6 +86,68 @@ _STOPWORDS: frozenset[str] = frozenset({
 # Minimum length for a search-key to be eligible. Below this, false-positive
 # rate dominates real matches.
 _MIN_KEY_LENGTH = 4
+
+# Canonical names that are also ordinary English, and must therefore never
+# become regex keys. The plan called this `regex_eligible`; it is expressed
+# as the deny-half because ~10 of 200 catalog names need it and the rest are
+# unambiguous proper nouns.
+#
+# `_STOPWORDS` and `_MIN_KEY_LENGTH` do not cover this case: the former holds
+# only single common words, and a 4-char floor says nothing about a
+# multi-word phrase like "the nation" or "foreign policy". Measured in prod
+# 2026-08-05, a regex-mode `backfill_entity_links.py --include-empty` run put
+# 5,838 bad chips on 3,872 articles from five of these names alone.
+#
+# **This blocks the regex dictionary only.** The rows stay in the catalog, so
+# `entity_linker_llm` still sees them and can link them from context — which
+# is the whole reason the LLM path exists and why a blocklist is the right
+# shape here. The cost is gate recall: an article whose *only* catalog name is
+# a blocked one now matches nothing, so the pre-gate answers [] without asking
+# the LLM. That is the trade this file already makes explicit elsewhere —
+# "better to under-link than mislink" (see politician_aliases).
+#
+# Rates below are the share of corpus matches that are the English phrase
+# rather than the outlet, measured over random samples of prod `articles`
+# (n=20-30 each) on 2026-08-05 via a one-off audit. Sample RANDOMLY, not by
+# `published_date DESC` — recency-ordered sampling made "The Athletic" look
+# 67% false (August college-sports copy) when it is really ~12%.
+#
+#   the nation      ~100%  "the nation's fuel", "Face the Nation"
+#   foreign affairs  100%  "House Foreign Affairs Committee" — 0 real in n=20
+#   reason           ~95%  "the top cited reason for layoffs"
+#   nature           ~93%  only ~51 of 746 linked articles were the journal
+#   the free press   ~86%  "a takeover of the free press" (n=7 total)
+#   foreign policy   ~85%  "U.S. foreign policy priorities"
+#   the times        ~75%  "Sign of the Times"; and most of the remainder are
+#                          the New York Times, i.e. the wrong canonical_id
+#   slate            ~70%  "a robust slate of returning shows"
+#   the verge         47%  "on the verge of" — 14 of 30 sampled
+#   the atlantic      40%  "the Atlantic Ocean", "the Atlantic Division"
+#
+# Deliberately NOT blocked, having been measured rather than assumed:
+# the athletic (~12% — "the athletic department"), the hill (~15%), variety
+# (~6%), the guardian (~3%), stat / wired / forbes / the economist /
+# national review / the dispatch (~0%). "the federalist" survives on its own
+# because longest-match-wins hands "the Federalist Society" to the org row.
+# Every `org_profiles.name` and `bill_profiles.short_title` was audited too:
+# all are distinctive proper nouns, none collide.
+#
+# Like `_STOPWORDS`, this applies to curated `entity_aliases` rows as well —
+# a blocked name cannot be smuggled back in through the alias table. That is
+# also the escape hatch: to restore recall for one of these, curate a
+# *narrower* alias ("the journal Nature") rather than reopening the bare name.
+_REGEX_INELIGIBLE_NAMES: frozenset[str] = frozenset({
+    "the nation",
+    "nature",
+    "foreign policy",
+    "foreign affairs",
+    "reason",
+    "slate",
+    "the verge",
+    "the atlantic",
+    "the times",
+    "the free press",
+})
 
 # The same floor for keys that came from the curated entity_aliases table.
 # The 4-char floor is a blunt proxy for "this key was derived, so nobody
@@ -139,10 +207,12 @@ def build_search_dict(
     entities, drop it entirely. Better to miss a match than to point
     "Apple" at the wrong Apple.
 
-    Stop-words and short keys are filtered.
+    Stop-words, common-English catalog names (`_REGEX_INELIGIBLE_NAMES`)
+    and short keys are filtered.
     """
     # First pass: collect every candidate key. Track conflicts.
     candidates: dict[str, list[tuple[str, str]]] = {}
+    ineligible = 0
     for row in rows:
         curated = {_normalize(a) for a in row.get("curated", [])}
         keys = [row["primary_name"], *row.get("aliases", [])]
@@ -151,6 +221,17 @@ def build_search_dict(
             if not normalized:
                 continue
             if normalized in _STOPWORDS:
+                continue
+            # Ordinary English that happens to be a catalog name. Checked
+            # before the curated-alias floor below so the alias table cannot
+            # reintroduce one. The row itself is untouched — the LLM linker
+            # reads `rows`, not this dict, and still gets to link it.
+            if normalized in _REGEX_INELIGIBLE_NAMES:
+                ineligible += 1
+                logger.debug(
+                    "entity_linker: %r is regex-ineligible (common English) — "
+                    "LLM path only", normalized,
+                )
                 continue
             # Curated keys get the lower floor: the 4-char rule is a proxy for
             # "derived, so unvouched-for", and a hand-checked row is exactly
@@ -184,6 +265,11 @@ def build_search_dict(
         logger.info(
             "entity_linker: dropped %d ambiguous search keys at build time",
             dropped,
+        )
+    if ineligible:
+        logger.info(
+            "entity_linker: withheld %d regex-ineligible key(s) — still "
+            "linkable via the LLM path", ineligible,
         )
     return out
 

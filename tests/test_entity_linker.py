@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services.entity_linker import (
+    _REGEX_INELIGIBLE_NAMES,
     build_catalog,
     build_search_dict,
     link_text,
@@ -368,6 +369,97 @@ def test_short_outlet_links_end_to_end_via_curated_alias():
     catalog = _catalog_with_curated_alias("cnn")
     links = link_text("She told CNN the vote was close.", build_search_dict(catalog))
     assert [link["canonical_id"] for link in links] == ["cnn"]
+
+
+# ── regex-ineligible catalog names ──────────────────────────
+#
+# Catalog names that are also ordinary English. Neither _STOPWORDS (single
+# words only) nor _MIN_KEY_LENGTH (says nothing about "foreign policy") caught
+# these, and a regex-mode backfill put 5,838 bad chips on 3,872 prod articles
+# from five of them. The contract has two halves: they never reach the regex
+# dictionary, and they DO stay in the catalog the LLM linker reads.
+
+
+def _outlet_catalog(slug: str, name: str, aliases: list[dict] | None = None):
+    return build_catalog(
+        outlets=[{"slug": slug, "name": name}],
+        politicians=[], orgs=[], bills=[], aliases=aliases,
+    )
+
+
+@pytest.mark.parametrize(("slug", "name", "prose"), [
+    ("the-nation", "The Nation", "Sales of the nation's top prospects rose."),
+    ("nature", "Nature", "The report described the nature of the meeting."),
+    ("foreign-policy", "Foreign Policy", "It reflects U.S. foreign policy priorities."),
+    ("foreign-affairs", "Foreign Affairs", "He testified to the House Foreign Affairs Committee."),
+    ("reason", "Reason", "Layoffs were the top cited reason."),
+    ("slate", "Slate", "Telemundo announced its unscripted slate."),
+    ("the-verge", "The Verge", "Coventry City is on the verge of promotion."),
+    ("the-atlantic", "The Atlantic", "The storm crossed the Atlantic Ocean."),
+    ("the-times", "The Times", "Here are all the times Congress recessed."),
+    ("the-free-press", "The Free Press", "An oligarchic takeover of the free press."),
+])
+def test_regex_ineligible_name_produces_no_chip(slug, name, prose):
+    """The five measured offenders plus the five the audit added."""
+    search_dict = build_search_dict(_outlet_catalog(slug, name))
+    assert link_text(prose, search_dict) == []
+
+
+def test_regex_ineligible_names_are_absent_from_the_search_dict():
+    catalog = _outlet_catalog("the-nation", "The Nation")
+    assert build_search_dict(catalog) == {}
+
+
+def test_regex_ineligible_row_stays_in_the_llm_catalog():
+    """The point of the blocklist: withheld from regex, NOT from the catalog.
+    entity_linker_llm reads these rows, so context can still resolve them."""
+    catalog = _outlet_catalog("nature", "Nature")
+    row = next(r for r in catalog if r["type"] == "outlet")
+    assert row["primary_name"] == "Nature"
+    assert row["canonical_id"] == "nature"
+
+
+def test_curated_alias_cannot_reintroduce_an_ineligible_name():
+    """Same posture as _STOPWORDS: the alias table is not an override."""
+    catalog = _outlet_catalog(
+        "nature", "Nature",
+        aliases=[{"alias": "Nature", "entity_type": "outlet", "canonical_id": "nature"}],
+    )
+    assert "nature" not in build_search_dict(catalog)
+
+
+def test_a_narrower_curated_alias_is_the_escape_hatch():
+    """Blocking the bare name does not block a precise one — this is how a
+    curator restores recall without reopening the prose collision."""
+    catalog = _outlet_catalog(
+        "nature", "Nature",
+        aliases=[{"alias": "the journal Nature", "entity_type": "outlet",
+                  "canonical_id": "nature"}],
+    )
+    search_dict = build_search_dict(catalog)
+    assert link_text("It appeared in the journal Nature.", search_dict)[0]["canonical_id"] == "nature"
+    assert link_text("The nature of the meeting was unclear.", search_dict) == []
+
+
+def test_unlisted_lookalike_names_are_untouched():
+    """Measured and deliberately kept: blocking these would cost far more real
+    links than it saves. Guards against over-broad additions to the blocklist."""
+    for slug, name, real in [
+        ("the-athletic", "The Athletic", "Ranked in the top 20 by The Athletic."),
+        ("the-hill", "The Hill", "According to The Hill, the vote slipped."),
+        ("the-guardian", "The Guardian", "Records reviewed by The Guardian show delays."),
+        ("variety", "Variety", "Variety published its annual New Leaders list."),
+    ]:
+        search_dict = build_search_dict(_outlet_catalog(slug, name))
+        assert [link["canonical_id"] for link in link_text(real, search_dict)] == [slug]
+
+
+def test_blocklist_entries_are_normalized():
+    """A capitalized or padded entry would silently never match, since the
+    check runs against the output of _normalize()."""
+    for entry in _REGEX_INELIGIBLE_NAMES:
+        assert entry == entry.strip().lower()
+        assert "  " not in entry
 
 
 # ── nickname_variants ───────────────────────────────────────

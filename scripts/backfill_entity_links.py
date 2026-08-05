@@ -201,6 +201,7 @@ async def main(
     limit: int | None,
     chunk_size: int,
     assume_yes: bool,
+    only_canonical: list[str] | None = None,
 ) -> int:
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
@@ -222,14 +223,28 @@ async def main(
         where = "entity_links IS NOT NULL AND entity_links::text != '[]'"
         if include_empty:
             where = "TRUE"
+        params: list = []
+        # --only-canonical narrows to rows carrying a specific chip. Regex mode
+        # is additive and can never clear one, so repairing a canonical_id that
+        # should not have been linked is necessarily an LLM-mode job — and
+        # that is only affordable when it is scoped to the affected rows
+        # rather than the whole already-linked set.
+        if only_canonical:
+            params.append(list(only_canonical))
+            where += (
+                f" AND EXISTS (SELECT 1 FROM jsonb_array_elements(entity_links) e"
+                f" WHERE e->>'canonical_id' = ANY(${len(params)}::text[]))"
+            )
         sql = f"SELECT id FROM articles WHERE {where} ORDER BY created_at DESC"
         if limit:
             sql += f" LIMIT {int(limit)}"
-        ids = [r["id"] for r in await conn.fetch(sql)]
+        ids = [r["id"] for r in await conn.fetch(sql, *params)]
 
         total_all = await conn.fetchval("SELECT COUNT(*) FROM articles")
-        print(f"Selected {len(ids):,} of {total_all:,} articles "
-              f"({'all rows' if include_empty else 'already-linked rows only'})")
+        scope = "all rows" if include_empty else "already-linked rows only"
+        if only_canonical:
+            scope += f"; carrying {', '.join(sorted(only_canonical))}"
+        print(f"Selected {len(ids):,} of {total_all:,} articles ({scope})")
 
         if not ids:
             print("Nothing to do.")
@@ -375,6 +390,11 @@ if __name__ == "__main__":
         "--yes", action="store_true",
         help="Skip the LLM cost confirmation.",
     )
+    parser.add_argument(
+        "--only-canonical", nargs="+", metavar="ID",
+        help="Restrict to articles already carrying one of these canonical_ids. "
+             "Use with --mode llm to repair chips regex mode cannot clear.",
+    )
     args = parser.parse_args()
 
     resolved_mode = args.mode or ("regex" if args.include_empty else "llm")
@@ -387,6 +407,7 @@ if __name__ == "__main__":
             limit=args.limit,
             chunk_size=args.chunk_size,
             assume_yes=args.yes,
+            only_canonical=args.only_canonical,
         )))
     except KeyboardInterrupt:
         print("\nAborted. Progress up to the last completed chunk was written; "
