@@ -15,6 +15,8 @@
 | RSS feeds (#122–#124) | 4 of 58 feeds contributed nothing, one for its whole life | `feed_stats` per run |
 | outlet output (#125–#126) | a live feed served the same items forever | `feed_health` daily |
 | summaries again (#118) | the model's apology was the card copy | refusal gate at write time |
+| entity linking, write path (#136) | an 8s-timeout wave cleared 218 rows to `[]` | failure is `None`, not an empty answer |
+| entity linking, read path (#139) | the regex fallback was unreachable for a per-article timeout | `link_articles` passes `omit_failures=True` |
 
 All four signals verified live in prod 2026-07-31: `feed_stats` 59/59 · `feed_health` 56/56 · `Summarized 60/61 (0 batches fell back)` · `Skipping 1/61 articles whose RSS entry carries no body text`.
 
@@ -100,6 +102,14 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 - **Incremental threading cutover** (Next 3 #3) — blocked on the ivfflat recall@10 check and the entities-lag watermark fix, in that order. Neither is optional: the first decides whether the free candidate gate actually retrieves, the second is a data-loss bug the current rescan design accidentally prevents.
 
 ## Recent decisions
+
+- **2026-08-05** — **The read path never opted in to #136's failure signal ([#139](https://github.com/kristenmartino/sift-api/pull/139)).** #136 made failure representable and wired it into the backfill writer, but `link_articles` still called `link_articles_llm(to_link, catalog)` with the default — so on the pipeline path a per-article timeout still arrived as `[]`, the key was present, and the `if url not in out` fallback guard stayed False. The fallback existed, was correct, and was **structurally unreachable**; it only ever fired when the whole batch raised. Now passes `omit_failures=True`, so it does what its comment already claimed.
+
+  **The regex pre-gate (#130) sharpens this rather than softening it.** Post-gate a forwarded article is by definition one where the regex *already found* a catalog surface form, so silently answering `[]` for it discards a link we knew existed. Pre-gate, failures landed mostly on articles that were link-free anyway.
+
+  **What hid it was the success log**, counting `sum(1 for v in out.values() if v is not None)` over a dict whose values were never `None` — a metric structurally incapable of reporting failure, the same shape as the rest of this table. It now reads `resolved %d/%d forwarded articles`, so the gap *is* the per-article failure count. Call volume is unchanged, so `verify_cost_baseline.py`'s ratios are unaffected.
+
+  **Worth carrying:** #136 and #139 are one bug found twice, hours apart, from opposite ends — the write path because it destroyed data loudly, the read path because it destroyed nothing and just quietly under-linked. Fixing the mechanism is not the same as adopting it at every call site; the default-`False` parameter that made #136 safe to land is exactly what let the read path keep the old behavior silently.
 
 - **2026-08-05** — **The LLM linker now answers "the call failed" distinctly from "no entities mentioned" ([#136](https://github.com/kristenmartino/sift-api/pull/136)).** `link_text_llm` returned `[]` on every failure path — timeout, API error, unparseable response — and `--mode llm` in `backfill_entity_links.py` overwrites rather than merging, so an outage was written to the DB as fact. A scoped `--mode llm --only-canonical` run over 296 articles hit a wave of 8s timeouts and **cleared 218 rows to `[]`**; a follow-up check found **34 of them still plainly named catalog entities** (`the-new-york-times`, `sports-illustrated`, `EXEC-TRUMP-DJ`, `united-states-congress`, `espn`). Restored by re-running the additive regex pass. Failure is now `None`, a list means the model actually answered, and `link_articles_llm(..., omit_failures=True)` drops unanswered articles from the map so a writer skips them instead of clearing them.
 

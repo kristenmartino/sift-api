@@ -264,7 +264,10 @@ async def link_entities_node(state: PipelineState) -> dict:
     bill_profiles). Stored as JSONB on articles.entity_links by the
     store node; consumed by sift Phase 3.H InlineGlossaryTooltip.
 
-    Synchronous, deterministic regex matching — no LLM call. Tolerant
+    Since Phase 3.G.2 this **does** call an LLM, once per article that
+    clears the regex pre-gate — it is the largest single line item in the
+    AI budget (46% as of 2026-08-05). The regex matcher is now the gate
+    plus the per-article fallback, not the whole implementation. Tolerant
     of missing tables (returns empty links); pipeline continues with
     entity_links=[] per article in that case.
     """

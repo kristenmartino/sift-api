@@ -15,10 +15,15 @@ Implementation: deterministic regex word-boundary matching against a
 search dictionary built from the canonical names + a small set of
 high-precision aliases, with **longest-match-wins** overlap resolution
 (see `link_text`) so a short key nested inside a longer name doesn't
-also fire. **No LLM call** — fast, free, deterministic, auditable.
-Trade-off: misses common surface-form variants (e.g., "Sen. Schumer"
-when the canonical name is "Chuck Schumer"); a future 3.G.2 can layer
-LLM-based extraction on top if recall matters.
+also fire. `link_text` itself makes **no LLM call** — fast, free,
+deterministic, auditable. Trade-off: it misses common surface-form
+variants (e.g., "Sen. Schumer" when the canonical name is "Chuck
+Schumer").
+
+Phase 3.G.2 layered the LLM linker on top for exactly that reason, so
+`link_articles` is no longer regex-only: the regex matcher is now the
+pre-gate and the per-article fallback, and disambiguation happens in
+`services.entity_linker_llm`. See `link_articles` for the routing.
 
 Aliases applied:
 
@@ -455,10 +460,17 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
     (services.entity_linker_llm), which handles full-name collisions
     (Susan Collins the Senator vs the Boston Fed President) without a
     hardcoded blocklist. Falls back to the regex `link_text` matcher on
-    any LLM error so chips never disappear due to API blips.
+    any LLM error so chips never disappear due to API blips — both when
+    the whole batch raises and, via `omit_failures=True`, when a single
+    article's call fails. An LLM `[]` is a verdict, not a failure, and is
+    kept as-is; only articles it never answered for fall back.
 
     Input shape: list of {source_url, title, summary, ...}.
     Output: {source_url: [EntityLink, ...]}.
+
+    **Invariant**: every input article with a truthy `source_url` gets a
+    key in the output. `store_node` indexes by source_url, so a missing
+    key would silently drop that article's chips.
 
     Tolerant of missing tables (returns empty links per article) so the
     pipeline doesn't break on pre-Phase-3.A-merge prod.
@@ -550,10 +562,20 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
     if to_link:
         try:
             from services.entity_linker_llm import link_articles_llm
-            out = await link_articles_llm(to_link, catalog)  # type: ignore[arg-type]
+            # omit_failures=True: a per-article failure (timeout, API error,
+            # unparseable response) leaves that url OUT of the dict so the
+            # regex fallback below can see it. #136 made failure
+            # representable and used it for the backfill write path; without
+            # it here, a failure still arrived as [] — indistinguishable from
+            # the LLM's real "no entities" verdict — and the fallback never
+            # fired for it.
+            out = await link_articles_llm(to_link, catalog, omit_failures=True)  # type: ignore[arg-type]
+            # len(to_link) - len(out) is the per-article failure count. Must
+            # stay above the gated_out fill, or len(out) stops meaning
+            # "LLM-resolved".
             logger.info(
-                "entity_linker: LLM path resolved %d articles",
-                sum(1 for v in out.values() if v is not None),
+                "entity_linker: LLM path resolved %d/%d forwarded articles",
+                len(out), len(to_link),
             )
         except Exception as e:  # noqa: BLE001 — degrade rather than block the pipeline
             logger.warning(
@@ -567,8 +589,9 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
     for url in gated_out:
         out.setdefault(url, [])
 
-    # For any article the LLM path didn't resolve (missing url, error, or
-    # silently-empty), fall back to the regex matcher.
+    # For any article the LLM path didn't resolve — no url in its dict because
+    # the whole batch raised, or because that one article's call failed and
+    # link_articles_llm(omit_failures=True) omitted it — fall back to regex.
     fallback_used = 0
     total_links = 0
     for article in articles:

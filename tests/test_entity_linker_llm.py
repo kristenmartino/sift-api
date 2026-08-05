@@ -298,9 +298,11 @@ def test_parse_response_returns_empty_array_for_empty_array():
     assert _parse_response("[]", valid) == []
 
 
-def test_parse_response_returns_empty_for_garbage():
+def test_parse_response_returns_none_for_garbage():
+    """No JSON array at all → None, which link_text_llm turns into a failure.
+    Distinct from "[]" above, which is the model's real verdict."""
     valid = _index_catalog(SAMPLE_CATALOG)
-    assert _parse_response("???", valid) == []
+    assert _parse_response("???", valid) is None
 
 
 def test_parse_response_stable_sort():
