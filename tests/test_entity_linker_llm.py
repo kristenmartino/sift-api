@@ -6,11 +6,13 @@ cache_control marker on the system prompt block.
 """
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
+from services import entity_linker_llm
 from services.entity_linker_llm import (
     _build_outlet_name_index,
     _build_system_prompt,
@@ -361,8 +363,13 @@ async def test_link_text_llm_happy_path(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_link_text_llm_returns_empty_on_api_error(monkeypatch):
-    """API error → [] (caller can fall back to regex)."""
+async def test_link_text_llm_returns_none_on_api_error(monkeypatch):
+    """API error → None, NOT [].
+
+    [] means "the model looked and found no catalog entity". A caller that
+    writes the result back (scripts/backfill_entity_links.py) must not treat
+    an outage as that answer, so failure gets its own value.
+    """
     monkeypatch.setattr(
         "services.entity_linker_llm.log_usage", lambda *a, **kw: None,
     )
@@ -375,7 +382,109 @@ async def test_link_text_llm_returns_empty_on_api_error(monkeypatch):
         title="x", summary="y",
         catalog=SAMPLE_CATALOG, client=fake_client,  # type: ignore[arg-type]
     )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_link_text_llm_returns_none_on_timeout(monkeypatch):
+    """A stalled call is a failure, not an empty answer."""
+    monkeypatch.setattr(
+        "services.entity_linker_llm.log_usage", lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(entity_linker_llm, "LLM_TIMEOUT_SECONDS", 0.01)
+
+    async def _hang(*a, **kw):
+        await asyncio.sleep(5)
+
+    fake_client = SimpleNamespace(messages=SimpleNamespace(create=_hang))
+    out = await link_text_llm(
+        title="x", summary="y",
+        catalog=SAMPLE_CATALOG, client=fake_client,  # type: ignore[arg-type]
+    )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_link_text_llm_returns_none_on_unparseable_response(monkeypatch):
+    """A response with no JSON array in it is a failure too — _parse_response
+    collapses it to [], which is the value we must not confuse with an answer."""
+    monkeypatch.setattr(
+        "services.entity_linker_llm.log_usage", lambda *a, **kw: None,
+    )
+    fake_client = SimpleNamespace(
+        messages=SimpleNamespace(
+            create=AsyncMock(return_value=_mock_response("I'm sorry, I can't."))
+        )
+    )
+    out = await link_text_llm(
+        title="x", summary="y",
+        catalog=SAMPLE_CATALOG, client=fake_client,  # type: ignore[arg-type]
+    )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_link_text_llm_returns_empty_list_on_genuine_no_entities(monkeypatch):
+    """The other side of the contract: a real '[]' answer stays []."""
+    monkeypatch.setattr(
+        "services.entity_linker_llm.log_usage", lambda *a, **kw: None,
+    )
+    fake_client = SimpleNamespace(
+        messages=SimpleNamespace(create=AsyncMock(return_value=_mock_response("[]")))
+    )
+    out = await link_text_llm(
+        title="Local weather stays mild", summary="No civic entities here.",
+        catalog=SAMPLE_CATALOG, client=fake_client,  # type: ignore[arg-type]
+    )
     assert out == []
+
+
+@pytest.mark.asyncio
+async def test_link_articles_llm_failure_modes(monkeypatch):
+    """Batch wrapper: failures map to [] by default (read path, unchanged),
+    and are omitted entirely under omit_failures (write path)."""
+    monkeypatch.setattr(
+        "services.entity_linker_llm.log_usage", lambda *a, **kw: None,
+    )
+
+    async def _create(**kwargs):
+        if "boom" in kwargs["messages"][0]["content"]:
+            raise RuntimeError("API down")
+        return _mock_response(
+            '[{"type":"politician","canonical_id":"S000148","surface_form":"Schumer"}]'
+        )
+
+    monkeypatch.setattr(
+        entity_linker_llm, "_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=_create)),
+    )
+
+    articles = [
+        {"source_url": "u1", "title": "boom", "summary": "s"},
+        {"source_url": "u2", "title": "Schumer speaks", "summary": "s"},
+    ]
+
+    lenient = await entity_linker_llm.link_articles_llm(articles, SAMPLE_CATALOG)
+    assert lenient["u1"] == []
+    assert len(lenient["u2"]) == 1
+
+    strict = await entity_linker_llm.link_articles_llm(
+        articles, SAMPLE_CATALOG, omit_failures=True,
+    )
+    assert "u1" not in strict
+    assert len(strict["u2"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_link_articles_llm_omit_failures_never_answers_for_empty_catalog():
+    """No catalog is a config failure, not an answer of []. Answering []
+    under omit_failures would let a misconfigured run clear every row."""
+    articles = [{"source_url": "u1", "title": "t", "summary": "s"}]
+    assert await entity_linker_llm.link_articles_llm(
+        articles, [], omit_failures=True,
+    ) == {}
+    # Default stays lenient for the read path.
+    assert await entity_linker_llm.link_articles_llm(articles, []) == {"u1": []}
 
 
 @pytest.mark.asyncio

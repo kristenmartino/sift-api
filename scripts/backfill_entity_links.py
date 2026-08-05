@@ -38,6 +38,15 @@ strictly weaker than the LLM path: on a 5,000-article sample it would have
 cleared 56 rows the LLM had linked. Clearing a bad link is what --mode llm
 is for.
 
+LLM mode overwrites, so it only writes rows the model actually answered for.
+A failed call (timeout, API error, garbled response) leaves the stored links
+untouched and is counted as `skipped` — re-run to retry it. Conflating the
+two is not hypothetical: on 2026-08-05 a scoped 296-article run hit a wave of
+8s timeouts, read them as "no entities", and emptied 218 rows, at least 34 of
+which plainly named catalog entities. They were restored with an additive
+regex pass. See services/entity_linker_llm.link_text_llm for the [] vs None
+contract this depends on.
+
 Usage (from sift-api root):
 
     # the historical pass, now explicit about its cost
@@ -241,7 +250,7 @@ async def main(
             print("--limit, or pass --yes if the spend is intended.")
             return 2
 
-        updated = cleared = added = no_change = 0
+        updated = cleared = added = no_change = failed = 0
         for start in range(0, len(ids), chunk_size):
             batch_ids = ids[start:start + chunk_size]
             rows = await conn.fetch(
@@ -259,7 +268,21 @@ async def main(
             ]
 
             if mode == "llm":
-                link_map = await link_articles_llm(articles, catalog)  # type: ignore[arg-type]
+                # omit_failures is load-bearing, not defensive. link_text_llm
+                # answers [] for "no catalog entity is mentioned" and None for
+                # "the call failed" (timeout, API error, garbled response), and
+                # LLM mode overwrites rather than merging. Without this, a batch
+                # of 8s timeouts is indistinguishable from a batch of genuinely
+                # entity-free articles and clears their stored chips — which is
+                # what a scoped 296-article run did on 2026-08-05, emptying 218
+                # rows, 34 of them provably wrongly.
+                link_map = await link_articles_llm(  # type: ignore[arg-type]
+                    articles, catalog, omit_failures=True,
+                )
+                failed += sum(
+                    1 for a in articles
+                    if a["source_url"] and a["source_url"] not in link_map
+                )
             else:
                 link_map = {
                     a["source_url"]: _regex_link(a, search_dict, self_outlets)
@@ -298,14 +321,21 @@ async def main(
                     )
 
             done = min(start + chunk_size, len(ids))
-            print(f"  {done:>7,}/{len(ids):,}  updated={updated:,} "
-                  f"newly-linked={added:,} cleared={cleared:,}", flush=True)
+            progress = (f"  {done:>7,}/{len(ids):,}  updated={updated:,} "
+                        f"newly-linked={added:,} cleared={cleared:,}")
+            if mode == "llm":
+                progress += f" llm-failed={failed:,}"
+            print(progress, flush=True)
 
         print()
         print(f"  updated:              {updated:,}")
         print(f"    newly linked ([] → chips): {added:,}")
         print(f"    cleared to []:             {cleared:,}")
         print(f"  unchanged:            {no_change:,}")
+        if mode == "llm":
+            print(f"  skipped (LLM call failed, links left as-is): {failed:,}")
+            if failed:
+                print("    re-run to retry those rows — the script is idempotent.")
         if dry_run:
             print()
             print("--dry-run set; no DB writes.")
