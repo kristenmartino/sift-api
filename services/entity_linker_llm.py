@@ -272,15 +272,20 @@ def _parse_response(
     valid_canonicals: dict[str, set[str]],
     *,
     source_outlet_slug: str | None = None,
-) -> list[EntityLink]:
+) -> list[EntityLink] | None:
     """Validate parsed entries against the catalog. Drops anything the
     model hallucinated (wrong type, unknown canonical_id, missing
     surface_form). Also drops a self-referencing outlet chip when the
     LLM tags the article's own source — `source_outlet_slug` is the
-    suspenders behind the prompt's belt rule."""
+    suspenders behind the prompt's belt rule.
+
+    Returns None *only* when `text` holds no JSON array at all — the model
+    did not answer, and the caller falls back. A list means it answered,
+    and `[]` is a real verdict, including when every entry it returned was
+    rejected below: that is this function working, not the call failing."""
     parsed = _extract_json_array(text)
     if parsed is None:
-        return []
+        return None
 
     out: list[EntityLink] = []
     seen: set[tuple[str, str]] = set()
@@ -400,12 +405,11 @@ async def link_text_llm(
 
     text = "".join(b.text for b in response.content if b.type == "text")
     # A response we can't parse is a failure, not "no entities" — same
-    # reasoning as the timeout path above. _parse_response collapses both
-    # to [], so the unparseable case is caught before we get there.
-    if _extract_json_array(text) is None:
+    # reasoning as the timeout path above.
+    links = _parse_response(text, valid, source_outlet_slug=source_slug)
+    if links is None:
         logger.warning("entity_linker_llm: unparseable response: %.120r", text)
-        return None
-    return _parse_response(text, valid, source_outlet_slug=source_slug)
+    return links
 
 
 async def link_articles_llm(
