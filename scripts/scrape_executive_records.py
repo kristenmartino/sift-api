@@ -98,11 +98,25 @@ CSV_FIELDS = [
 # The colon is a modern convention — the 111th Congress (2009) writes
 # "Confirmation Hillary Rodham Clinton, of New York, to be Secretary of State".
 # Requiring it silently yielded zero matches for that whole Congress.
+#
+# The comma before "of <state>" is likewise not guaranteed: 111-2 writes
+# "Confirmation Elena Kagan of Massachusetts, to be an Associate Justice of
+# the Supreme Court of the U.S." Requiring it dropped 20 confirmations across
+# 101-119, Kagan among them.
 _TITLE_RE = re.compile(
-    r"^Confirmation:?\s+(?P<name>.+?),\s+of\s+[^,]+,\s+to\s+be\s+(?:an?\s+|the\s+)?"
+    r"^Confirmation:?\s+(?P<name>.+?),?\s+of\s+[^,]+,\s+to\s+be\s+(?:an?\s+|the\s+)?"
     r"(?P<position>.+?)\s*$",
     re.IGNORECASE | re.DOTALL,
 )
+# Congresses 101-106 use a wholly different title form that names the nominee
+# and nothing else: "Nomination - Clarence Thomas". Before this fallback those
+# six Congresses matched zero rows and reported it as a clean run — the same
+# "reports success while producing nothing" shape STATUS.md's active focus
+# tracks. There is no office in the source, so `position_title` is empty and
+# build_executive_profiles.py's `office_titles.get()` simply won't match these
+# rows; they carry the confirmation date, vote URL and tally, which for a
+# constitutionally-established office (28 U.S.C. § 1) is the whole claim.
+_TITLE_LEGACY_RE = re.compile(r"^Nomination\s*[-–]\s*(?P<name>.+?)\s*$", re.IGNORECASE)
 # "..., vice Bill Nelson, resigned." / "..., vice Janet L. Yellen."
 _VICE_RE = re.compile(
     r",\s*vice\s+(?P<pred>[^,.]+?)(?:,\s*(?:resigned|retired|deceased|elevated|term expir\w*|removed)\b|\.)",
@@ -185,7 +199,8 @@ def fetch_confirmations(congress: int, session: int) -> list[dict[str, Any]]:
 
         title = " ".join((vote.findtext("title") or "").split())
         match = _TITLE_RE.match(title)
-        if not match:
+        legacy = _TITLE_LEGACY_RE.match(title) if not match else None
+        if not match and not legacy:
             continue
 
         number = int((vote.findtext("vote_number") or "0").strip())
@@ -195,8 +210,8 @@ def fetch_confirmations(congress: int, session: int) -> list[dict[str, Any]]:
         out.append({
             "congress": congress,
             "session": session,
-            "nominee_raw": match.group("name").strip(),
-            "position_title": match.group("position").strip(),
+            "nominee_raw": (match or legacy).group("name").strip(),
+            "position_title": match.group("position").strip() if match else "",
             "nomination_citation": (vote.findtext("issue") or "").strip(),
             "confirmation_date": _parse_date(
                 (vote.findtext("vote_date") or "").strip(), year
