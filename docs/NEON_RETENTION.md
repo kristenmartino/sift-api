@@ -30,7 +30,18 @@ Roughly four-fifths of Neon storage is data the product cannot display.
 
 ## EXECUTED 2026-08-05 — and the plan below was wrong
 
-**Result: 2,423 MB → 1,934 MB, −489 MB (−20%).** `idx_articles_embedding` 879 MB → **436 MB**. Tool: `scripts/prune_old_embeddings.py`, cutoff 90 days, 116,479 embeddings cleared, 167,039 kept.
+**Net for the day: 2,272 MB → 1,931 MB, −341 MB (−15%).** `idx_articles_embedding` 879 MB → **437 MB**. Tool: `scripts/prune_old_embeddings.py`, cutoff 90 days, 116,479 embeddings cleared, 167,039 kept.
+
+Two cycles, because a full-corpus backfill ran between them:
+
+| | db | `idx_articles_embedding` |
+|---|---:|---:|
+| start of day | 2,272 MB | 879 MB |
+| prune + reindex | 1,934 MB | 436 MB |
+| after `backfill_entity_links.py --include-empty` | 1,997 MB | **497 MB** |
+| reindex again | **1,931 MB** | 437 MB |
+
+**A full-corpus backfill costs ~60 MB of index bloat and needs a reindex afterwards.** `entity_links` is indexed (`idx_articles_entity_links_gin`), so ~280k UPDATEs cannot take the HOT path: every new row version adds an entry to *every* index on the table. The embedding index grew 436 → 497 MB purely from writes to an unrelated column. Reindex the GIN index too — it had its own bloat (6 MB, 1s).
 
 Three things the original plan got wrong, all found by running its own safety check.
 
@@ -40,7 +51,14 @@ That reframed the operation. Article text is only ~100 MB; **63% of the DB was `
 
 Clearing the column gives up the *same* thing (vector reach over old articles) for nearly the same space, and is **safe because all four consumers already guard on `embedding IS NOT NULL`** — they exclude such rows rather than erroring. It is **reversible**: `backfill_embeddings.py` rebuilds from `title + summary`, both retained.
 
-**2. `VACUUM` reclaimed nothing; `REINDEX` did all of it.** `VACUUM (ANALYZE) articles` ran 127s and moved the DB 2,423 → 2,425 MB. `REINDEX INDEX CONCURRENTLY idx_articles_embedding` ran 42s and returned 491 MB. Plain VACUUM marks space *reusable*, it does not return it to Neon. **Reindex the vector index; do not expect VACUUM to do this job.**
+**2. `VACUUM` reclaimed nothing; `REINDEX` did all of it — twice.** Not a one-off:
+
+| run | `VACUUM (ANALYZE) articles` | `REINDEX CONCURRENTLY` |
+|---|---|---|
+| after the prune | 127s, 2,423 → 2,425 MB (**+2**) | 42s, → 1,934 MB (**−491**) |
+| after the backfill | 88s, 1,997 → 1,997 MB (**0**) | 61s, → 1,937 MB (**−60**) |
+
+Plain VACUUM marks space *reusable*; it does not return it to Neon. **Reindex; do not expect VACUUM to do this job.** Only `VACUUM FULL` returns heap space, and it takes an exclusive lock.
 
 **3. The 80.8%-unreachable figure is real but not directly bankable.** At the chosen 90-day cutoff only 41% of rows are touched, and the corpus is only ~4 months old, so "2.27 GB → ~500 MB" was never reachable at a cutoff safe for topic search.
 
