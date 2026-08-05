@@ -22,10 +22,11 @@ All four signals verified live in prod 2026-07-31: `feed_stats` 59/59 · `feed_h
 
 **The lesson worth carrying** is not any single bug: it is that **every one was found by hand, weeks late, by someone looking at something else.** Two of the fixes were themselves wrong on the first attempt and were only corrected by replaying them against known-true cases (#120's triage ranked the one confirmed swap *last*; #126's first rule paged on WHO behaving normally). A detector that has never been run against a known-true case is an untested detector — same shape as #113's meta-suite caveat.
 
-Two things are now waiting on data rather than on code:
+Three things are now waiting on data rather than on code:
 
-1. ~~**Cost attribution.**~~ **Answered 2026-08-05** — breakdown in Open-Q #1, two changes shipped (#129, #130). It settled both questions it was gating: batching the entity linker is superseded by the regex gate, and raising `LIMIT 50` is the wrong fix (the window, not the limit, is the constraint — see Next 3 #3). **What remains is confirming the saving is real**, which the ledger has not yet done: the code is merged but not deployed, so it is currently $0.
+1. ~~**Cost attribution.**~~ **Answered 2026-08-05** — breakdown in Open-Q #1, two changes shipped (#129, #130). It settled both questions it was gating: batching the entity linker is superseded by the regex gate, and raising `LIMIT 50` is the wrong fix (the window, not the limit, is the constraint — see Next 3 #3). **What remains is confirming the saving is real**, which the ledger has not yet done. **Deployed 2026-08-05** — this line said "merged but not deployed, so it is currently $0" until the gate was observed running in prod (`linker_gate_stats` per run, e.g. `articles 37, forwarded 8, skipped 29` — a 22% forward rate against the 26% measured offline). The *deploy* is confirmed; the *saving* still is not, since that needs `ai_usage_daily` over full days. Re-baseline from `scripts/verify_cost_baseline.py`, not from the gate stats.
 2. **Clustering eval corpus.** `scripts/eval_clustering.py --sample` generated 300 articles across 6 windows; needs ~3–4h of hand-labeling, then `--live --record` (~$0.024) produces the first real accuracy number. Until then, event-clustering accuracy is **unmeasured** and should not be quoted.
+3. **Intra-batch duplicate source_urls** (#145, counter live 2026-08-05). Dedup has no intra-batch `source_url` rule — it keys on `content_hash` — so one url with edited body text survives a batch twice (an outlet revising a story, or two of WaPo's four section feeds). Both copies are summarized *and* entity-linked at full price, then collapse to one row at store time (`ON CONFLICT (source_url)`), so the second is paid-for waste. **The rate is unknown and the two observations disagree:** the run that surfaced this had 1 duplicate in 33 articles (inferred from a url-count discrepancy, not measured), and the first run with the real counter reported `dup_url_intra_kept: 0` in 40. Two points pointing opposite ways is not a rate — grep `dedup_stats` for the field after a week. The fix, if the number justifies it, is one line beside the existing `content_hash` check.
 
 Still open from the prior focus: topic search → sift-api (#79/#80), NULL-embedding repair (#76 — now a prerequisite, not a nice-to-have, since `story_workflow` excludes NULL-embedding articles from threading entirely), outlet ingestion-status field (#73), authoritative outlet seeder (#93).
 
@@ -45,7 +46,7 @@ Watch for:
 
   **Root cause is a volume assumption, not pricing.** `services/entity_linker_llm.py:32-34` documents its economics as "~100 new articles/day → ~$3-5/month". Actual ingest is **~2,000/day**, so that one call site is ~$125/mo.
 
-  #129 and #130 (2026-08-05) target this; projected $8.99 → ~$4.6/day. **Not yet verified, and not yet deployed** — see Recent decisions. Re-baseline this bullet from `scripts/verify_cost_baseline.py`, not by hand.
+  #129 and #130 (2026-08-05) target this; projected $8.99 → ~$4.6/day. **Deployed 2026-08-05 and confirmed running** (`linker_gate_stats` per run), **but not yet verified** — the projection needs full days of `ai_usage_daily` behind it. Re-baseline this bullet from `scripts/verify_cost_baseline.py`, not by hand.
 - Neon Postgres connection pool `max=5` starts queuing requests visibly
 - Native app launches and pushes write volume up
 
@@ -98,10 +99,14 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 - Native platform direction (mobile API surface depends on which client comes first — currently leaning Android-first per `sift/docs/IOS_VS_ANDROID.md`)
 - **Clustering accuracy number** — blocked on hand-labeling the corpus (Next 3 #1). Nothing else can proceed on clustering quality without ground truth.
 - ~~**Pipeline cost decisions** — blocked on a week of `ai_usage_daily`~~ — **unblocked 2026-08-05**; the breakdown is in Open-Q #1 and two changes shipped.
-- **Realizing the #129/#130 saving** — blocked on a **Railway deploy**. Both are merged to main; `scripts/verify_cost_baseline.py` reports both deploy checks as NOT DEPLOYED, so the measured saving is currently $0. Verification scheduled 2026-08-07.
+- ~~**Realizing the #129/#130 saving** — blocked on a **Railway deploy**~~ — **deploy landed 2026-08-05**, `linker_gate_stats` confirms the gate running in prod. No longer blocked, just **unverified**: `scripts/verify_cost_baseline.py` needs full days of `ai_usage_daily` behind it. Verification still scheduled 2026-08-07, and per the "dollars column lies" note below, read the deploy-check ratios before the dollar figure.
 - **Incremental threading cutover** (Next 3 #3) — blocked on the ivfflat recall@10 check and the entities-lag watermark fix, in that order. Neither is optional: the first decides whether the free candidate gate actually retrieves, the second is a data-loss bug the current rescan design accidentally prevents.
 
 ## Recent decisions
+
+- **2026-08-05** — **Count the duplicate-url waste before dropping it ([#145](https://github.com/kristenmartino/sift-api/pull/145)).** Dropping intra-batch duplicate `source_url`s is one line and arguably just correct — the copies collapse to a single row anyway. Deliberately not done: it changes ingest behavior during a D46 evidence-gathering-only pause, and there was no rate to justify it, because the collapse leaves no trace in the DB and so cannot be measured after the fact. Shipped `dup_url_intra_kept` in `dedup_stats` instead — observation only, the article is still processed. Open question and both conflicting observations are in Active focus #3.
+
+  Named `_kept`, not `dropped_`, because it sits directly under three `dropped_*` fields and the article stays in `new`. `tests/test_deduplicator.py` is new (the module had none) and pins the three adjacent drop rules alongside the counter, so "counted" and "dropped" cannot quietly merge later.
 
 - **2026-08-05** — **Catalog names that are ordinary English are withheld from the regex dictionary (`_REGEX_INELIGIBLE_NAMES`).** `build_search_dict` turned every canonical name into a regex key, so outlets named after common phrases matched prose. A regex-mode `backfill_entity_links.py --include-empty` run put **5,838 bad chips on 3,872 articles** from five names alone — `the-nation` (1,523: "the nation's fuel", "Face the Nation"), `nature` (746, of which only ~51 were the journal), `foreign-policy` (613), `reason` (596), `slate` (412). Neither existing guard could catch this: `_STOPWORDS` holds only single words, and `_MIN_KEY_LENGTH = 4` says nothing about "the nation" or "foreign policy".
 
