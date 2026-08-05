@@ -1,0 +1,27 @@
+office_key,role_title,role_title_source,official_url
+state,Secretary of State,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title22-section2651a&num=0&edition=prelim,https://www.state.gov
+treasury,Secretary of the Treasury,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title31-section301&num=0&edition=prelim,https://home.treasury.gov
+defense,Secretary of Defense,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title10-section113&num=0&edition=prelim,https://www.defense.gov
+justice,Attorney General,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title28-section503&num=0&edition=prelim,https://www.justice.gov
+interior,Secretary of the Interior,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title43-section1451&num=0&edition=prelim,https://www.doi.gov
+agriculture,Secretary of Agriculture,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title7-section2202&num=0&edition=prelim,https://www.usda.gov
+commerce,Secretary of Commerce,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title15-section1501&num=0&edition=prelim,https://www.commerce.gov
+labor,Secretary of Labor,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title29-section551&num=0&edition=prelim,https://www.dol.gov
+hhs,Secretary of Health and Human Services,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5312&num=0&edition=prelim,https://www.hhs.gov
+hud,Secretary of Housing and Urban Development,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title42-section3532&num=0&edition=prelim,https://www.hud.gov
+transportation,Secretary of Transportation,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title49-section102&num=0&edition=prelim,https://www.transportation.gov
+energy,Secretary of Energy,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title42-section7131&num=0&edition=prelim,https://www.energy.gov
+education,Secretary of Education,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title20-section3411&num=0&edition=prelim,https://www.ed.gov
+va,Secretary of Veterans Affairs,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title38-section303&num=0&edition=prelim,https://www.va.gov
+dhs,Secretary of Homeland Security,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title6-section112&num=0&edition=prelim,https://www.dhs.gov
+dni,Director of National Intelligence,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title50-section3023&num=0&edition=prelim,https://www.dni.gov
+cia,Director of the Central Intelligence Agency,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title50-section3036&num=0&edition=prelim,https://www.cia.gov
+omb,Director of the Office of Management and Budget,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title31-section502&num=0&edition=prelim,https://www.whitehouse.gov/omb/
+ustr,United States Trade Representative,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title19-section2171&num=0&edition=prelim,https://ustr.gov
+sba,Administrator of the Small Business Administration,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5314&num=0&edition=prelim,https://www.sba.gov
+epa,Administrator of the Environmental Protection Agency,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5313&num=0&edition=prelim,https://www.epa.gov
+cea,Chairman of the Council of Economic Advisers,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5313&num=0&edition=prelim,https://www.whitehouse.gov/cea/
+un,Representative of the United States to the United Nations,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title22-section287&num=0&edition=prelim,https://usun.usmission.gov
+ostp,Director of the Office of Science and Technology Policy,https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00139.htm,https://www.whitehouse.gov/ostp/
+president,President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,https://www.whitehouse.gov
+vice-president,Vice President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,https://www.whitehouse.gov

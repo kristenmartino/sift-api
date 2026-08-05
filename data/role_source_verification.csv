@@ -1,0 +1,59 @@
+bioguide_id,role_title,role_title_source,verdict
+EXEC-AUSTIN-L,Secretary of Defense,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title10-section113&num=0&edition=prelim,OK
+EXEC-BECERRA-X,Secretary of Health and Human Services,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5312&num=0&edition=prelim,OK
+EXEC-BESSENT-S,Secretary of the Treasury,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title31-section301&num=0&edition=prelim,OK
+EXEC-BIDEN-JR,President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-BLINKEN-A,Secretary of State,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title22-section2651a&num=0&edition=prelim,OK
+EXEC-BONDI-P,Attorney General,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title28-section503&num=0&edition=prelim,OK
+EXEC-BURGUM-D,Secretary of the Interior,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title43-section1451&num=0&edition=prelim,OK
+EXEC-BUSH-GHW,President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-BUSH-GW,President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-BUTTIGIEG-P,Secretary of Transportation,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title49-section102&num=0&edition=prelim,OK
+EXEC-CARDONA-M,Secretary of Education,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title20-section3411&num=0&edition=prelim,OK
+EXEC-CARTER-J,President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-CHAVEZDEREMER-L,Secretary of Labor,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title29-section551&num=0&edition=prelim,OK
+EXEC-CLINTON-B,President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-CLINTON-H,Secretary of State,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title22-section2651a&num=0&edition=prelim,OK
+EXEC-COLLINS-D,Secretary of Veterans Affairs,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title38-section303&num=0&edition=prelim,OK
+EXEC-DUFFY-S,Secretary of Transportation,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title49-section102&num=0&edition=prelim,OK
+EXEC-GABBARD-T,Director of National Intelligence,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title50-section3023&num=0&edition=prelim,OK
+EXEC-GARLAND-M,Attorney General,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title28-section503&num=0&edition=prelim,OK
+EXEC-GRANHOLM-J,Secretary of Energy,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title42-section7131&num=0&edition=prelim,OK
+EXEC-GREER-J,United States Trade Representative,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title19-section2171&num=0&edition=prelim,OK
+EXEC-HAALAND-D,Secretary of the Interior,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title43-section1451&num=0&edition=prelim,OK
+EXEC-HARRIS-K,Vice President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-HEGSETH-P,Secretary of Defense,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title10-section113&num=0&edition=prelim,OK
+EXEC-KENNEDY-RFK,Secretary of Health and Human Services,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5312&num=0&edition=prelim,OK
+EXEC-KRATSIOS-M,Director of the Office of Science and Technology Policy,https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00139.htm,OK
+EXEC-LOEFFLER-K,Administrator of the Small Business Administration,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5314&num=0&edition=prelim,OK
+EXEC-LUTNICK-H,Secretary of Commerce,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title15-section1501&num=0&edition=prelim,OK
+EXEC-MAYORKAS-A,Secretary of Homeland Security,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title6-section112&num=0&edition=prelim,OK
+EXEC-MCMAHON-L,Secretary of Education,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title20-section3411&num=0&edition=prelim,OK
+EXEC-MIRAN-S,Chairman of the Council of Economic Advisers,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5313&num=0&edition=prelim,OK
+EXEC-NOEM-K,Secretary of Homeland Security,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title6-section112&num=0&edition=prelim,OK
+EXEC-OBAMA-B,President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-PENCE-M,Vice President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-RAIMONDO-G,Secretary of Commerce,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title15-section1501&num=0&edition=prelim,OK
+EXEC-RATCLIFFE-J,Director of the Central Intelligence Agency,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title50-section3036&num=0&edition=prelim,OK
+EXEC-ROLLINS-B,Secretary of Agriculture,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title7-section2202&num=0&edition=prelim,OK
+EXEC-RUBIO-MARCO-STATE,Secretary of State,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title22-section2651a&num=0&edition=prelim,OK
+EXEC-TRUMP-DJ,President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-TURNER-S,Secretary of Housing and Urban Development,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title42-section3532&num=0&edition=prelim,OK
+EXEC-VANCE-J,Vice President of the United States,https://www.archives.gov/founding-docs/constitution-transcript,OK
+EXEC-VILSACK-T,Secretary of Agriculture,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title7-section2202&num=0&edition=prelim,OK
+EXEC-VOUGHT-R,Director of the Office of Management and Budget,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title31-section502&num=0&edition=prelim,OK
+EXEC-WALTZ-M,Representative of the United States to the United Nations,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title22-section287&num=0&edition=prelim,OK
+EXEC-WRIGHT-C,Secretary of Energy,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title42-section7131&num=0&edition=prelim,OK
+EXEC-YELLEN-J,Secretary of the Treasury,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title31-section301&num=0&edition=prelim,OK
+EXEC-ZELDIN-L,Administrator of the Environmental Protection Agency,https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section5313&num=0&edition=prelim,OK
+FOREIGN-ALBANESE-A,Prime Minister of Australia,https://www.pm.gov.au/about-prime-minister,OK
+FOREIGN-CARNEY-M,Prime Minister of Canada,https://www.pm.gc.ca/en/about,OK
+FOREIGN-GUTERRES-A,Secretary-General of the United Nations,https://www.un.org/sg/en,OK
+FOREIGN-MACRON-E,President of the Republic,https://www.elysee.fr/en/emmanuel-macron,OK
+FOREIGN-MELONI-G,President of the Council of Ministers,https://www.governo.it/en,OK
+FOREIGN-PUTIN-V,President of Russia,http://en.kremlin.ru/catalog/persons/151/biography,OK
+FOREIGN-SHEHBAZ-S,Prime Minister of Pakistan,https://pmo.gov.pk/,OK
+FOREIGN-STARMER-K,Prime Minister,https://www.gov.uk/government/people/keir-starmer,OK
+FOREIGN-SUNAK-R,Prime Minister,https://www.gov.uk/government/people/rishi-sunak,OK
+FOREIGN-VONDERLEYEN-U,President of the European Commission,https://commission.europa.eu/persons/ursula-von-der-leyen_en,OK
+FOREIGN-WONG-L,Prime Minister,https://www.pmo.gov.sg/The-Cabinet/Mr-Lawrence-Wong,OK

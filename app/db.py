@@ -405,7 +405,8 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
               ADD COLUMN IF NOT EXISTS confirmation_date        DATE,
               ADD COLUMN IF NOT EXISTS confirmation_vote_url    TEXT,
               ADD COLUMN IF NOT EXISTS confirmation_vote_result TEXT,
-              ADD COLUMN IF NOT EXISTS predecessor_name         TEXT
+              ADD COLUMN IF NOT EXISTS predecessor_name         TEXT,
+              ADD COLUMN IF NOT EXISTS predecessor_source       TEXT
         """)
         # Matches the publish gate in sift/lib/db.ts listSitemapEntries, which
         # filters chamber first and then requires role_title + its source.

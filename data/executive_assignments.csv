@@ -1,0 +1,59 @@
+bioguide_id,office_key,nomination_citation,role_start_date,role_end_date,role_dates_source,id_source,role_title,role_title_source,official_url,verify_name,notes_for_reviewer
+EXEC-BESSENT-S,treasury,PN11-1,,,,executive,,,,,
+EXEC-BONDI-P,justice,PN11-2,,,,executive,,,,,
+EXEC-BURGUM-D,interior,PN11-3,,,,executive,,,,,
+EXEC-CHAVEZDEREMER-L,labor,PN11-4,,,,executive,,,,,
+EXEC-COLLINS-D,va,PN11-5,,,,executive,,,,,Doug Collins; disambiguated from Sen. Susan Collins by PN
+EXEC-DUFFY-S,transportation,PN11-6,,,,executive,,,,,
+EXEC-GABBARD-T,dni,PN11-16,,,,executive,,,,,
+EXEC-GREER-J,ustr,PN11-17,,,,executive,,,,,
+EXEC-HEGSETH-P,defense,PN11-7,,,,executive,,,,,
+EXEC-KENNEDY-RFK,hhs,PN11-8,,,,executive,,,,,
+EXEC-KRATSIOS-M,ostp,PN13-8,,,,executive,,,,,No USC section states the full title; sourced to the Senate roll-call
+EXEC-LOEFFLER-K,sba,PN11-18,,,,executive,,,,,
+EXEC-LUTNICK-H,commerce,PN11-9,,,,executive,,,,,
+EXEC-MCMAHON-L,education,PN11-10,,,,executive,,,,,
+EXEC-MIRAN-S,cea,PN19,,,,executive,,,,,CEA chair; his later Fed governorship (PN464) is a different office
+EXEC-NOEM-K,dhs,PN11-11,,,,executive,,,,,
+EXEC-RATCLIFFE-J,cia,PN11-19,,,,executive,,,,,
+EXEC-ROLLINS-B,agriculture,PN11-12,,,,executive,,,,,
+EXEC-RUBIO-MARCO-STATE,state,PN11-13,,,,executive,,,,,
+EXEC-TURNER-S,hud,PN11-14,,,,executive,,,,,Senate record uses his legal first name (Eric)
+EXEC-VOUGHT-R,omb,PN11-22,,,,executive,,,,,
+EXEC-WRIGHT-C,energy,PN11-15,,,,executive,,,,,Chris Wright; disambiguated from NRC's David Wright by PN
+EXEC-ZELDIN-L,epa,PN11-23,,,,executive,,,,,
+EXEC-WALTZ-M,un,PN343,,,,executive,,,,,UN Representative only. His Jan-May 2025 NSC role was not Senate-confirmed and is not claimed here.
+EXEC-AUSTIN-L,defense,PN78-1,,,,executive,,,,,
+EXEC-BECERRA-X,hhs,PN78-2,,,,executive,,,,,
+EXEC-BLINKEN-A,state,PN78-3,,,,executive,,,,,
+EXEC-BUTTIGIEG-P,transportation,PN78-4,,,,executive,,,,,
+EXEC-CARDONA-M,education,PN78-5,,,,executive,,,,,
+EXEC-GARLAND-M,justice,PN78-7,,,,executive,,,,,
+EXEC-GRANHOLM-J,energy,PN78-8,,,,executive,,,,,
+EXEC-HAALAND-D,interior,PN78-11,,,,executive,,,,,
+EXEC-MAYORKAS-A,dhs,PN78-13,,,,executive,,,,,
+EXEC-RAIMONDO-G,commerce,PN78-15,,,,executive,,,,,
+EXEC-VILSACK-T,agriculture,PN78-22,,,,executive,,,,,
+EXEC-YELLEN-J,treasury,PN78-24,,,,executive,,,,,
+EXEC-CLINTON-H,state,PN64-1,,,,executive,,,,,111th Congress; confirmed 2009-01-21
+EXEC-TRUMP-DJ,president,,2025-01-20,,https://www.archives.gov/electoral-college/2024,executive,,,,,Current term only. The 2017-2021 term is a separate record and is not asserted on this row.
+EXEC-VANCE-J,vice-president,,2025-01-20,,https://www.archives.gov/electoral-college/2024,executive,,,,,
+EXEC-BIDEN-JR,president,,2021-01-20,2025-01-20,https://www.archives.gov/electoral-college/2020,executive,,,,,End date is his successor's Inauguration Day per the same source series
+EXEC-HARRIS-K,vice-president,,2021-01-20,2025-01-20,https://www.archives.gov/electoral-college/2020,executive,,,,,
+EXEC-PENCE-M,vice-president,,2017-01-20,2021-01-20,https://www.archives.gov/electoral-college/2016,executive,,,,,
+EXEC-OBAMA-B,president,,2009-01-20,2017-01-20,https://www.archives.gov/electoral-college/2008,executive,,,,,
+EXEC-BUSH-GW,president,,2001-01-20,2009-01-20,https://www.archives.gov/electoral-college/2000,executive,,,,,
+EXEC-CLINTON-B,president,,1993-01-20,2001-01-20,https://www.archives.gov/electoral-college/1992,executive,,,,,
+EXEC-BUSH-GHW,president,,1989-01-20,1993-01-20,https://www.archives.gov/electoral-college/1988,executive,,,,,
+EXEC-CARTER-J,president,,1977-01-20,1981-01-20,https://www.archives.gov/electoral-college/1976,executive,,,,,
+FOREIGN-STARMER-K,,,2024-07-05,2026-07-20,https://www.gov.uk/government/people/keir-starmer,foreign-executive,Prime Minister,https://www.gov.uk/government/people/keir-starmer,https://www.gov.uk/government/people/keir-starmer,Starmer,gov.uk states the completed term verbatim; Sift's uncited note still called him the sitting PM
+FOREIGN-SUNAK-R,,,2022-10-25,2024-07-05,https://www.gov.uk/government/people/rishi-sunak,foreign-executive,Prime Minister,https://www.gov.uk/government/people/rishi-sunak,https://www.gov.uk/government/people/rishi-sunak,Sunak,
+FOREIGN-MACRON-E,,,,,,foreign-executive,President of the Republic,https://www.elysee.fr/en/emmanuel-macron,https://www.elysee.fr/en/emmanuel-macron,Macron,No exact term dates stated; title only
+FOREIGN-PUTIN-V,,,,,,foreign-executive,President of Russia,http://en.kremlin.ru/catalog/persons/151/biography,http://en.kremlin.ru/,Putin,
+FOREIGN-CARNEY-M,,,,,,foreign-executive,Prime Minister of Canada,https://www.pm.gc.ca/en/about,https://www.pm.gc.ca/en,Carney,
+FOREIGN-ALBANESE-A,,,,,,foreign-executive,Prime Minister of Australia,https://www.pm.gov.au/about-prime-minister,https://www.pm.gov.au/,Albanese,
+FOREIGN-VONDERLEYEN-U,,,,,,foreign-executive,President of the European Commission,https://commission.europa.eu/persons/ursula-von-der-leyen_en,https://commission.europa.eu/about/president_en,von der Leyen,
+FOREIGN-WONG-L,,,,,,foreign-executive,Prime Minister,https://www.pmo.gov.sg/The-Cabinet/Mr-Lawrence-Wong,https://www.pmo.gov.sg/,Wong,pmo.gov.sg states 'Prime Minister and Minister for Finance'; country carried by state=SG
+FOREIGN-GUTERRES-A,,,,,,foreign-executive,Secretary-General of the United Nations,https://www.un.org/sg/en,https://www.un.org/sg/en,Guterres,
+FOREIGN-MELONI-G,,,,,,foreign-executive,President of the Council of Ministers,https://www.governo.it/en,https://www.governo.it/en,Meloni,
+FOREIGN-SHEHBAZ-S,,,,,,foreign-executive,Prime Minister of Pakistan,https://pmo.gov.pk/,https://pmo.gov.pk/,Sharif,
