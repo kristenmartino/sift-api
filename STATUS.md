@@ -1,6 +1,6 @@
 # sift-api — STATUS
 
-**Updated:** 2026-07-31
+**Updated:** 2026-08-05
 **Tier:** v1.5 (civic-literacy pivot backend) — **feature work paused per [`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md); evidence-gathering only**
 **Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). **2026-07-31: 8 PRs merged** (#116, #117, #120, #121, #123, #124, #126, #127) — a burst, not a new baseline. This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
@@ -22,7 +22,7 @@ All four signals verified live in prod 2026-07-31: `feed_stats` 59/59 · `feed_h
 
 Two things are now waiting on data rather than on code:
 
-1. **Cost attribution.** `AI_COST_GUARD_ENABLED=true` (limit raised to $100/day so it records without blocking) was set 2026-07-30 to populate `ai_usage_daily`, which had never been written to. Give it ~a week, then break spend down by operation. This gates whether to batch the entity linker and whether to raise `LIMIT 50`.
+1. ~~**Cost attribution.**~~ **Answered 2026-08-05** — breakdown in Open-Q #1, two changes shipped (#129, #130). It settled both questions it was gating: batching the entity linker is superseded by the regex gate, and raising `LIMIT 50` is the wrong fix (the window, not the limit, is the constraint — see Next 3 #3). **What remains is confirming the saving is real**, which the ledger has not yet done: the code is merged but not deployed, so it is currently $0.
 2. **Clustering eval corpus.** `scripts/eval_clustering.py --sample` generated 300 articles across 6 windows; needs ~3–4h of hand-labeling, then `--live --record` (~$0.024) produces the first real accuracy number. Until then, event-clustering accuracy is **unmeasured** and should not be quoted.
 
 Still open from the prior focus: topic search → sift-api (#79/#80), NULL-embedding repair (#76 — now a prerequisite, not a nice-to-have, since `story_workflow` excludes NULL-embedding articles from threading entirely), outlet ingestion-status field (#73), authoritative outlet seeder (#93).
@@ -37,9 +37,17 @@ Pipeline runs every 30 min, ingests **59 RSS feeds** (`len(services.rss.FEEDS)`;
 
 Watch for:
 - Pipeline run time approaches the 30-min cadence (e.g. exceeds ~25 min)
-- ~~Anthropic monthly bill from pipeline crosses $50/mo (today: ~$15)~~ — **corrected 2026-07-30: actual is ~$10/day (~$300/mo)** on a Sift-dedicated key. The $50/mo threshold was passed long ago; this line was ~20× stale. The per-operation breakdown is not yet known because `usage_tracker._record_to_ledger` short-circuits unless `ai_cost_guard_enabled` is true and it defaulted to false, so `ai_usage_daily` had never been populated. Enabled 2026-07-30 with a $100/day ceiling (records, never blocks). **Re-baseline this bullet once a week of ledger data exists.**
+- ~~Anthropic monthly bill from pipeline crosses $50/mo (today: ~$15)~~ — ~~**corrected 2026-07-30: actual is ~$10/day (~$300/mo)**~~ — **broken down 2026-08-05 from five full days of `ai_usage_daily` (07-31..08-04): $8.99/day.** `entity_linker_llm.link_text` **46.2%** ($4.15), `story_synthesizer.synthesize` 26.3% ($2.37), `story_clusterer.cluster` 17.1% ($1.54), `summarizer.batch` 10.3% ($0.93), Voyage 0.02%. Threading (clusterer + synthesizer) is **43.4%**, close to the 39% guessed at `workflows/pipeline_workflow.py:17`.
+
+  **The ledger under-reports.** The three Batch API paths never call `log_usage` — `process_*_batch_results` in `context_generator.py` / `primer_generator.py` / `entity_extractor.py` record nothing — so ~$1/day sits unattributed between this figure and the ~$10/day on the bill.
+
+  **Root cause is a volume assumption, not pricing.** `services/entity_linker_llm.py:32-34` documents its economics as "~100 new articles/day → ~$3-5/month". Actual ingest is **~2,000/day**, so that one call site is ~$125/mo.
+
+  #129 and #130 (2026-08-05) target this; projected $8.99 → ~$4.6/day. **Not yet verified, and not yet deployed** — see Recent decisions. Re-baseline this bullet from `scripts/verify_cost_baseline.py`, not by hand.
 - Neon Postgres connection pool `max=5` starts queuing requests visibly
 - Native app launches and pushes write volume up
+
+**Neon storage is a separate bill and was never costed until 2026-08-05: 2,272 MB**, of which `idx_articles_embedding` alone is **879 MB (39%)**. **228,689 of 282,943 articles (80.8%) are past the feed's own 30-day recency floor** ([sift#172](https://github.com/kristenmartino/sift/pull/172)) and cannot be displayed. Retention would take the DB to ~500 MB — design in [`docs/NEON_RETENTION.md`](./docs/NEON_RETENTION.md). Destructive, so archive-before-delete with explicit sign-off; and **do not drop the embedding index**, which Next 3 #3 makes load-bearing.
 
 ### 2. Is the LLM-based entity linker durable, or does it need a v2?
 
@@ -49,7 +57,11 @@ What would resolve this: a stable eval set with target precision/recall numbers,
 
 **Update 2026-07-30:** the machinery for that eval now exists and is reusable — `scripts/eval_clustering.py` established the pattern (labeled corpus → deterministic metrics → committed response fixtures with a `prompt_sha256` tripwire → free CI replay + a manual `--live` mode). A linker eval is now mostly corpus-labeling work rather than harness-building. Still the honest blocker: no labeled data.
 
-Separately, the linker is also the **largest single cost lever** in the repo: `link_articles_llm` makes one realtime call *per article*, re-sending a ~6,500-token catalog as a cache read each time. Batching to ~10 articles/call models out at roughly −60% on that call site. Sequenced behind cost attribution so the saving is measured, not assumed.
+Separately, the linker was the **largest single cost lever** in the repo — one realtime call *per article*, 46.2% of Anthropic spend. **Addressed 2026-08-05 by #130**, which gates the LLM behind the free regex matcher and forwards only ~26% of articles.
+
+**Batching to ~10 articles/call is superseded, not merely deferred.** That modeled −60% against the *ungated* volume; gating already removes ~74% of the calls, so batching the remainder is a much smaller lever than the old number implies. Do not quote −60%.
+
+The durability question itself is unchanged and still open — and #130 sharpens it, because the gate's recall now depends on catalog *coverage*: an entity the regex cannot name is one the LLM never gets asked about. `scripts/eval_linker_gate.py` measures that coverage (98.11% as of 2026-08-05) and should run on every PR touching the linker or `entity_aliases`.
 
 ### 3. Does `sift-mcp` eventually merge into `sift-api` as one service with two surfaces?
 
@@ -64,8 +76,14 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 ## Next 3
 
 1. **[committed]** Label the clustering eval corpus + record the first baseline. 300 articles on disk (gitignored until labeled); ~3–4h in the spreadsheet flow (`--sample` emits a CSV, `--ingest-labels` merges + validates), then `--live --repeats 3 --record` (~$0.024). Output replaces the retracted accuracy claim in `sift/docs/DECISIONS.md` D26/D27 with a measured ARI + pairwise P/R. Tier `v1.5` · `effort-day`.
-2. **[committed]** Cost attribution → act on it. One week of `ai_usage_daily`, then the per-operation breakdown decides the order of: batching `entity_linker_llm` (largest modeled lever), a near-duplicate cosine gate pre-summarize, and whether `LIMIT 50` is worth raising. Do not optimize before this returns — the previous cost figure was ~20× wrong. Tier `v1.5` · `effort-day` to measure.
-3. **[sketch — deferred by D46]** Raise `LIMIT 50` in `story_workflow.py` — **the remaining clustering constraint.** It caps sports at ~4.4% grouping no matter how well the clusterer works. Raising it needs candidate pooling first (otherwise 300 articles is a ~30k-token prompt that cannot serialize into the output ceiling), i.e. the vector-blocking design. That is `effort-week` build work, which does not fit the 6 hrs/wk evidence-only budget — so it stays a sketch until the pause lifts or the data makes it urgent. Tier `v1.5` · `effort-week`.
+2. **[done 2026-08-05 — pending verification]** Cost attribution → act on it. The breakdown landed (Open-Q #1) and two changes shipped: #129 skips duplicate synthesis, #130 gates the entity linker behind the free regex matcher. Batching `entity_linker_llm` was **superseded** — gating removes ~74% of the calls outright, so batching what remains is a much smaller lever than the −60% modeled against the ungated volume. **What is left is the verification**, which is the whole point: run `scripts/verify_cost_baseline.py` and read the *ratios*, not the dollars. Its first run showed −30% on dollars while both deploy checks said NOT DEPLOYED — the drop was low article volume, not saving. Tier `v1.5` · `effort-hour`.
+3. **[designed 2026-08-05 — deferred by D46]** **Incremental threading**, which replaces "raise `LIMIT 50`" as the framing. Raising the limit was never the fix: measurement shows `LIMIT 50 ORDER BY published_date DESC` makes the nominal 48h window **~3.3h (politics) / ~3.7h (sports)**, so same-event articles hours apart never meet — and the run then re-clusters that near-identical slice 48×/day and discards it, leaving **99.5% orphaned `stories` rows**. Cost scales with *cadence × window*, not with new articles.
+
+   The design consumes a queue instead: each new article does a free pgvector kNN backward over the **full** 48h pool, so old articles are never re-examined (a stale singleton is rescued when a matching new article pulls it in), and only candidates above threshold reach one batched LLM call per run. Work becomes O(~40 new articles), grouping improves because the search is no longer window-bound, and 30-minute freshness is preserved — **slowing the cadence was considered and rejected**; it treats the symptom.
+
+   Threshold calibrated on 283 existing story-mate pairs: **0.60** (~90% recall). The cost curve is flat and the recall curve is steep — 0.60 → 0.80 saves ~$0.72/day and costs 57 points of recall — so tune for recall.
+
+   Three prerequisites gate cutover, all of them things this design would otherwise break silently: ivfflat `lists=20` on 282,932 rows is ~26× undertuned and **unverified** (needs recall@10 ≥ 0.95 vs brute force; note `ivfflat.probes` is query-time, not an index property); a naive `created_at` watermark permanently drops articles whose entities land late (**1.58% pending, ~32/day, compounding**); and it ships behind a flag with 24h shadow mode. Still `effort-week`, so still deferred by D46. Full design: [`docs/INCREMENTAL_THREADING.md`](./docs/INCREMENTAL_THREADING.md). Tier `v1.5` · `effort-week`.
 
 *Items 1 and 2 are measurement, not features, so they sit inside D46's evidence-gathering budget (~4–5h combined). Item 3 does not, and is explicitly deferred.*
 
@@ -77,9 +95,23 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
 - Native platform direction (mobile API surface depends on which client comes first — currently leaning Android-first per `sift/docs/IOS_VS_ANDROID.md`)
 - **Clustering accuracy number** — blocked on hand-labeling the corpus (Next 3 #1). Nothing else can proceed on clustering quality without ground truth.
-- **Pipeline cost decisions** — blocked on a week of `ai_usage_daily` (Next 3 #2).
+- ~~**Pipeline cost decisions** — blocked on a week of `ai_usage_daily`~~ — **unblocked 2026-08-05**; the breakdown is in Open-Q #1 and two changes shipped.
+- **Realizing the #129/#130 saving** — blocked on a **Railway deploy**. Both are merged to main; `scripts/verify_cost_baseline.py` reports both deploy checks as NOT DEPLOYED, so the measured saving is currently $0. Verification scheduled 2026-08-07.
+- **Incremental threading cutover** (Next 3 #3) — blocked on the ivfflat recall@10 check and the entities-lag watermark fix, in that order. Neither is optional: the first decides whether the free candidate gate actually retrieves, the second is a data-loss bug the current rescan design accidentally prevents.
 
 ## Recent decisions
+
+- **2026-08-05** — **Cost broken down and halved on paper; the ledger has not confirmed it yet ([#129](https://github.com/kristenmartino/sift-api/pull/129), [#130](https://github.com/kristenmartino/sift-api/pull/130)).** Five full days of `ai_usage_daily` finally answered Next-3 #2 (figures in Open-Q #1). Two changes followed, both measured before shipping rather than modeled:
+
+  **Duplicate synthesis (#129).** `story_id` is a sha256 of the sorted member article ids, so an id collision means the *identical* member set — yet `synthesize_story` fired at `story_workflow.py:214` **before** the `ON CONFLICT` upsert. Measured: **5,491 synthesize calls produced 2,500 stories, so 54% regenerated text that already existed.** Rows in `synthesis_status='failed'` still get a real attempt, since that state holds the first article's raw title/summary as a placeholder. A `synthesis_stats` event now reports the reuse rate per run.
+
+  **Regex pre-gate on the entity linker (#130).** The LLM linker exists to *disambiguate* candidates, not to *discover* names that never appear, so an article where the regex finds no catalog surface form has nothing to disambiguate. `scripts/eval_linker_gate.py` (read-only, free) measured the recall cost against already-stored links: **forwards 26% of articles, retains 98.11%**, against a 95% bar set before the first run. Default **on** — unlike the other cost flags, which default off because they *spend*; `ai_cost_guard_enabled` defaulting off is exactly why this ledger sat empty for months.
+
+  **The first run failed at 93.63%**, and the miss bucketing is what produced the rest of the day's work: RFK Jr. (23), Fauci (16), "Charles (Chuck) Edwards" (11), and CNN/BBC. Hence `nickname_variants()` for the bioguide parenthetical form journalism never prints, and `_MIN_CURATED_KEY_LENGTH` — the 4-char floor is a proxy for "derived, so unvouched-for" and it had made **BBC (1,068 articles), CNN (397) and NPR (241) unlinkable outright.** Curated rows get the lower floor; derived keys keep the old one, with a test pinning it. Stored-link coverage rose **13.35% → 22.06%**; regex/LLM agreement **93.63% → 98.11%**.
+
+  **Carry this: the dollars column lies.** `scripts/verify_cost_baseline.py`'s first run showed **−30%** while both deploy-check ratios said **NOT DEPLOYED** — article volume was simply low that day. Same shape as #113 and #117: a number that looks like success while nothing happened. The script reports `linker calls per article` and `synthesize per cluster call` for that reason, and exits non-zero when either says the code is not live. **As of this entry the PRs are merged but Railway has not picked them up, so the saving is $0.** Verification scheduled for 2026-08-07.
+
+  **Also found, not yet acted on:** `LIMIT 50` in `story_workflow.py` makes the nominal 48h threading window **~3.3h for politics and ~3.7h for sports**, which is why sports still groups at 0.9% after #113 — the ceiling is the window, not the clusterer. And **58,259 of 58,557 `stories` rows (99.5%) have zero member articles**, because the content-addressed `story_id` mints a new row whenever membership changes while `:166-174` NULLs the old assignments. Both feed the incremental-threading design in Next 3.
 
 - **2026-07-31** — **Three dead RSS feeds fixed or dropped; ingest is 59 feeds / 56 outlets ([#122](https://github.com/kristenmartino/sift-api/issues/122), [#123](https://github.com/kristenmartino/sift-api/pull/123)).** A `feed_stats` event now reports per-run feed outcomes, because nothing did: `_fetch_single_feed` swallowed errors into an empty list, `return_exceptions=True` hid the rest, and the run logged success either way — the same "reports success while producing nothing" shape as #113 and #117. On its first real run it found that **4 of 58 feeds were contributing nothing**, and prod confirmed: Washington Post dead 15 days (HTTP 400), Inside Climate News 11 days (HTTP 403), **USA Today never ingested a single article in its entire life in `FEEDS`**, WHO quiet 3 days (genuinely low-volume).
 
