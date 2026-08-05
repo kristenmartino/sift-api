@@ -131,11 +131,20 @@ def main() -> int:
 
     # One fetch per distinct URL, not per row — many officials share a statute.
     pairs: dict[str, set[str]] = {}
+    # Rows carrying `verify_name` additionally require the page to name the
+    # person. A U.S. statute establishes an office without naming anyone, so
+    # the officeholder is evidenced separately (by a Senate roll-call). Foreign
+    # rows have no such second record: the government's own page IS the whole
+    # claim, so it has to carry both halves or the row does not publish.
+    names: dict[str, set[str]] = {}
     for row in rows:
         src = (row.get("role_title_source") or "").strip()
         title = (row.get("role_title") or "").strip()
         if src and title:
             pairs.setdefault(src, set()).add(title)
+            who = (row.get("verify_name") or "").strip()
+            if who:
+                names.setdefault(src, set()).add(who)
 
     results: dict[tuple[str, str], str] = {}
     print(f"Verifying {len(pairs)} distinct sources…", file=sys.stderr)
@@ -148,11 +157,20 @@ def main() -> int:
             print(f"  ! {url} — {exc}", file=sys.stderr)
             time.sleep(args.sleep)
             continue
+        missing_name = sorted(
+            who for who in names.get(url, set()) if _WS.sub(" ", who.lower()) not in page
+        )
         for title in titles:
             hit = _states_title(page, title)
-            results[(url, title)] = "OK" if hit else "TITLE NOT FOUND"
             if not hit:
-                print(f"  ! {title!r} not in {url}", file=sys.stderr)
+                verdict = "TITLE NOT FOUND"
+            elif missing_name:
+                verdict = f"PAGE DOES NOT NAME {missing_name[0]}"
+            else:
+                verdict = "OK"
+            results[(url, title)] = verdict
+            if verdict != "OK":
+                print(f"  ! {verdict}: {title!r} @ {url}", file=sys.stderr)
         time.sleep(args.sleep)
 
     with open(args.report, "w", newline="", encoding="utf-8") as fh:

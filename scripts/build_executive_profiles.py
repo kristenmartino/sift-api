@@ -62,6 +62,7 @@ CSV_FIELDS = [
     "predecessor_name",
     "predecessor_source",
     "official_url",
+    "verify_name",
 ]
 
 
@@ -165,14 +166,27 @@ def main() -> int:
         office_key = (row.get("office_key") or "").strip()
         if not bioguide:
             continue
+        # Foreign rows carry their own source: there is no shared statute
+        # behind "Prime Minister of Australia", and the only record is that
+        # government's own page, which is person-specific. So an assignment may
+        # supply role_title / role_title_source / official_url inline instead
+        # of pointing at an office row.
         office = offices.get(office_key)
         if not office:
-            problems.append(f"{bioguide}: unknown office_key {office_key!r}")
-            continue
+            if row.get("role_title") and row.get("role_title_source"):
+                office = {
+                    "role_title": row["role_title"],
+                    "role_title_source": row["role_title_source"],
+                    "official_url": row.get("official_url", ""),
+                }
+            else:
+                problems.append(f"{bioguide}: unknown office_key {office_key!r}")
+                continue
 
         rec = {
             "bioguide_id": bioguide,
-            "id_source": "executive",
+            "id_source": (row.get("id_source") or "").strip() or "executive",
+            "verify_name": (row.get("verify_name") or "").strip(),
             "role_title": office["role_title"],
             "role_title_source": office["role_title_source"],
             "role_start_date": (row.get("role_start_date") or "").strip(),
