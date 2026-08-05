@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -136,6 +137,118 @@ def test_build_catalog_politicians_have_no_aliases():
     for row in catalog:
         if row["type"] == "politician":
             assert row["aliases"] == [], row["primary_name"]
+
+
+# ── regex pre-gate on the LLM linker ────────────────────────
+#
+# link_articles_llm is one realtime call per article and the largest line item
+# in the repo. The gate forwards an article only when the free regex matcher
+# finds a candidate, on the premise that the LLM disambiguates candidates
+# rather than discovering names that never appear. These pin the routing; the
+# recall cost of the premise is measured separately by
+# scripts/eval_linker_gate.py (98.11% over 12,690 articles).
+
+_GATE_CATALOG_SQL = {
+    "outlet_profiles": [{"slug": "cnn", "name": "CNN"}],
+    "politician_profiles": [{"bioguide_id": "S000148", "name": "Chuck Schumer"}],
+    "org_profiles": [],
+    "bill_profiles": [],
+    "entity_aliases": [{"alias": "cnn", "entity_type": "outlet", "canonical_id": "cnn"}],
+}
+
+
+def _gate_pool() -> AsyncMock:
+    """Pool whose five catalog queries each return the right fixture."""
+    async def fetch(sql, *args):
+        for table, rows in _GATE_CATALOG_SQL.items():
+            if table in sql:
+                return rows
+        raise AssertionError(f"unexpected query: {sql}")
+
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(side_effect=fetch)
+    return pool
+
+
+async def _run_link_articles(articles, llm, monkeypatch, *, gate=True):
+    from app.config import settings
+    from services import entity_linker, entity_linker_llm
+
+    monkeypatch.setattr(settings, "entity_linker_regex_gate_enabled", gate)
+    monkeypatch.setattr(entity_linker_llm, "link_articles_llm", llm)
+    monkeypatch.setattr("app.db.get_pool", AsyncMock(return_value=_gate_pool()))
+    return await entity_linker.link_articles(articles)
+
+
+def _article(url: str, title: str) -> dict:
+    return {"source_url": url, "source_name": "Outlet", "title": title, "summary": ""}
+
+
+@pytest.mark.asyncio
+async def test_gate_forwards_only_articles_with_a_regex_candidate(monkeypatch):
+    hit = _article("https://e.com/1", "She told CNN the vote was close")
+    miss = _article("https://e.com/2", "Local bakery wins a prize")
+    llm = AsyncMock(return_value={hit["source_url"]: [
+        {"type": "outlet", "canonical_id": "cnn", "surface_form": "CNN"},
+    ]})
+
+    out = await _run_link_articles([hit, miss], llm, monkeypatch)
+
+    forwarded = [a["source_url"] for a in llm.await_args.args[0]]
+    assert forwarded == [hit["source_url"]]
+    assert out[hit["source_url"]][0]["canonical_id"] == "cnn"
+    # The skipped article still gets an answer — absent would break store_node.
+    assert out[miss["source_url"]] == []
+
+
+@pytest.mark.asyncio
+async def test_gate_disabled_forwards_everything(monkeypatch):
+    hit = _article("https://e.com/1", "She told CNN the vote was close")
+    miss = _article("https://e.com/2", "Local bakery wins a prize")
+    llm = AsyncMock(return_value={})
+
+    await _run_link_articles([hit, miss], llm, monkeypatch, gate=False)
+
+    forwarded = [a["source_url"] for a in llm.await_args.args[0]]
+    assert forwarded == [hit["source_url"], miss["source_url"]]
+
+
+@pytest.mark.asyncio
+async def test_gate_skips_the_llm_entirely_when_nothing_qualifies(monkeypatch):
+    """An all-miss batch must not pay for an empty request."""
+    misses = [_article(f"https://e.com/{i}", "Local bakery wins a prize") for i in (1, 2)]
+    llm = AsyncMock(return_value={})
+
+    out = await _run_link_articles(misses, llm, monkeypatch)
+
+    llm.assert_not_called()
+    assert all(out[a["source_url"]] == [] for a in misses)
+
+
+@pytest.mark.asyncio
+async def test_llm_verdict_overrides_the_regex_candidate(monkeypatch):
+    """The regex only nominates. Disambiguation is why the LLM is still called,
+    so a forwarded article must keep the LLM's answer — including [] when the
+    LLM decides the candidate was a false positive."""
+    article = _article("https://e.com/1", "The CNN Tower dominates the skyline")
+    llm = AsyncMock(return_value={article["source_url"]: []})
+
+    out = await _run_link_articles([article], llm, monkeypatch)
+
+    llm.assert_awaited_once()
+    assert out[article["source_url"]] == []
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_still_degrades_to_regex_for_forwarded_articles(monkeypatch):
+    """The pre-existing fallback must survive the gate: a forwarded article
+    whose LLM call blew up falls back to its regex links, not to []."""
+    article = _article("https://e.com/1", "She told CNN the vote was close")
+    llm = AsyncMock(side_effect=RuntimeError("API down"))
+
+    out = await _run_link_articles([article], llm, monkeypatch)
+
+    assert [link["canonical_id"] for link in out[article["source_url"]]] == ["cnn"]
 
 
 # ── curated short-key exemption ─────────────────────────────
