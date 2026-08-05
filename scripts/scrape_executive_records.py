@@ -117,9 +117,21 @@ _TITLE_RE = re.compile(
 # rows; they carry the confirmation date, vote URL and tally, which for a
 # constitutionally-established office (28 U.S.C. § 1) is the whole claim.
 _TITLE_LEGACY_RE = re.compile(r"^Nomination\s*[-–]\s*(?P<name>.+?)\s*$", re.IGNORECASE)
-# "..., vice Bill Nelson, resigned." / "..., vice Janet L. Yellen."
+# "...to be Chief Justice of the United States, vice William H. Rehnquist,
+# deceased." The name is everything between "vice" and the disposition word.
+#
+# Two things this must get right, both of which an earlier version got wrong:
+#   - Periods belong INSIDE the name. Excluding them truncated "William H.
+#     Rehnquist" to "William H" and "Stephen G. Breyer" to "Stephen G".
+#   - "retiring" is a disposition. Omitting it dropped the clause entirely for
+#     Alito and Kagan while silently truncating four others -- a partial result
+#     that looked like data.
+# `.+?` is non-greedy, so a suffixed name ("vice John Smith, Jr., retired")
+# still extends past the first comma to reach the real disposition.
 _VICE_RE = re.compile(
-    r",\s*vice\s+(?P<pred>[^,.]+?)(?:,\s*(?:resigned|retired|deceased|elevated|term expir\w*|removed)\b|\.)",
+    r",\s*vice\s+(?P<pred>.+?)"
+    r"(?:,\s*(?:resigned|retired|retiring|deceased|elevated|removed|"
+    r"term\s+expir\w*)\b|\.\s*$)",
     re.IGNORECASE,
 )
 _MONTHS = {

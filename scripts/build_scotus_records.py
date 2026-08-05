@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import re
 import sys
@@ -108,7 +109,33 @@ CSV_FIELDS = [
     "confirmation_vote_url",
     "confirmation_vote_result",
     "nomination_citation",
+    "nomination_date",
+    "nomination_url",
+    "predecessor_name",
+    "predecessor_source",
 ]
+
+CONGRESS_NOMINATION_API = "https://api.congress.gov/v3/nomination/{congress}/{number}"
+CONGRESS_NOMINATION_URL = (
+    "https://www.congress.gov/nomination/{congress}th-congress/{number}"
+)
+# "...to be Chief Justice of the United States, vice William H. Rehnquist,
+# deceased." The name is everything between "vice" and the disposition word.
+#
+# Two things this must get right, both of which an earlier version got wrong:
+#   - Periods belong INSIDE the name. Excluding them truncated "William H.
+#     Rehnquist" to "William H" and "Stephen G. Breyer" to "Stephen G".
+#   - "retiring" is a disposition. Omitting it dropped the clause entirely for
+#     Alito and Kagan while silently truncating four others -- a partial result
+#     that looked like data.
+# `.+?` is non-greedy, so a suffixed name ("vice John Smith, Jr., retired")
+# still extends past the first comma to reach the real disposition.
+_VICE_RE = re.compile(
+    r",\s*vice\s+(?P<pred>.+?)"
+    r"(?:,\s*(?:resigned|retired|retiring|deceased|elevated|removed|"
+    r"term\s+expir\w*)\b|\.\s*$)",
+    re.IGNORECASE,
+)
 
 # A Justice's confirmation is a roll-call whose parsed office mentions a
 # Justice seat, OR — for the pre-107th title form — one that carries no office
@@ -167,6 +194,43 @@ def verify(url: str, surname: str) -> bool:
     return surname.lower() in page.lower()
 
 
+def enrich_nomination(congress: int, number: str, api_key: str) -> dict[str, str]:
+    """`receivedDate` and the "vice <name>" clause for one PN record.
+
+    A Justice's seat is always filled *vice* a named predecessor — unlike the
+    executive rows, where an incoming administration files its Cabinet en bloc
+    and the clause is absent on 35 of 37. So for the Court this is the primary
+    record for `predecessor_name`, not a fallback, and it says what the prior
+    holder did: "vice Ruth Bader Ginsburg, deceased".
+
+    Returns {} on any failure. A missing PN record leaves the columns NULL,
+    which simply does not render (013's pattern); it must never leave a value
+    behind without its source.
+    """
+    url = CONGRESS_NOMINATION_API.format(congress=congress, number=number)
+    req = urllib.request.Request(
+        f"{url}?format=json&api_key={api_key}",
+        # api.data.gov answers 403 to urllib's default User-Agent.
+        headers={"User-Agent": USER_AGENT},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            nom = json.load(resp).get("nomination") or {}
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+        return {}
+
+    received = (nom.get("receivedDate") or "").strip()
+    if not received:
+        return {}
+    public_url = CONGRESS_NOMINATION_URL.format(congress=congress, number=number)
+    out = {"nomination_date": received, "nomination_url": public_url}
+    match = _VICE_RE.search(nom.get("description") or "")
+    if match:
+        out["predecessor_name"] = " ".join(match.group("pred").split())
+        out["predecessor_source"] = public_url
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -183,6 +247,14 @@ def main() -> int:
              "vote. Only for offline re-runs; the check is the point.",
     )
     args = parser.parse_args()
+
+    api_key = os.environ.get("CONGRESS_API_KEY", "").strip()
+    if not api_key:
+        print(
+            "! CONGRESS_API_KEY unset — nomination_date and predecessor_name "
+            "will be left NULL. Free key: https://api.congress.gov/sign-up/",
+            file=sys.stderr,
+        )
 
     with open(args.confirmations, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
@@ -232,7 +304,17 @@ def main() -> int:
             "confirmation_vote_url": url,
             "confirmation_vote_result": hit["confirmation_vote_result"],
             "nomination_citation": hit.get("nomination_citation", ""),
+            "nomination_date": "",
+            "nomination_url": "",
+            "predecessor_name": "",
+            "predecessor_source": "",
         })
+
+        citation = hit.get("nomination_citation", "").lstrip("PN").split("-")[0]
+        if api_key and citation.isdigit():
+            out[-1].update(enrich_nomination(
+                int(hit["congress"]), citation, api_key
+            ))
 
     if failures:
         print("\nRefused to write — unresolved rows:", file=sys.stderr)
