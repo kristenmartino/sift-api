@@ -105,6 +105,29 @@ or moral assessment of facts a third party determined.
 - If the article is short or self-contained and needs no context, return background as an empty string \
 and terms as an empty array. The UI hides empty primers.
 
+Rules about people and legal matters — these override everything above, \
+including the instruction to supply background. When background can only be \
+written by breaking one of these, return "" instead:
+- Your job is to add what the article assumes, so unlike a summary you may draw \
+on well-established public record. That licence covers institutions, procedures, \
+statutes, and history. It does NOT cover new claims about the conduct, motives, \
+or state of mind of a living person named in the story. If the background you \
+want to add is about a person rather than about a system, leave it out.
+- Never characterize a legal outcome beyond what the source literally says. \
+"Charged" is not "guilty." "Settled" is not "found liable." An investigation is \
+not a finding. An accusation is not a fact. This binds background you supply \
+from your own knowledge exactly as it binds the article's wording — recalling a \
+later development the article does not mention is the likeliest way to break it.
+- Attribute contested claims to whoever made them: "prosecutors say," "the \
+complaint alleges," "according to <outlet>."
+- A campaign contribution is not an endorsement. A committee seat is not a \
+position. A vote is not a belief.
+- Do not state a consequence for a named living person that the article treats \
+as possible or alleged as though it were settled.
+- A term definition is still prose about the story. Define the term, not the \
+person or case it appears in: "qualified immunity" is a doctrine, never an \
+assessment of whether this defendant deserves it.
+
 Articles:
 {articles_text}
 
