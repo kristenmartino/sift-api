@@ -416,6 +416,37 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "WHERE role_title IS NOT NULL AND role_title_source IS NOT NULL"
         )
 
+        # SCOTUS Justices move into politician_profiles; judge_profiles retires
+        # (migrations/016_scotus_into_politician_profiles.sql).
+        # judge_profiles was created by an unmerged branch (9f44ba2, Phase 3.J)
+        # whose seeders were run against prod by hand, so the table exists in
+        # production and in no repo — never in init.sql, never here, and main's
+        # linker has no `judge` type, so its 87 entity_links could never be
+        # refreshed and never rendered (entityLinks.ts drops unknown types).
+        # Migration 015 already reserved id_source = 'scotus' and already gave
+        # the reason a fifth entity type is not worth its cost. `notes` is NOT
+        # carried over: all 9 rows held uncited characterizations of living
+        # people, which OPERATING_CONTEXT.md §5 forbids. Sourced replacements
+        # come from scripts/seed_scotus_records.py.
+        # Conditional so a fresh init.sql DB — where judge_profiles has never
+        # existed — is a clean no-op rather than an error.
+        await conn.execute("""
+            DO $$
+            BEGIN
+              IF to_regclass('public.judge_profiles') IS NOT NULL THEN
+                INSERT INTO politician_profiles (bioguide_id, name, chamber, id_source,
+                                                 external_links, refreshed_at, updated_at)
+                SELECT canonical_id, name, 'scotus', 'scotus',
+                       COALESCE(external_links, '{}'::jsonb) - 'wikipedia',
+                       refreshed_at, updated_at
+                  FROM judge_profiles
+                ON CONFLICT (bioguide_id) DO NOTHING;
+
+                DROP TABLE judge_profiles;
+              END IF;
+            END $$
+        """)
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

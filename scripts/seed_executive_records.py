@@ -125,7 +125,9 @@ def _as_date(value: str | None) -> date | None:
     try:
         return date.fromisoformat(cleaned)
     except ValueError:
-        raise SystemExit(f"unparseable date in executive_profiles.csv: {cleaned!r}")
+        raise SystemExit(
+            f"unparseable date in executive_profiles.csv: {cleaned!r}"
+        ) from None
 
 
 async def main() -> int:
