@@ -16,7 +16,7 @@ from services.index_alignment import (
     log_misaligned_sub_batch,
     with_alignment_retry,
 )
-from services.usage_tracker import log_usage
+from services.usage_tracker import log_batch_usage, log_usage
 
 logger = logging.getLogger("sift-api.entity_extractor")
 
@@ -238,6 +238,9 @@ async def submit_entity_batch(articles: list[dict]) -> str | None:
 
 async def process_entity_batch_results(batch_id: str, results: list[dict]) -> None:
     """Poller callback. Parses JSONL results and UPDATEs articles.entities."""
+    # Batch spend was invisible until 2026-08-05 — this path recorded
+    # nothing, leaving ~$1/day unattributed between the ledger and the bill.
+    log_batch_usage("entity_extractor.batch", results)
     pool = await get_pool()
     row = await pool.fetchrow(
         "SELECT metadata FROM api_batches WHERE batch_id = $1", batch_id,

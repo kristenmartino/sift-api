@@ -124,11 +124,30 @@ class TestAlert:
 
 
 class TestRecordUsage:
-    def test_disabled_is_noop(self):
+    def test_records_even_when_the_guard_is_disabled(self):
+        """The regression guard for the 20x-stale cost figure.
+
+        This asserted the opposite until 2026-08-05: recording used to be gated
+        on `ai_cost_guard_enabled`, so the flag that turns on *blocking* also
+        turned on *measuring*. With the default `false`, `ai_usage_daily` was
+        never written, nobody could see it was empty, and STATUS.md quoted
+        ~$15/mo against a real ~$300/mo.
+
+        Measurement must not depend on enforcement — you need the ledger
+        populated before you can choose a ceiling. Enforcement stays gated;
+        that is `check_budget`'s job and is covered separately.
+        """
+        pool = _mock_pool()
         with patch.object(cost_guard.settings, "ai_cost_guard_enabled", False):
-            with patch.object(cost_guard, "get_pool", new_callable=AsyncMock) as gp:
+            with patch.object(cost_guard, "get_pool", AsyncMock(return_value=pool)):
                 asyncio.run(cost_guard.record_usage("anthropic", "m", "op", 0.5))
-        gp.assert_not_called()
+        pool.execute.assert_called_once()
+
+    def test_nothing_to_record_is_a_noop(self):
+        pool = _mock_pool()
+        with patch.object(cost_guard, "get_pool", AsyncMock(return_value=pool)):
+            asyncio.run(cost_guard.record_usage("anthropic", "m", "op", 0.0, call_count=0))
+        pool.execute.assert_not_called()
 
     def test_enabled_writes_to_ledger(self):
         pool = _mock_pool()
