@@ -31,6 +31,27 @@ class Settings(BaseSettings):
     # Adds a paid call per kept line; respects the cost guard above.
     why_it_matters_judge_enabled: bool = False
 
+    # Regex pre-gate on the LLM entity linker — ON by default, set false to
+    # disable. link_articles_llm makes one realtime call per article and is the
+    # largest line item in the repo ($4.15/day of $8.99, 46%, per
+    # ai_usage_daily 2026-07-31..08-04) because it is sized for the ~100
+    # articles/day its docstring assumes rather than the ~2,000 actually
+    # ingested. The gate sends an article to the LLM only when the free regex
+    # matcher finds a candidate surface form — the LLM is there to
+    # *disambiguate* collisions, not to *discover* names that never appear.
+    #
+    # Default true, unlike the flags above, deliberately: this one SAVES money
+    # rather than spending it, and a default-off flag is exactly how
+    # ai_cost_guard_enabled left ai_usage_daily empty for months (STATUS.md:40).
+    # A flag you must remember to turn on is a saving you do not get. Treat it
+    # as a kill switch, not an opt-in.
+    #
+    # Cost of the gate, measured by scripts/eval_linker_gate.py over 12,690
+    # articles / 7 days: 98.11% of articles the LLM linked are still forwarded.
+    # The ~1.9% it drops are last-name-only mentions (Kiggans, Khouw, Greene) —
+    # the surface forms #40 deliberately refuses to match on.
+    entity_linker_regex_gate_enabled: bool = True
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

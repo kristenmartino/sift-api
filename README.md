@@ -181,6 +181,7 @@ CI wires the same script into the **`feed-perf`** job (`.github/workflows/ci.yml
 | `DAILY_AI_COST_LIMIT_USD` | No | Daily Claude + Voyage spend ceiling, USD (default: `10.0`) |
 | `AI_COST_ALERT_THRESHOLD_RATIO` | No | Budget fraction that triggers an alert (default: `0.8`) |
 | `WHY_IT_MATTERS_JUDGE_ENABLED` | No | Run the runtime LLM-judge on generated `why_it_matters` lines (default: `false`; adds a paid call per kept line, increases suppression) |
+| `ENTITY_LINKER_REGEX_GATE_ENABLED` | No | Send an article to the LLM entity linker only when the free regex matcher finds a candidate surface form (default: **`true`** — a kill switch, not an opt-in, since it saves rather than spends). Forwards ~26% of articles and retains 98.11% of the links the ungated path produced, measured by `scripts/eval_linker_gate.py`. Set `false` to restore one LLM call per article |
 
 ## Tests
 

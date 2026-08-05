@@ -44,10 +44,13 @@ hijack the linker even if curated by mistake.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections import Counter
 from typing import Iterable, NotRequired, TypedDict
+
+from app.config import settings
 
 logger = logging.getLogger("sift-api.entity_linker")
 
@@ -509,24 +512,63 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
         len(outlets), len(politicians), len(orgs), len(bills),
     )
 
+    search_dict = build_search_dict(catalog)
+
+    # Regex pre-gate. The LLM linker costs one realtime call per article and
+    # exists to *disambiguate* candidates ("Susan Collins" the Senator vs the
+    # Boston Fed President), not to *discover* entities whose names never
+    # appear in the text. So an article where the regex finds no catalog
+    # surface form at all has nothing for the LLM to disambiguate, and we can
+    # answer [] for free.
+    #
+    # Measured by scripts/eval_linker_gate.py over 12,690 articles / 7 days:
+    # forwards 26% of articles and retains 98.11% of the links the ungated LLM
+    # path produced. See entity_linker_regex_gate_enabled in app/config.py for
+    # what the other 1.9% is and why it is acceptable.
+    gated_out: set[str] = set()
+    to_link = articles
+    if settings.entity_linker_regex_gate_enabled:
+        to_link = []
+        for article in articles:
+            url = article.get("source_url")
+            if not url:
+                continue
+            text = f"{article.get('title') or ''}\n{article.get('summary') or ''}"
+            if link_text(text, search_dict):
+                to_link.append(article)
+            else:
+                gated_out.add(url)
+        logger.info(json.dumps({
+            "event": "linker_gate_stats",
+            "articles": len(articles),
+            "forwarded": len(to_link),
+            "skipped": len(gated_out),
+        }))
+
     # Primary: LLM linker. Falls back to regex per-article on any error.
     out: dict[str, list[EntityLink]] = {}
-    try:
-        from services.entity_linker_llm import link_articles_llm
-        out = await link_articles_llm(articles, catalog)  # type: ignore[arg-type]
-        logger.info(
-            "entity_linker: LLM path resolved %d articles",
-            sum(1 for v in out.values() if v is not None),
-        )
-    except Exception as e:  # noqa: BLE001 — degrade rather than block the pipeline
-        logger.warning(
-            "entity_linker: LLM path failed (%s) — falling back to regex for all %d",
-            e, len(articles),
-        )
+    if to_link:
+        try:
+            from services.entity_linker_llm import link_articles_llm
+            out = await link_articles_llm(to_link, catalog)  # type: ignore[arg-type]
+            logger.info(
+                "entity_linker: LLM path resolved %d articles",
+                sum(1 for v in out.values() if v is not None),
+            )
+        except Exception as e:  # noqa: BLE001 — degrade rather than block the pipeline
+            logger.warning(
+                "entity_linker: LLM path failed (%s) — falling back to regex for all %d",
+                e, len(to_link),
+            )
+
+    # Gated-out articles are answered directly. They are NOT sent to the regex
+    # fallback below: the gate's whole premise is that link_text already ran on
+    # them and found nothing, so re-running it would just recompute [].
+    for url in gated_out:
+        out.setdefault(url, [])
 
     # For any article the LLM path didn't resolve (missing url, error, or
     # silently-empty), fall back to the regex matcher.
-    search_dict = build_search_dict(catalog)
     fallback_used = 0
     total_links = 0
     for article in articles:
