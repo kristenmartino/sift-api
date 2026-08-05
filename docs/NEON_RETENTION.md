@@ -26,6 +26,30 @@ Roughly four-fifths of Neon storage is data the product cannot display.
 
 ---
 
+---
+
+## EXECUTED 2026-08-05 — and the plan below was wrong
+
+**Result: 2,423 MB → 1,934 MB, −489 MB (−20%).** `idx_articles_embedding` 879 MB → **436 MB**. Tool: `scripts/prune_old_embeddings.py`, cutoff 90 days, 116,479 embeddings cleared, 167,039 kept.
+
+Three things the original plan got wrong, all found by running its own safety check.
+
+**1. Deleting rows was the wrong operation.** The plan said to delete articles past the feed's 30-day floor. Its own instruction — *confirm nothing outside the feed path reads older rows* — found that **three surfaces do, none with a date floor**: `sift/lib/db.ts:349` (topic search), `sift-mcp/server.py:234` (semantic search) and `:486` (`compare_outlets`). All scan the whole corpus by vector.
+
+That reframed the operation. Article text is only ~100 MB; **63% of the DB was `embedding` plus its index**. So deleting rows buys ~100 MB more than clearing the column, while destroying `entity_links`, dossier references, `story_id` history, and the `source_url`/`content_hash` rows the deduplicator relies on — irreversibly.
+
+Clearing the column gives up the *same* thing (vector reach over old articles) for nearly the same space, and is **safe because all four consumers already guard on `embedding IS NOT NULL`** — they exclude such rows rather than erroring. It is **reversible**: `backfill_embeddings.py` rebuilds from `title + summary`, both retained.
+
+**2. `VACUUM` reclaimed nothing; `REINDEX` did all of it.** `VACUUM (ANALYZE) articles` ran 127s and moved the DB 2,423 → 2,425 MB. `REINDEX INDEX CONCURRENTLY idx_articles_embedding` ran 42s and returned 491 MB. Plain VACUUM marks space *reusable*, it does not return it to Neon. **Reindex the vector index; do not expect VACUUM to do this job.**
+
+**3. The 80.8%-unreachable figure is real but not directly bankable.** At the chosen 90-day cutoff only 41% of rows are touched, and the corpus is only ~4 months old, so "2.27 GB → ~500 MB" was never reachable at a cutoff safe for topic search.
+
+**Still available**, in descending order: orphan `stories` (125 MB, 99.5% memberless — but do [INCREMENTAL_THREADING.md](./INCREMENTAL_THREADING.md) first or it refills), `api_batches` bloat (~40 MB), and `VACUUM FULL articles` for heap/TOAST bloat (exclusive lock, needs free space to rewrite).
+
+**Measurement caveat:** taken immediately before a full `backfill_entity_links.py --include-empty` pass. `entity_links` is indexed, so those ~280k UPDATEs cannot take the HOT path and will add an entry to *every* index on the table, re-bloating the one just rebuilt. **Re-measure after that run**, and expect to reindex again.
+
+---
+
 ## Actions, in order
 
 ### 1. Retention — archive, do not delete
