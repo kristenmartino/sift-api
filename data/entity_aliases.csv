@@ -1,0 +1,51 @@
+alias,entity_type,canonical_id,notes
+trump,politician,EXEC-TRUMP-DJ,"Surname alone appears in 16216 articles. Unambiguous in the catalog — verified single match 2026-08-05."
+biden,politician,EXEC-BIDEN-JR,"Unambiguous in the catalog. Canonical name is 'Joseph R. Biden Jr.', which news copy never uses."
+putin,politician,FOREIGN-PUTIN-V,Unambiguous in the catalog.
+netanyahu,politician,FOREIGN-NETANYAHU-B,Unambiguous in the catalog.
+zelensky,politician,FOREIGN-ZELENSKY-V,Unambiguous in the catalog.
+zelenskyy,politician,FOREIGN-ZELENSKY-V,"Alternate transliteration; the catalog spells it Zelensky. Both are in wide use."
+vance,politician,EXEC-VANCE-J,Unambiguous in the catalog.
+musk,politician,EXEC-MUSK-E,Unambiguous in the catalog.
+obama,politician,EXEC-OBAMA-B,Unambiguous in the catalog.
+bondi,politician,EXEC-BONDI-P,Unambiguous in the catalog.
+hegseth,politician,EXEC-HEGSETH-P,Unambiguous in the catalog.
+noem,politician,EXEC-NOEM-K,Unambiguous in the catalog.
+rubio,politician,EXEC-RUBIO-MARCO-STATE,Unambiguous in the catalog.
+bessent,politician,EXEC-BESSENT-S,Unambiguous in the catalog.
+schumer,politician,S000148,Unambiguous in the catalog.
+thune,politician,T000250,Unambiguous in the catalog.
+jeffries,politician,J000294,Unambiguous in the catalog.
+pentagon,org,united-states-department-of-defense,"Standard metonym for the department. 756 articles."
+white house,org,the-white-house,1610 articles.
+supreme court,org,supreme-court-of-the-united-states,"2018 articles. US-only corpus, so the unqualified form means SCOTUS."
+scotus,org,supreme-court-of-the-united-states,Common abbreviation.
+federal reserve,org,federal-reserve-system,1237 articles.
+the fed,org,federal-reserve-system,"Standard shorthand. 'fed' alone is excluded — too short and too common a word."
+justice department,org,united-states-department-of-justice,605 articles.
+department of justice,org,united-states-department-of-justice,Long form without the 'United States' prefix.
+state department,org,united-states-department-of-state,208 articles.
+department of state,org,united-states-department-of-state,Long form without the 'United States' prefix.
+treasury department,org,united-states-department-of-the-treasury,
+department of the treasury,org,united-states-department-of-the-treasury,Long form without the 'United States' prefix.
+homeland security,org,united-states-department-of-homeland-security,
+interior department,org,united-states-department-of-the-interior,
+education department,org,united-states-department-of-education,
+commerce department,org,united-states-department-of-commerce,
+energy department,org,united-states-department-of-energy,
+labor department,org,united-states-department-of-labor,
+agriculture department,org,united-states-department-of-agriculture,
+veterans affairs,org,united-states-department-of-veterans-affairs,
+secret service,org,united-states-secret-service,229 articles.
+census bureau,org,united-states-census-bureau,
+nasa,org,national-aeronautics-and-space-administration,"438 articles, mostly in the science category."
+senate,org,united-states-senate,"1232 articles. US-only corpus, so the unqualified form means the US Senate."
+house of representatives,org,united-states-house-of-representatives,"The bare word 'House' is deliberately NOT aliased — it collides with surnames, which longest-match-wins does not help with (news copy writes the surname alone)."
+congress,org,united-states-congress,"1245 articles. Collides only with 'Library of Congress', which longest-match-wins resolves: the longer key owns the span."
+postal service,org,united-states-postal-service,"Collides only with bill hr-3076-117 ('Postal Service Reform Act'), which longest-match-wins resolves: the bill's longer key owns the span."
+rfk jr,politician,EXEC-KENNEDY-RFK,"337 articles. Canonical 'Robert F. Kennedy Jr.' is rarely written out; copy uses the initialism. Largest single miss bucket in the 2026-08-05 gate eval (23 of ~110). Unambiguous: the catalog's other Kennedys (John K000393, Timothy K000402, Mike K000403) share no whole-word overlap with this form."
+robert f. kennedy,politician,EXEC-KENNEDY-RFK,"168 articles. Rescues the possessive case the canonical name cannot match: _word_pattern anchors a word boundary after the trailing period, so 'Robert F. Kennedy Jr.'s' fails to match 'Robert F. Kennedy Jr.' while this shorter form matches. No RFK Sr. dossier exists, so the referent is unambiguous in this catalog."
+fauci,politician,EXEC-FAUCI-A,"379 articles. Second-largest miss bucket in the 2026-08-05 gate eval (16 of ~110). Surname alone, and the only Fauci in the catalog. Curated rather than derived, per the #40 rule: the hazard there was common-noun surnames (Cloud, Banks, Hill), and 'Fauci' is not a common noun."
+bbc,outlet,bbc-news,"1068 articles — the single most-mentioned blocked form in the corpus. Canonical is 'BBC News' but copy overwhelmingly writes the initialism alone. Needs _MIN_CURATED_KEY_LENGTH (3 chars); was silently undroppable-but-unmatchable before that existed. Sampled titles are all the broadcaster."
+cnn,outlet,cnn,"397 articles. Canonical name IS 'CNN', so the outlet was unlinkable on its own name until the curated floor landed — primary_name gets no exemption, only curated rows do. Self-referential alias is intentional and is how a sub-4-char canonical name becomes searchable."
+npr,outlet,npr,"241 articles. Same self-referential case as cnn. Sampled titles are all the broadcaster."

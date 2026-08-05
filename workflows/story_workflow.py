@@ -174,6 +174,7 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
     )
 
     skipped_single_outlet = 0
+    reused = 0
     for cluster in clusters:
         indices = cluster.get("article_indices", [])
         event = cluster.get("event", "")
@@ -209,19 +210,41 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
         sorted_ids = sorted(a["id"] for a in cluster_articles)
         story_id = hashlib.sha256("|".join(sorted_ids).encode()).hexdigest()[:16]
 
-        # Synthesize
-        try:
-            synthesis = await synthesize_story(cluster_articles)
-        except Exception as e:
-            logger.error("synthesis failed for cluster '%s': %s", event, e)
-            synthesis = {
-                "headline": cluster_articles[0]["title"],
-                "summary": cluster_articles[0]["summary"],
-                "framings": [],
-                "_failed": True,
-            }
+        # story_id is derived from the exact member set, so a row already
+        # carrying this id was synthesized from these same articles — re-asking
+        # Claude regenerates text we already have. Measured over
+        # 2026-07-31..08-04: 5,491 synthesize calls produced 2,500 stories, so
+        # 54% of the spend on this call site was duplicate work.
+        #
+        # A row sitting in 'failed' is the exception. The except branch below
+        # stores a degraded placeholder (the first article's title/summary), so
+        # that row has never had a real synthesis and still deserves one.
+        existing = await pool.fetchrow(
+            "SELECT headline, synthesis_status FROM stories WHERE id = $1",
+            story_id,
+        )
+        reuse = existing is not None and existing["synthesis_status"] != "failed"
 
-        synthesis_status = "failed" if synthesis.get("_failed") else "complete"
+        if reuse:
+            synthesis = None
+            synthesis_status = existing["synthesis_status"]
+            headline = existing["headline"]
+            reused += 1
+        else:
+            # Synthesize
+            try:
+                synthesis = await synthesize_story(cluster_articles)
+            except Exception as e:
+                logger.error("synthesis failed for cluster '%s': %s", event, e)
+                synthesis = {
+                    "headline": cluster_articles[0]["title"],
+                    "summary": cluster_articles[0]["summary"],
+                    "framings": [],
+                    "_failed": True,
+                }
+
+            synthesis_status = "failed" if synthesis.get("_failed") else "complete"
+            headline = synthesis["headline"]
 
         # Collect entities for the story
         story_entities = []
@@ -250,32 +273,42 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
 
         # Upsert story
         try:
-            await pool.execute(
-                """
-                INSERT INTO stories (id, headline, summary, category, framings, entities,
-                    article_count, representative_image_url, published_date, synthesis_status)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)
-                ON CONFLICT (id) DO UPDATE SET
-                    headline = EXCLUDED.headline,
-                    summary = EXCLUDED.summary,
-                    framings = EXCLUDED.framings,
-                    entities = EXCLUDED.entities,
-                    article_count = EXCLUDED.article_count,
-                    representative_image_url = EXCLUDED.representative_image_url,
-                    synthesis_status = EXCLUDED.synthesis_status,
-                    updated_at = NOW()
-                """,
-                story_id,
-                synthesis["headline"],
-                synthesis["summary"],
-                category,
-                json.dumps(synthesis.get("framings", [])),
-                json.dumps(story_entities),
-                len(cluster_articles),
-                representative_image,
-                earliest_date,
-                synthesis_status,
-            )
+            if reuse:
+                # Every column the INSERT would write is derived from the
+                # member set, and the member set is what produced this id —
+                # so the upsert reduces to touching updated_at, which keeps
+                # recency/freshness queries seeing the story as live.
+                await pool.execute(
+                    "UPDATE stories SET updated_at = NOW() WHERE id = $1",
+                    story_id,
+                )
+            else:
+                await pool.execute(
+                    """
+                    INSERT INTO stories (id, headline, summary, category, framings, entities,
+                        article_count, representative_image_url, published_date, synthesis_status)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)
+                    ON CONFLICT (id) DO UPDATE SET
+                        headline = EXCLUDED.headline,
+                        summary = EXCLUDED.summary,
+                        framings = EXCLUDED.framings,
+                        entities = EXCLUDED.entities,
+                        article_count = EXCLUDED.article_count,
+                        representative_image_url = EXCLUDED.representative_image_url,
+                        synthesis_status = EXCLUDED.synthesis_status,
+                        updated_at = NOW()
+                    """,
+                    story_id,
+                    synthesis["headline"],
+                    synthesis["summary"],
+                    category,
+                    json.dumps(synthesis.get("framings", [])),
+                    json.dumps(story_entities),
+                    len(cluster_articles),
+                    representative_image,
+                    earliest_date,
+                    synthesis_status,
+                )
 
             # Update story_id and entities on member articles
             for a in cluster_articles:
@@ -287,17 +320,31 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
 
             stories.append({
                 "story_id": story_id,
-                "headline": synthesis["headline"],
+                "headline": headline,
                 "article_count": len(cluster_articles),
                 "status": synthesis_status,
+                "reused": reuse,
             })
 
         except Exception as e:
             logger.error("Failed to store story %s: %s", story_id, e)
 
+    # Emitted per run so the duplicate-synthesis rate is observable rather than
+    # inferred from the ledger a day later — same reasoning as cluster_stats
+    # and feed_stats (STATUS.md, "reports success while producing nothing").
+    logger.info(json.dumps({
+        "event": "synthesis_stats",
+        "category": category,
+        "clusters": len(clusters),
+        "stories": len(stories),
+        "synthesized": len(stories) - reused,
+        "reused": reused,
+        "skipped_single_outlet": skipped_single_outlet,
+    }))
     logger.info(
-        "synthesize_and_store [%s]: created/updated %d stories (skipped %d single-outlet clusters)",
-        category, len(stories), skipped_single_outlet,
+        "synthesize_and_store [%s]: created/updated %d stories "
+        "(%d synthesized, %d reused, skipped %d single-outlet clusters)",
+        category, len(stories), len(stories) - reused, reused, skipped_single_outlet,
     )
     return {"stories": stories}
 
