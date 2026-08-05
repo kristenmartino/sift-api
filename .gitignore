@@ -26,6 +26,13 @@ coverage.xml
 htmlcov/
 
 # unlabeled sampler output — commit the LABELED corpus, not the scratch CSV
+# audit_unlinked_entities.py working output. Regenerable, and the
+# suggestions file is ~1.2 MB. Dated snapshots ARE committed — see the
+# "Audit snapshots" section in scripts/README.md.
+data/unlinked_entity_suggestions.csv
+data/unlinked_entities_by_category.csv
+data/unmatched_search_queries.csv
+
 data/eval/*.labels.csv
 
 # Unlabeled sampler output. Commit the LABELED corpus deliberately (git add -f)

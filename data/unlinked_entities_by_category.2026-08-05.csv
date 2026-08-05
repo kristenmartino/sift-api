@@ -1,0 +1,13 @@
+category,articles_total,articles_extracted,extraction_rate,distinct_unlinked_mentions,unlinked_mention_volume,top_10_unlinked
+business,33058,21523,65.1%,1130,16256,SpaceX; Yahoo Finance; Paramount; Kevin Warsh; Kalshi; Tesla; Warner Bros. Discovery; Goldman Sachs; Spirit Airlines; JPMorgan
+energy,6606,4159,63.0%,99,970,OPEC; Chevron; OPEC+; NextEra Energy; CleanTechnica; Dominion Energy; Saudi Aramco; CATL; ExxonMobil; Electrek
+entertainment,47073,38647,82.1%,4409,50143,Netflix; Amazon; The Hollywood Reporter; Taylor Swift; Deadline; Rolling Stone; Disney; Travis Kelce; Prime Video; Christopher Nolan
+fashion,7,0,0.0%,0,0,
+health,10967,7922,72.2%,190,2061,RFK Jr.; Medical Xpress; Medscape; Eli Lilly; Taco Bell; USDA; Taylor Farms; Marty Makary; Novo Nordisk; Pfizer
+politics,40585,34631,85.3%,1410,32463,Trump Administration; Democratic Party; Graham Platner; Democrats; Republican Party; Pentagon; Zohran Mamdani; Todd Blanche; Republicans; Spencer Pratt
+science,8707,5076,58.3%,82,1207,NASA; Phys.org; Space.com; National Weather Service; NOAA; ScienceDaily; Scientific American; Jared Isaacman; Live Science; James Webb Space Telescope
+sports,84602,59866,70.8%,4992,106719,FIFA; Knicks; New York Knicks; BBC Sport; Yankees; SportsLine; LeBron James; USMNT; Los Angeles Dodgers; Mets
+technology,19072,12327,64.6%,488,12294,OpenAI; Apple; Google; Anthropic; Meta; Microsoft; NVIDIA; Samsung; Sam Altman; Instagram
+top,7937,6546,82.5%,164,1633,Nancy Guthrie; Nolan Wells; Cole Allen; Islamic Center of San Diego; Frontier Airlines; Cole Tomas Allen; US Army; Rudy Giuliani; NTSB; In-N-Out
+world,24317,17238,70.9%,528,8923,NATO; China; Russia; U.S. Military; BBC World; ABC Australia; Hezbollah; King Charles; US Military; Police
+—,0,0,—,64,695,H.R. 26; Foreign Intelligence Surveillance Act; Protect College Sports Act; Housing Act; Endangered Species Act; Clarity Act; One Big Beautiful Bill Act; War Powers Act; H.R. 25; Clean Air Act
