@@ -251,6 +251,46 @@ async def test_llm_failure_still_degrades_to_regex_for_forwarded_articles(monkey
     assert [link["canonical_id"] for link in out[article["source_url"]]] == ["cnn"]
 
 
+@pytest.mark.asyncio
+async def test_per_article_llm_failure_falls_back_to_regex(monkeypatch):
+    """The bug this pins: link_articles_llm stored [] for an article whose own
+    call timed out, which is indistinguishable from the LLM answering "no
+    entities" — so `if url not in out` never fired and the article shipped
+    with no chips at all. #136 made failure representable; passing
+    omit_failures=True here is what leaves the failed url absent.
+
+    Both halves ride in one batch because the distinction *is* the fix:
+    absent -> regex links; present-and-[] -> the LLM's verdict stands (see
+    test_llm_verdict_overrides_the_regex_candidate)."""
+    answered = _article("https://e.com/1", "The CNN Tower dominates the skyline")
+    failed = _article("https://e.com/2", "Chuck Schumer told CNN the vote was close")
+    llm = AsyncMock(return_value={answered["source_url"]: []})  # `failed` omitted
+
+    out = await _run_link_articles([answered, failed], llm, monkeypatch)
+
+    # link_articles must actually *ask* for the omitting behavior — an
+    # AsyncMock drops a missing url either way, so without this assertion the
+    # test would pass against a link_articles that never opted in.
+    assert llm.await_args.kwargs.get("omit_failures") is True
+    assert [x["canonical_id"] for x in out[failed["source_url"]]] == ["cnn", "S000148"]
+    assert out[answered["source_url"]] == []
+
+
+@pytest.mark.asyncio
+async def test_every_url_bearing_article_gets_a_key(monkeypatch):
+    """store_node does entity_links[source_url], so omit_failures must not
+    leak past link_articles. Gated-out, LLM-answered and LLM-failed articles
+    all come back keyed."""
+    gated = _article("https://e.com/1", "Local bakery wins a prize")
+    answered = _article("https://e.com/2", "The CNN Tower dominates the skyline")
+    failed = _article("https://e.com/3", "Chuck Schumer told CNN the vote was close")
+    llm = AsyncMock(return_value={answered["source_url"]: []})
+
+    out = await _run_link_articles([gated, answered, failed], llm, monkeypatch)
+
+    assert set(out) == {a["source_url"] for a in (gated, answered, failed)}
+
+
 # ── curated short-key exemption ─────────────────────────────
 #
 # _MIN_KEY_LENGTH = 4 is a proxy for "this key was derived, so nobody vouched
