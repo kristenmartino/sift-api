@@ -1,0 +1,48 @@
+bioguide_id,office_key,nomination_citation,role_start_date,role_end_date,role_dates_source,notes_for_reviewer
+EXEC-BESSENT-S,treasury,PN11-1,,,,
+EXEC-BONDI-P,justice,PN11-2,,,,
+EXEC-BURGUM-D,interior,PN11-3,,,,
+EXEC-CHAVEZDEREMER-L,labor,PN11-4,,,,
+EXEC-COLLINS-D,va,PN11-5,,,,Doug Collins; disambiguated from Sen. Susan Collins by PN
+EXEC-DUFFY-S,transportation,PN11-6,,,,
+EXEC-GABBARD-T,dni,PN11-16,,,,
+EXEC-GREER-J,ustr,PN11-17,,,,
+EXEC-HEGSETH-P,defense,PN11-7,,,,
+EXEC-KENNEDY-RFK,hhs,PN11-8,,,,
+EXEC-KRATSIOS-M,ostp,PN13-8,,,,No USC section states the full title; sourced to the Senate roll-call
+EXEC-LOEFFLER-K,sba,PN11-18,,,,
+EXEC-LUTNICK-H,commerce,PN11-9,,,,
+EXEC-MCMAHON-L,education,PN11-10,,,,
+EXEC-MIRAN-S,cea,PN19,,,,CEA chair; his later Fed governorship (PN464) is a different office
+EXEC-NOEM-K,dhs,PN11-11,,,,
+EXEC-RATCLIFFE-J,cia,PN11-19,,,,
+EXEC-ROLLINS-B,agriculture,PN11-12,,,,
+EXEC-RUBIO-MARCO-STATE,state,PN11-13,,,,
+EXEC-TURNER-S,hud,PN11-14,,,,Senate record uses his legal first name (Eric)
+EXEC-VOUGHT-R,omb,PN11-22,,,,
+EXEC-WRIGHT-C,energy,PN11-15,,,,Chris Wright; disambiguated from NRC's David Wright by PN
+EXEC-ZELDIN-L,epa,PN11-23,,,,
+EXEC-WALTZ-M,un,PN343,,,,UN Representative only. His Jan-May 2025 NSC role was not Senate-confirmed and is not claimed here.
+EXEC-AUSTIN-L,defense,PN78-1,,,,
+EXEC-BECERRA-X,hhs,PN78-2,,,,
+EXEC-BLINKEN-A,state,PN78-3,,,,
+EXEC-BUTTIGIEG-P,transportation,PN78-4,,,,
+EXEC-CARDONA-M,education,PN78-5,,,,
+EXEC-GARLAND-M,justice,PN78-7,,,,
+EXEC-GRANHOLM-J,energy,PN78-8,,,,
+EXEC-HAALAND-D,interior,PN78-11,,,,
+EXEC-MAYORKAS-A,dhs,PN78-13,,,,
+EXEC-RAIMONDO-G,commerce,PN78-15,,,,
+EXEC-VILSACK-T,agriculture,PN78-22,,,,
+EXEC-YELLEN-J,treasury,PN78-24,,,,
+EXEC-CLINTON-H,state,PN64-1,,,,111th Congress; confirmed 2009-01-21
+EXEC-TRUMP-DJ,president,,2025-01-20,,https://www.archives.gov/electoral-college/2024,Current term only. The 2017-2021 term is a separate record and is not asserted on this row.
+EXEC-VANCE-J,vice-president,,2025-01-20,,https://www.archives.gov/electoral-college/2024,
+EXEC-BIDEN-JR,president,,2021-01-20,2025-01-20,https://www.archives.gov/electoral-college/2020,End date is his successor's Inauguration Day per the same source series
+EXEC-HARRIS-K,vice-president,,2021-01-20,2025-01-20,https://www.archives.gov/electoral-college/2020,
+EXEC-PENCE-M,vice-president,,2017-01-20,2021-01-20,https://www.archives.gov/electoral-college/2016,
+EXEC-OBAMA-B,president,,2009-01-20,2017-01-20,https://www.archives.gov/electoral-college/2008,
+EXEC-BUSH-GW,president,,2001-01-20,2009-01-20,https://www.archives.gov/electoral-college/2000,
+EXEC-CLINTON-B,president,,1993-01-20,2001-01-20,https://www.archives.gov/electoral-college/1992,
+EXEC-BUSH-GHW,president,,1989-01-20,1993-01-20,https://www.archives.gov/electoral-college/1988,
+EXEC-CARTER-J,president,,1977-01-20,1981-01-20,https://www.archives.gov/electoral-college/1976,
