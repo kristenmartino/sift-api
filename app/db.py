@@ -355,6 +355,66 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
         """)
         await conn.execute("ALTER TABLE org_profiles DROP COLUMN IF EXISTS political_lean")
 
+        # Curated surface-form aliases for the entity linker
+        # (migrations/014_entity_aliases.sql).
+        # The 2026-08-05 audit found entity_links on only 7.6% of articles,
+        # much of it names rather than missing dossiers: "Pentagon" (756
+        # articles) never chips although united-states-department-of-defense
+        # exists. entity_linker.py matches the full canonical name only —
+        # correct as a default (see politician_aliases() on why *derived*
+        # last-name aliases were removed in #40), so this is the curated
+        # alternative that docstring anticipated. Populated from
+        # data/entity_aliases.csv via scripts/seed_entity_aliases.py.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS entity_aliases (
+              alias         TEXT PRIMARY KEY,
+              entity_type   TEXT NOT NULL
+                            CHECK (entity_type IN ('politician', 'org', 'bill', 'outlet')),
+              canonical_id  TEXT NOT NULL,
+              notes         TEXT,
+              added_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_aliases_target "
+            "ON entity_aliases (entity_type, canonical_id)"
+        )
+
+        # Structured, primary-record role provenance on executive dossiers
+        # (migrations/015_politician_role_provenance.sql).
+        # All 102 chamber IN ('executive','foreign-executive') rows carried an
+        # uncited `notes` blob of biographical claims about living people —
+        # the org_profiles.notes defect (STATUS.md:103) that migration 013
+        # removed, reproduced in a later population, and forbidden outright by
+        # OPERATING_CONTEXT.md §5. Each claim-bearing column below is paired
+        # with a source column on the 013 pattern, so a value cannot render
+        # without the record that backs it. Populated from senate.gov
+        # roll-calls + api.congress.gov by scripts/scrape_executive_records.py
+        # and written by scripts/seed_executive_records.py, which clears
+        # `notes` on those rows in the same transaction.
+        await conn.execute("""
+            ALTER TABLE politician_profiles
+              ADD COLUMN IF NOT EXISTS id_source                TEXT,
+              ADD COLUMN IF NOT EXISTS role_title               TEXT,
+              ADD COLUMN IF NOT EXISTS role_title_source        TEXT,
+              ADD COLUMN IF NOT EXISTS role_start_date          DATE,
+              ADD COLUMN IF NOT EXISTS role_end_date            DATE,
+              ADD COLUMN IF NOT EXISTS role_dates_source        TEXT,
+              ADD COLUMN IF NOT EXISTS nomination_date          DATE,
+              ADD COLUMN IF NOT EXISTS nomination_url           TEXT,
+              ADD COLUMN IF NOT EXISTS confirmation_date        DATE,
+              ADD COLUMN IF NOT EXISTS confirmation_vote_url    TEXT,
+              ADD COLUMN IF NOT EXISTS confirmation_vote_result TEXT,
+              ADD COLUMN IF NOT EXISTS predecessor_name         TEXT
+        """)
+        # Matches the publish gate in sift/lib/db.ts listSitemapEntries, which
+        # filters chamber first and then requires role_title + its source.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_politician_profiles_sourced_role "
+            "ON politician_profiles (chamber) "
+            "WHERE role_title IS NOT NULL AND role_title_source IS NOT NULL"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

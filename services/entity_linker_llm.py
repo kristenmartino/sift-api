@@ -111,7 +111,16 @@ def _format_catalog_block(catalog: list[CatalogEntry]) -> str:
         lines.append("")
         lines.append(type_headings[type_key])
         for row in rows:
-            lines.append(f"  {row['canonical_id']} | {row['primary_name']}")
+            line = f"  {row['canonical_id']} | {row['primary_name']}"
+            # Curated aliases (migration 014) are appended only where they
+            # exist, so rows without them cost exactly what they did before.
+            # Without this the LLM path cannot resolve "Pentagon" onto
+            # united-states-department-of-defense either — the roster is the
+            # only vocabulary it has.
+            extra = [a for a in row.get("aliases", []) if a]
+            if extra:
+                line += " | also: " + ", ".join(extra)
+            lines.append(line)
     return "\n".join(lines).strip()
 
 

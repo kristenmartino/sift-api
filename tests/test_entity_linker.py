@@ -3,10 +3,13 @@ from __future__ import annotations
 
 from collections import Counter
 
+import pytest
+
 from services.entity_linker import (
     build_catalog,
     build_search_dict,
     link_text,
+    nickname_variants,
     politician_aliases,
 )
 
@@ -114,8 +117,12 @@ def test_build_catalog_skips_rows_missing_required_fields():
 
 
 def test_build_catalog_politicians_have_no_aliases():
-    """Politician rows now carry no aliases — only the full canonical
-    name is searchable. See politician_aliases policy note."""
+    """Politician rows carry no *derived surname* aliases — only the full
+    canonical name is searchable. See politician_aliases policy note.
+
+    Scope note: names containing a bioguide nickname parenthetical are the one
+    exception and are covered separately below; none of these inputs have one.
+    """
     catalog = build_catalog(
         outlets=[],
         politicians=[
@@ -129,6 +136,144 @@ def test_build_catalog_politicians_have_no_aliases():
     for row in catalog:
         if row["type"] == "politician":
             assert row["aliases"] == [], row["primary_name"]
+
+
+# ── curated short-key exemption ─────────────────────────────
+#
+# _MIN_KEY_LENGTH = 4 is a proxy for "this key was derived, so nobody vouched
+# for it". Applied to curated rows it was suppressing the most-mentioned
+# outlets in the corpus: BBC (1,068 articles), CNN (397), NPR (241). Curated
+# rows get _MIN_CURATED_KEY_LENGTH instead. These pin both halves — that the
+# exemption works, and that it does NOT leak to derived keys.
+
+
+def _catalog_with_curated_alias(alias: str):
+    return build_catalog(
+        outlets=[{"slug": "cnn", "name": "CNN"}],
+        politicians=[],
+        orgs=[],
+        bills=[],
+        aliases=[{"alias": alias, "entity_type": "outlet", "canonical_id": "cnn"}],
+    )
+
+
+def test_curated_short_alias_survives_the_length_floor():
+    catalog = _catalog_with_curated_alias("cnn")
+    row = next(r for r in catalog if r["type"] == "outlet")
+    assert row["curated"] == ["cnn"]
+    # Still present in `aliases` too — _format_catalog_block reads that, so
+    # splitting them out would silently starve the LLM path.
+    assert "cnn" in row["aliases"]
+    assert build_search_dict(catalog)["cnn"] == ("outlet", "cnn")
+
+
+def test_derived_short_key_is_still_dropped():
+    """The #40 guard. Only curated rows earn the lower floor."""
+    catalog = build_catalog(
+        outlets=[],
+        politicians=[],
+        orgs=[{"slug": "abc-org", "name": "ABC"}],  # 3 chars, nobody vouched
+        bills=[],
+    )
+    assert "abc" not in build_search_dict(catalog)
+
+
+def test_curated_alias_below_the_curated_floor_is_dropped():
+    """One character cannot be an unambiguous entity reference, curated or not."""
+    assert "x" not in build_search_dict(_catalog_with_curated_alias("x"))
+
+
+def test_curated_alias_that_is_a_stopword_is_still_dropped():
+    """The floor is relaxed; the stopword list is not."""
+    assert "the" not in build_search_dict(_catalog_with_curated_alias("the"))
+
+
+def test_short_outlet_links_end_to_end_via_curated_alias():
+    """CNN's canonical name is itself 3 chars, so primary_name alone can never
+    match — only the self-referential curated row makes it searchable."""
+    catalog = _catalog_with_curated_alias("cnn")
+    links = link_text("She told CNN the vote was close.", build_search_dict(catalog))
+    assert [link["canonical_id"] for link in links] == ["cnn"]
+
+
+# ── nickname_variants ───────────────────────────────────────
+#
+# The bioguide roster stores nicknames inline ("Charles (Chuck) Edwards"), a
+# string journalism never prints. Measured 2026-08-05 by
+# scripts/eval_linker_gate.py, E000246 alone accounted for 11 of ~110 linker
+# misses. These are the five real roster shapes as of that date, plus the
+# guards that keep this from reopening the #40 surname hazard.
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Charles (Chuck) Edwards", ["Charles Edwards", "Chuck Edwards"]),
+        ("Gabriel (Gabe) Vasquez", ["Gabriel Vasquez", "Gabe Vasquez"]),
+        ("James (Jim) Moylan", ["James Moylan", "Jim Moylan"]),
+        ("Nicole (Nikki) Budzinski", ["Nicole Budzinski", "Nikki Budzinski"]),
+        ("Zachary (Zach) Nunn", ["Zachary Nunn", "Zach Nunn"]),
+    ],
+)
+def test_nickname_variants_expands_both_readings(name, expected):
+    assert nickname_variants(name) == expected
+
+
+def test_nickname_variants_noop_without_a_parenthetical():
+    assert nickname_variants("Chuck Schumer") == []
+    assert nickname_variants("") == []
+
+
+def test_nickname_variants_never_emits_a_bare_surname():
+    """The two-token floor IS the #40 guard. A reading that collapses to one
+    token is exactly the common-noun hazard politician_aliases refuses."""
+    # "Edwards" alone would be the dropped reading here.
+    assert nickname_variants("(Chuck) Edwards") == ["Chuck Edwards"]
+    # Nothing survives: both readings are single tokens.
+    assert nickname_variants("(Chuck)") == []
+
+
+def test_build_catalog_attaches_nickname_variants_to_politicians():
+    catalog = build_catalog(
+        outlets=[],
+        politicians=[{"bioguide_id": "E000246", "name": "Charles (Chuck) Edwards"}],
+        orgs=[],
+        bills=[],
+    )
+    row = next(r for r in catalog if r["type"] == "politician")
+    assert row["primary_name"] == "Charles (Chuck) Edwards"
+    assert set(row["aliases"]) == {"Charles Edwards", "Chuck Edwards"}
+
+
+def test_nickname_expansion_is_politician_only():
+    """outlet_profiles carries "Science (AAAS)", where the parenthetical is an
+    acronym, not a nickname. Expanding it would put the bare key "Science" in
+    the search dict and chip a large fraction of the corpus."""
+    catalog = build_catalog(
+        outlets=[{"slug": "science", "name": "Science (AAAS)"}],
+        politicians=[],
+        orgs=[{"slug": "acme", "name": "Acme (Holdings)"}],
+        bills=[],
+    )
+    for row in catalog:
+        assert row["aliases"] == [], row["primary_name"]
+    assert "science" not in build_search_dict(catalog)
+
+
+def test_chuck_edwards_links_end_to_end():
+    """The miss this whole change exists to fix."""
+    catalog = build_catalog(
+        outlets=[],
+        politicians=[{"bioguide_id": "E000246", "name": "Charles (Chuck) Edwards"}],
+        orgs=[],
+        bills=[],
+    )
+    links = link_text(
+        "Rep. Chuck Edwards defended the vote on Tuesday.",
+        build_search_dict(catalog),
+    )
+    assert [link["canonical_id"] for link in links] == ["E000246"]
+    assert links[0]["surface_form"] == "Chuck Edwards"
 
 
 def test_build_catalog_bill_uses_short_title_or_falls_back_to_title():
@@ -317,3 +462,90 @@ def test_link_text_handles_special_regex_chars_in_keys():
     out = link_text("The bill hr-5376-117 was enacted.", d)
     assert len(out) == 1
     assert out[0]["canonical_id"] == "hr-5376-117"
+
+
+# ── link_text: longest-match-wins ─────────────────────────────
+#
+# Every key used to be matched independently and every match kept, so a
+# short key nested inside a longer name fired on the same span: "The
+# Library of Congress opened an exhibit" produced a wrong
+# `united-states-congress` chip next to the correct `library-of-congress`
+# one. That blocked the two highest-volume curated aliases ("congress",
+# 1245 articles; "postal service", which collides with the Postal Service
+# Reform Act). Overlapping spans now resolve to the longest match.
+
+_NESTED = _dict({
+    "congress": ("org", "united-states-congress"),
+    "library of congress": ("org", "library-of-congress"),
+    "postal service": ("org", "united-states-postal-service"),
+    "postal service reform act": ("bill", "hr-3076-117"),
+})
+
+
+def test_link_text_longer_key_wins_the_span():
+    """The motivating case: only the Library, not Congress."""
+    out = link_text("The Library of Congress opened an exhibit", _NESTED)
+    assert [e["canonical_id"] for e in out] == ["library-of-congress"]
+
+
+def test_link_text_nested_key_still_links_when_it_stands_alone():
+    """The other half: 'congress' must remain useful on its own."""
+    out = link_text("Congress passed the bill", _NESTED)
+    assert [e["canonical_id"] for e in out] == ["united-states-congress"]
+
+
+def test_link_text_bill_wins_over_nested_org_name():
+    """'Postal Service Reform Act' is the bill, not the Postal Service."""
+    out = link_text("The Postal Service Reform Act took effect.", _NESTED)
+    assert [e["canonical_id"] for e in out] == ["hr-3076-117"]
+
+
+def test_link_text_nested_org_links_when_the_bill_is_not_named():
+    out = link_text("The Postal Service raised stamp prices.", _NESTED)
+    assert [e["canonical_id"] for e in out] == ["united-states-postal-service"]
+
+
+def test_link_text_resolution_is_per_occurrence_not_per_key():
+    """A key that loses one span still owns another. Both entities link."""
+    out = link_text(
+        "The Library of Congress said Congress had adjourned.", _NESTED,
+    )
+    assert sorted(e["canonical_id"] for e in out) == [
+        "library-of-congress", "united-states-congress",
+    ]
+
+
+def test_link_text_surface_form_is_the_earliest_surviving_match():
+    """Display text comes from the winning occurrence, not a suppressed one."""
+    out = link_text(
+        "Reporting on the Library of Congress, CONGRESS was blamed.", _NESTED,
+    )
+    forms = {e["canonical_id"]: e["surface_form"] for e in out}
+    assert forms["library-of-congress"] == "Library of Congress"
+    assert forms["united-states-congress"] == "CONGRESS"
+
+
+def test_link_text_overlap_resolution_does_not_drop_adjacent_entities():
+    """Suppression is span-local: neighbours outside the span are untouched."""
+    d = _dict({
+        **_NESTED,
+        "chuck schumer": ("politician", "S000148"),
+    })
+    out = link_text(
+        "Chuck Schumer toured the Library of Congress.", d,
+    )
+    assert sorted(e["canonical_id"] for e in out) == [
+        "S000148", "library-of-congress",
+    ]
+
+
+def test_link_text_equal_length_overlap_is_deterministic():
+    """Same-length overlapping keys can't both win; pick one, stably."""
+    d = _dict({
+        "acme corp": ("org", "acme-a"),
+        "corp acme": ("org", "acme-b"),
+    })
+    first = link_text("The acme corp acme filing", d)
+    for _ in range(5):
+        assert link_text("The acme corp acme filing", d) == first
+    assert len(first) == 1
