@@ -493,6 +493,21 @@ async def store_node(state: PipelineState) -> dict:
         except Exception as e:
             logger.error("story threading failed for %s: %s", cat, e)
 
+    # Shadow-run the incremental design alongside the live path. Free —
+    # Postgres kNN only, no LLM call, no writes, nothing marked threaded — and
+    # it runs once per pipeline run rather than per category, because the queue
+    # is global by construction. Never allowed to affect the run.
+    from app.config import settings
+
+    if settings.incremental_threading_shadow:
+        try:
+            from app.db import get_pool
+            from services.story_matcher import shadow_report
+
+            logger.info(json.dumps(await shadow_report(await get_pool())))
+        except Exception as e:  # noqa: BLE001 — observation must never break ingest
+            logger.warning("incremental threading shadow failed: %s", e)
+
     return {"results": results, "total_skipped": total_skipped}
 
 

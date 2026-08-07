@@ -447,6 +447,23 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             END $$
         """)
 
+        # Story-threading queue marker (migrations/017_articles_threaded_at.sql).
+        # NULL = not yet considered. Lets threading consume a queue instead of
+        # rescanning the 48h window every run, which is what made cost scale
+        # with cadence rather than with new articles.
+        #
+        # A per-row marker rather than a timestamp watermark: entities land
+        # asynchronously (1.58% pending at any moment), and a watermark would
+        # advance past an article whose entities had not arrived, dropping it
+        # permanently. A NULL simply waits.
+        #
+        # No backfill and no new index — the queue query bounds on
+        # published_date > NOW() - 48h, so historical rows are never selected,
+        # and idx_articles_category_date already serves that filter.
+        await conn.execute(
+            "ALTER TABLE articles ADD COLUMN IF NOT EXISTS threaded_at TIMESTAMPTZ"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
