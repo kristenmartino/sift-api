@@ -286,3 +286,67 @@ async def test_dry_run_reports_what_the_confirmer_decided_without_writing():
     assert r["confirm_rate"] == 1.0
     # Nothing written, nothing marked.
     pool.execute.assert_not_called()
+
+
+# ── shadow persistence ──────────────────────────────────────
+#
+# The shadow report gates the cutover and used to live only in the Railway log
+# buffer, which rotates and resets on deploy. Same failure ai_usage_daily had:
+# the number nobody could query was the number nobody checked.
+
+
+@pytest.mark.asyncio
+async def test_record_shadow_persists_the_report():
+    from services.story_matcher import record_shadow
+
+    pool = AsyncMock()
+    await record_shadow(pool, {
+        "backlog": 4367, "sampled": 40, "attach_candidates": 7,
+        "new_cluster_candidates": 10, "new_clusters_passing_outlet_gate": 5,
+        "parked": 23, "parked_with_near_miss": 11, "llm_relevant": 17,
+        "threshold": 0.6, "near_miss_floor": 0.5,
+        "llm_relevant_by_category": {"sports": 4},
+        "dry_run": {"attach": 7, "new": 2, "none": 8},
+        "would_group": 9, "confirm_rate": 0.529,
+    })
+    pool.execute.assert_awaited_once()
+    assert "INSERT INTO threading_shadow" in pool.execute.call_args.args[0]
+    assert pool.execute.call_args.args[1] == 4367   # backlog
+    assert pool.execute.call_args.args[13] == 9     # would_group
+
+
+@pytest.mark.asyncio
+async def test_record_shadow_skips_an_empty_run():
+    from services.story_matcher import record_shadow
+
+    pool = AsyncMock()
+    await record_shadow(pool, {"backlog": 0, "sampled": 0})
+    pool.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_record_shadow_never_raises():
+    """Losing a telemetry row must not break ingest, and the numbers were
+    already logged before this ran."""
+    from services.story_matcher import record_shadow
+
+    pool = AsyncMock()
+    pool.execute = AsyncMock(side_effect=RuntimeError("table missing"))
+
+    await record_shadow(pool, {"sampled": 40, "backlog": 1})
+
+    # Assert it actually reached the write and swallowed a real failure —
+    # without this the test would still pass if record_shadow short-circuited
+    # before trying anything, which is the shape tests/test_meta_suite.py
+    # exists to catch. Mirrors test_cost_guard's write_error_is_swallowed.
+    pool.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_record_shadow_stores_null_dry_run_when_absent():
+    from services.story_matcher import record_shadow
+
+    pool = AsyncMock()
+    await record_shadow(pool, {"sampled": 40, "backlog": 1})
+    assert pool.execute.call_args.args[12] is None  # dry_run
+    assert pool.execute.call_args.args[13] is None  # would_group
