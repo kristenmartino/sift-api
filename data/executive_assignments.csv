@@ -57,3 +57,5 @@ FOREIGN-WONG-L,,,,,,foreign-executive,Prime Minister,https://www.pmo.gov.sg/The-
 FOREIGN-GUTERRES-A,,,,,,foreign-executive,Secretary-General of the United Nations,https://www.un.org/sg/en,https://www.un.org/sg/en,Guterres,
 FOREIGN-MELONI-G,,,,,,foreign-executive,President of the Council of Ministers,https://www.governo.it/en,https://www.governo.it/en,Meloni,
 FOREIGN-SHEHBAZ-S,,,,,,foreign-executive,Prime Minister of Pakistan,https://pmo.gov.pk/,https://pmo.gov.pk/,Sharif,
+FOREIGN-TUSK-D,,,,,,foreign-executive,Prime Minister,https://www.gov.pl/web/primeminister,https://www.gov.pl/web/primeminister,Tusk,"Site says 'Prime Minister'; it does not carry 'Prime Minister of Poland', so the country is left to state=PL"
+FOREIGN-RAMAPHOSA-C,,,2024-06-19,,https://www.thepresidency.gov.za/,foreign-executive,President,https://www.thepresidency.gov.za/,https://www.thepresidency.gov.za/,Ramaphosa,Page states 'the inauguration of President Cyril Ramaphosa on 19 June 2024'; that is the start date's source
