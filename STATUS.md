@@ -1,7 +1,7 @@
 # sift-api — STATUS
 
 **Updated:** 2026-08-07
-**Tier:** v1.5 (civic-literacy pivot backend) — **feature work paused per [`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md); evidence-gathering only**
+**Tier:** v1.5 (civic-literacy pivot backend) — **feature work active**; the D46 pause was lifted 2026-08-05 ([`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md), amended). Android stays paused and the week-one evidence test is still the next action — what was withdrawn is the blanket prohibition on building, not those.
 **Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). **2026-07-31: 8 PRs merged** (#116, #117, #120, #121, #123, #124, #126, #127) — a burst, not a new baseline. This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
 ## Active focus
