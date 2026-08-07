@@ -869,3 +869,127 @@ def test_link_text_equal_length_overlap_is_deterministic():
     for _ in range(5):
         assert link_text("The acme corp acme filing", d) == first
     assert len(first) == 1
+
+
+# ── match_case: case-sensitive curated aliases (migration 017) ─
+
+
+def _ice_catalog(match_case: bool = True):
+    """The real shape: an org dossier plus a cased alias pointing at it."""
+    return build_catalog(
+        outlets=[], politicians=[],
+        orgs=[{"slug": "us-immigration-and-customs-enforcement",
+               "name": "U.S. Immigration and Customs Enforcement"}],
+        bills=[],
+        aliases=[{
+            "alias": "ICE", "entity_type": "org",
+            "canonical_id": "us-immigration-and-customs-enforcement",
+            "match_case": match_case,
+        }],
+    )
+
+
+def test_cased_alias_is_recorded_on_the_catalog_row():
+    row = next(r for r in _ice_catalog() if r["type"] == "org")
+    assert row["cased"] == ["ICE"]
+    # Still in `aliases` too — the LLM linker reads that list, so splitting
+    # them apart would starve it, same rule as `curated`.
+    assert "ICE" in row["aliases"]
+    assert "ICE" in row["curated"]
+
+
+def test_cased_alias_keeps_its_casing_as_the_search_key():
+    d = build_search_dict(_ice_catalog())
+    assert "ICE" in d
+    assert "ice" not in d
+    assert d["ICE"] == ("org", "us-immigration-and-customs-enforcement")
+
+
+def test_uncased_alias_still_lowercases():
+    """match_case=False must behave exactly as it did before 017."""
+    d = build_search_dict(_ice_catalog(match_case=False))
+    assert "ice" in d
+    assert "ICE" not in d
+
+
+def test_cased_alias_matches_the_agency():
+    d = build_search_dict(_ice_catalog())
+    out = link_text("ICE agents detained 40 people in Chicago.", d)
+    assert [x["canonical_id"] for x in out] == [
+        "us-immigration-and-customs-enforcement"]
+    assert out[0]["surface_form"] == "ICE"
+
+
+def test_cased_alias_ignores_the_common_noun():
+    """The whole point: 672 corpus occurrences of ice/Ice must not chip."""
+    d = build_search_dict(_ice_catalog())
+    for prose in (
+        "He scored on the ice in the third period.",
+        "Sea ice is retreating faster than modelled.",
+        "The shop sells ice cream and coffee.",
+        "Ice storms knocked out power statewide.",   # sentence-initial Ice
+    ):
+        assert link_text(prose, d) == [], prose
+
+
+def test_uncased_alias_would_have_matched_the_common_noun():
+    """Pins WHY the flag is needed — without it, the same text chips.
+
+    If this ever starts passing, case-insensitivity stopped being the
+    problem and the 017 machinery is no longer earning its keep.
+    """
+    d = build_search_dict(_ice_catalog(match_case=False))
+    assert link_text("The shop sells ice cream and coffee.", d) != []
+
+
+def test_cased_alias_cannot_smuggle_a_regex_ineligible_name():
+    """Capitalizing a blocked name must not make it admissible.
+
+    build_search_dict tests _REGEX_INELIGIBLE_NAMES against the normalized
+    form precisely so "Nature" cannot get in where "nature" cannot.
+    """
+    catalog = build_catalog(
+        outlets=[{"slug": "nature", "name": "Nature"}],
+        politicians=[], orgs=[], bills=[],
+        aliases=[{"alias": "Nature", "entity_type": "outlet",
+                  "canonical_id": "nature", "match_case": True}],
+    )
+    d = build_search_dict(catalog)
+    assert "Nature" not in d
+    assert "nature" not in d
+
+
+def test_cased_and_uncased_keys_that_collide_still_drop_each_other():
+    """Conflict detection is on the normalized form, not the stored key.
+
+    Two entities whose keys differ only by case are exactly as ambiguous as
+    two identical keys; keying the conflict pass by the cased string would
+    let both survive and chip the same span.
+    """
+    catalog = build_catalog(
+        outlets=[], politicians=[],
+        orgs=[{"slug": "org-a", "name": "Org A"},
+              {"slug": "org-b", "name": "Org B"}],
+        bills=[],
+        aliases=[
+            {"alias": "ICE", "entity_type": "org", "canonical_id": "org-a",
+             "match_case": True},
+            {"alias": "ice", "entity_type": "org", "canonical_id": "org-b"},
+        ],
+    )
+    d = build_search_dict(catalog)
+    assert "ICE" not in d
+    assert "ice" not in d
+
+
+def test_missing_match_case_key_reads_as_false():
+    """A pre-017 database returns rows without the column at all."""
+    catalog = build_catalog(
+        outlets=[{"slug": "cnn", "name": "CNN"}],
+        politicians=[], orgs=[], bills=[],
+        aliases=[{"alias": "cnn", "entity_type": "outlet",
+                  "canonical_id": "cnn"}],
+    )
+    row = next(r for r in catalog if r["type"] == "outlet")
+    assert "cased" not in row
+    assert "cnn" in build_search_dict(catalog)

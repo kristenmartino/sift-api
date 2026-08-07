@@ -123,7 +123,7 @@ async def _load_catalog(conn: asyncpg.Connection) -> list[dict]:
     # Tolerated missing so a pre-014 database still scores on canonical names.
     try:
         aliases = [dict(r) for r in await conn.fetch(
-            "SELECT alias, entity_type, canonical_id FROM entity_aliases")]
+            "SELECT alias, entity_type, canonical_id, match_case FROM entity_aliases")]
     except asyncpg.UndefinedTableError:
         aliases = []
 

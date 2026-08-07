@@ -202,8 +202,31 @@ def _normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
-def _word_pattern(text: str) -> re.Pattern[str]:
-    """Compile a case-insensitive whole-word regex for the surface form.
+def _key_is_cased(key: str) -> bool:
+    """True when a search key must be matched case-sensitively.
+
+    `build_search_dict` lowercases every key it derives, so uppercase can
+    only survive into the dict because a curator asked for it via
+    `entity_aliases.match_case` (migration 017). That makes the key's own
+    casing a sufficient signal, and lets `search_dict` stay the plain
+    `{key: (type, canonical_id)}` mapping that `link_text`, the backfill
+    script and `eval_linker_gate` all read positionally.
+
+    The alternative — widening the value to a 3-tuple — would have been
+    more explicit at the cost of touching every consumer and ~15 test
+    assertions for one boolean that only two rows will ever set.
+    """
+    return key != key.lower()
+
+
+def _word_pattern(text: str, *, match_case: bool = False) -> re.Pattern[str]:
+    """Compile a whole-word regex for the surface form.
+
+    Case-insensitive by default. `match_case=True` compiles without
+    `IGNORECASE`, which is what makes an acronym whose lowercase form is
+    an ordinary word usable as a key at all: `ICE` is the agency in 1,725
+    corpus articles, while `ice` is ice cream, sea ice and hockey in 672
+    more. See migration 017.
 
     Word boundaries are `\\b` for alphanumeric edges; for surface forms
     that contain hyphens or periods (e.g., "H.R. 5376"), we anchor on
@@ -212,7 +235,7 @@ def _word_pattern(text: str) -> re.Pattern[str]:
     a leading punctuation token) won't match — they're rare.
     """
     escaped = re.escape(text)
-    return re.compile(rf"\b{escaped}\b", re.IGNORECASE)
+    return re.compile(rf"\b{escaped}\b", 0 if match_case else re.IGNORECASE)
 
 
 # ── Catalog shape ──────────────────────────────────────────────────────
@@ -232,6 +255,12 @@ class CatalogRow(TypedDict):
     # which keys a human vouched for, so the length floor can be relaxed for
     # those and only those.
     curated: NotRequired[list[str]]
+    # The subset of `aliases` carrying entity_aliases.match_case (migration
+    # 017), in the exact casing to match on. Same marker-not-a-store shape as
+    # `curated` above: the value also stays in `aliases`, so the LLM linker's
+    # roster is unchanged. build_search_dict keeps these keys cased instead of
+    # lowercasing them, which is how `link_text` knows to drop IGNORECASE.
+    cased: NotRequired[list[str]]
 
 
 def build_search_dict(
@@ -247,10 +276,18 @@ def build_search_dict(
     and short keys are filtered.
     """
     # First pass: collect every candidate key. Track conflicts.
+    #
+    # Every gate below tests the *normalized* form even for a case-sensitive
+    # key, so casing cannot be used to smuggle a key past them: aliasing
+    # "Nature" onto the journal is rejected by _REGEX_INELIGIBLE_NAMES exactly
+    # as "nature" is. Only the key finally emitted keeps its casing.
+    # `emitted` maps normalized -> the string to key the output dict by.
     candidates: dict[str, list[tuple[str, str]]] = {}
+    emitted: dict[str, str] = {}
     ineligible = 0
     for row in rows:
         curated = {_normalize(a) for a in row.get("curated", [])}
+        cased = {_normalize(a): a for a in row.get("cased", [])}
         keys = [row["primary_name"], *row.get("aliases", [])]
         for key in keys:
             normalized = _normalize(key)
@@ -281,6 +318,14 @@ def build_search_dict(
             candidates.setdefault(normalized, []).append(
                 (row["type"], row["canonical_id"]),
             )
+            # Keyed by the normalized form so a case-sensitive alias and an
+            # ordinary key that lower to the same string still collide in the
+            # conflict pass below — "ICE" for the agency and "ice" for some
+            # other entity must drop each other, not coexist.
+            if normalized in cased:
+                emitted[normalized] = cased[normalized]
+            else:
+                emitted.setdefault(normalized, normalized)
 
     # Second pass: drop ambiguous keys.
     out: dict[str, tuple[str, str]] = {}
@@ -290,7 +335,7 @@ def build_search_dict(
         # to the same string) is fine — keep the first.
         unique_refs = list({(t, cid) for t, cid in refs})
         if len(unique_refs) == 1:
-            out[key] = unique_refs[0]
+            out[emitted.get(key, key)] = unique_refs[0]
         else:
             dropped += 1
             logger.debug(
@@ -403,13 +448,20 @@ def build_catalog(
     rows: list[CatalogRow] = []
 
     # {(type, canonical_id): [alias, ...]} — attached to each row below.
+    # `extra_cased` is the match_case subset (migration 017), tracked
+    # separately so build_search_dict can keep those keys cased.
     extra: dict[tuple[str, str], list[str]] = {}
+    extra_cased: dict[tuple[str, str], list[str]] = {}
     for a in aliases or []:
         surface = (a.get("alias") or "").strip()
         etype = (a.get("entity_type") or "").strip()
         cid = (a.get("canonical_id") or "").strip()
         if surface and etype and cid:
             extra.setdefault((etype, cid), []).append(surface)
+            # `.get` with a default so a pre-017 database, whose rows have no
+            # such column, reads as all-false rather than raising.
+            if a.get("match_case"):
+                extra_cased.setdefault((etype, cid), []).append(surface)
 
     for o in outlets:
         name = (o.get("name") or "").strip()
@@ -498,8 +550,15 @@ def build_catalog(
             # that a human vouched for these, which is what earns them the
             # lower length floor.
             row["curated"] = [*row.get("curated", []), *surfaces]
+            cased_here = extra_cased.get(key)
+            if cased_here:
+                row["cased"] = [*row.get("cased", []), *cased_here]
             attached += len(surfaces)
-        logger.info("entity_linker: attached %d curated aliases", attached)
+        n_cased = sum(len(v) for v in extra_cased.values())
+        logger.info(
+            "entity_linker: attached %d curated aliases (%d case-sensitive)",
+            attached, n_cased,
+        )
 
     return rows
 
@@ -535,7 +594,7 @@ def link_text(
     for key, (etype, cid) in search_dict.items():
         # Compile per-call to avoid stale-cache complications; the
         # catalog is small (~700 rows) and pattern compilation is cheap.
-        pattern = _word_pattern(key)
+        pattern = _word_pattern(key, match_case=_key_is_cased(key))
         for match in pattern.finditer(text):
             matches.append((match.start(), match.end(), key, etype, cid))
     if not matches:
@@ -616,19 +675,41 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
                 "SELECT bill_id, title, short_title FROM bill_profiles"
             )
         ]
-        # Curated aliases (migration 014). Tolerated missing so a pre-014
-        # database still links on canonical names alone.
+        # Curated aliases (migration 014), with the match_case flag (017).
+        #
+        # Three schema states, degrading one step at a time. The middle one is
+        # the trap: on a pre-017 database the error reads "column
+        # entity_aliases.match_case does not exist", which also matches the
+        # table-absent test below — so a single try/except would silently drop
+        # all 96 aliases rather than just the flag. Retry without the column
+        # before concluding the table is gone.
         try:
             aliases = [
                 dict(r) for r in await pool.fetch(
-                    "SELECT alias, entity_type, canonical_id FROM entity_aliases"
+                    "SELECT alias, entity_type, canonical_id, match_case "
+                    "FROM entity_aliases"
                 )
             ]
         except Exception as alias_err:
             if "does not exist" not in str(alias_err):
                 raise
-            logger.info("entity_linker: entity_aliases table absent — canonical names only")
-            aliases = []
+            try:
+                aliases = [
+                    dict(r) for r in await pool.fetch(
+                        "SELECT alias, entity_type, canonical_id FROM entity_aliases"
+                    )
+                ]
+                logger.info(
+                    "entity_linker: entity_aliases.match_case absent (pre-017) — "
+                    "%d aliases loaded, all case-insensitive", len(aliases),
+                )
+            except Exception as table_err:
+                if "does not exist" not in str(table_err):
+                    raise
+                logger.info(
+                    "entity_linker: entity_aliases table absent — canonical names only"
+                )
+                aliases = []
     except Exception as e:
         msg = str(e)
         if "does not exist" in msg:

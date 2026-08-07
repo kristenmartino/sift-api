@@ -1,97 +1,98 @@
-alias,entity_type,canonical_id,notes
-trump,politician,EXEC-TRUMP-DJ,"Surname alone appears in 16216 articles. Unambiguous in the catalog — verified single match 2026-08-05."
-biden,politician,EXEC-BIDEN-JR,"Unambiguous in the catalog. Canonical name is 'Joseph R. Biden Jr.', which news copy never uses."
-putin,politician,FOREIGN-PUTIN-V,Unambiguous in the catalog.
-netanyahu,politician,FOREIGN-NETANYAHU-B,Unambiguous in the catalog.
-zelensky,politician,FOREIGN-ZELENSKY-V,Unambiguous in the catalog.
-zelenskyy,politician,FOREIGN-ZELENSKY-V,"Alternate transliteration; the catalog spells it Zelensky. Both are in wide use."
-vance,politician,EXEC-VANCE-J,Unambiguous in the catalog.
-musk,politician,EXEC-MUSK-E,Unambiguous in the catalog.
-obama,politician,EXEC-OBAMA-B,Unambiguous in the catalog.
-bondi,politician,EXEC-BONDI-P,Unambiguous in the catalog.
-hegseth,politician,EXEC-HEGSETH-P,Unambiguous in the catalog.
-noem,politician,EXEC-NOEM-K,Unambiguous in the catalog.
-rubio,politician,EXEC-RUBIO-MARCO-STATE,Unambiguous in the catalog.
-bessent,politician,EXEC-BESSENT-S,Unambiguous in the catalog.
-schumer,politician,S000148,Unambiguous in the catalog.
-thune,politician,T000250,Unambiguous in the catalog.
-jeffries,politician,J000294,Unambiguous in the catalog.
-pentagon,org,united-states-department-of-defense,"Standard metonym for the department. 756 articles."
-white house,org,the-white-house,1610 articles.
-supreme court,org,supreme-court-of-the-united-states,"2018 articles. US-only corpus, so the unqualified form means SCOTUS."
-scotus,org,supreme-court-of-the-united-states,Common abbreviation.
-federal reserve,org,federal-reserve-system,1237 articles.
-the fed,org,federal-reserve-system,"Standard shorthand. 'fed' alone is excluded — too short and too common a word."
-justice department,org,united-states-department-of-justice,605 articles.
-department of justice,org,united-states-department-of-justice,Long form without the 'United States' prefix.
-state department,org,united-states-department-of-state,208 articles.
-department of state,org,united-states-department-of-state,Long form without the 'United States' prefix.
-treasury department,org,united-states-department-of-the-treasury,
-department of the treasury,org,united-states-department-of-the-treasury,Long form without the 'United States' prefix.
-homeland security,org,united-states-department-of-homeland-security,
-interior department,org,united-states-department-of-the-interior,
-education department,org,united-states-department-of-education,
-commerce department,org,united-states-department-of-commerce,
-energy department,org,united-states-department-of-energy,
-labor department,org,united-states-department-of-labor,
-agriculture department,org,united-states-department-of-agriculture,
-veterans affairs,org,united-states-department-of-veterans-affairs,
-secret service,org,united-states-secret-service,229 articles.
-census bureau,org,united-states-census-bureau,
-nasa,org,national-aeronautics-and-space-administration,"438 articles, mostly in the science category."
-senate,org,united-states-senate,"1232 articles. US-only corpus, so the unqualified form means the US Senate."
-house of representatives,org,united-states-house-of-representatives,"The bare word 'House' is deliberately NOT aliased — it collides with surnames, which longest-match-wins does not help with (news copy writes the surname alone)."
-congress,org,united-states-congress,"1245 articles. Collides only with 'Library of Congress', which longest-match-wins resolves: the longer key owns the span."
-postal service,org,united-states-postal-service,"Collides only with bill hr-3076-117 ('Postal Service Reform Act'), which longest-match-wins resolves: the bill's longer key owns the span."
-rfk jr,politician,EXEC-KENNEDY-RFK,"337 articles. Canonical 'Robert F. Kennedy Jr.' is rarely written out; copy uses the initialism. Largest single miss bucket in the 2026-08-05 gate eval (23 of ~110). Unambiguous: the catalog's other Kennedys (John K000393, Timothy K000402, Mike K000403) share no whole-word overlap with this form."
-robert f. kennedy,politician,EXEC-KENNEDY-RFK,"168 articles. Rescues the possessive case the canonical name cannot match: _word_pattern anchors a word boundary after the trailing period, so 'Robert F. Kennedy Jr.'s' fails to match 'Robert F. Kennedy Jr.' while this shorter form matches. No RFK Sr. dossier exists, so the referent is unambiguous in this catalog."
-fauci,politician,EXEC-FAUCI-A,"379 articles. Second-largest miss bucket in the 2026-08-05 gate eval (16 of ~110). Surname alone, and the only Fauci in the catalog. Curated rather than derived, per the #40 rule: the hazard there was common-noun surnames (Cloud, Banks, Hill), and 'Fauci' is not a common noun."
-bbc,outlet,bbc-news,"1068 articles — the single most-mentioned blocked form in the corpus. Canonical is 'BBC News' but copy overwhelmingly writes the initialism alone. Needs _MIN_CURATED_KEY_LENGTH (3 chars); was silently undroppable-but-unmatchable before that existed. Sampled titles are all the broadcaster."
-cnn,outlet,cnn,"397 articles. Canonical name IS 'CNN', so the outlet was unlinkable on its own name until the curated floor landed — primary_name gets no exemption, only curated rows do. Self-referential alias is intentional and is how a sub-4-char canonical name becomes searchable."
-npr,outlet,npr,"241 articles. Same self-referential case as cnn. Sampled titles are all the broadcaster."
-stat news,outlet,stat-news,"The narrower-alias escape hatch for a blocked name: canonical 'STAT' is in _REGEX_INELIGIBLE_NAMES because all 111 third-party chips were the common noun ('Most Absurd Stat', 'add to your cart stat'). Restores 0 links today — measured 2026-08-06, the corpus holds zero third-party mentions of STAT in any casing, and all 37 articles containing 'STAT News' are STAT's own. Curated anyway so the outlet stays linkable in principle rather than silently unnameable; this is the row a future third-party 'STAT News reported' mention will land on."
-nature study,outlet,nature,"The narrower-alias escape hatch for a blocked name: canonical 'Nature' is in _REGEX_INELIGIBLE_NAMES because 93% of its matches were the common noun ('the nature of the meeting'). Measured 2026-08-06: 10 corpus matches, 0 followed by a Nature sub-journal, all the journal. Restores 1 link today — 9 of the 10 are Nature's own feed and self-outlet suppressed. Curated for the third-party case ('A Nature study found that TikTok's algorithm...', The Guardian US)."
-study in nature,outlet,nature,"Second measured-safe form for the blocked 'Nature'. 2 corpus matches 2026-08-06, both the journal, both Nature's own feed — so it restores 0 links today, same posture as 'stat news'. Deliberately NOT 'published in Nature': that has 88 third-party matches but 62 continue into a different journal ('Nature Communications', 'Nature Medicine'), and a whole-phrase key matches the boundary after 'Nature', so it would be 70% wrong. Those 26 genuine bare mentions stay with the LLM path."
-doj,org,united-states-department-of-justice,Official acronym for the agency. 1148 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-fbi,org,federal-bureau-of-investigation,Official acronym for the agency. 868 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-fda,org,food-and-drug-administration,Official acronym for the agency. 768 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-dhs,org,united-states-department-of-homeland-security,Official acronym for the agency. 487 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-cdc,org,centers-for-disease-control-and-prevention,Official acronym for the agency. 392 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-irs,org,internal-revenue-service,Official acronym for the agency. 309 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-fcc,org,federal-communications-commission,Official acronym for the agency. 298 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-hhs,org,united-states-department-of-health-and-human-services,Official acronym for the agency. 224 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-cia,org,central-intelligence-agency,Official acronym for the agency. 211 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-epa,org,environmental-protection-agency,Official acronym for the agency. 178 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-tsa,org,transportation-security-administration,Official acronym for the agency. 160 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-faa,org,federal-aviation-administration,Official acronym for the agency. 124 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-ftc,org,federal-trade-commission,Official acronym for the agency. 104 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-nih,org,national-institutes-of-health,Official acronym for the agency. 98 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-usda,org,united-states-department-of-agriculture,Official acronym for the agency. 84 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-fema,org,federal-emergency-management-agency,Official acronym for the agency. 74 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-cms,org,centers-for-medicare-and-medicaid-services,"Official acronym. 64 articles, overwhelmingly health-desk copy about the agency. The generic 'content management system' sense did not appear in a sample of the corpus."
-usaid,org,united-states-agency-for-international-development,Official acronym for the agency. 57 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-omb,org,office-of-management-and-budget,Official acronym for the agency. 45 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-noaa,org,national-oceanic-and-atmospheric-administration,Official acronym for the agency. 45 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-usps,org,united-states-postal-service,Official acronym for the agency. 45 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-cbp,org,us-customs-and-border-protection,Official acronym for the agency. 40 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-ntsb,org,national-transportation-safety-board,Official acronym for the agency. 35 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-cisa,org,cybersecurity-and-infrastructure-security-agency,Official acronym for the agency. 33 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-eeoc,org,equal-employment-opportunity-commission,Official acronym for the agency. 29 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-nsa,org,national-security-agency,Official acronym for the agency. 26 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-nsf,org,national-science-foundation,Official acronym for the agency. 26 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-atf,org,bureau-of-alcohol-tobacco-firearms-and-explosives,Official acronym for the agency. 24 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-dod,org,united-states-department-of-defense,"Official acronym. 24 articles; the 7 non-uppercase hits are all the standard 'DoD' styling, not a collision. Complements the existing 'pentagon' alias, which covers the metonym."
-ferc,org,federal-energy-regulatory-commission,Official acronym for the agency. 22 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-cfpb,org,consumer-financial-protection-bureau,Official acronym for the agency. 15 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-usgs,org,united-states-geological-survey,Official acronym for the agency. 11 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-nist,org,national-institute-of-standards-and-technology,Official acronym for the agency. 7 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-nrc,org,nuclear-regulatory-commission,"Official acronym. 6 articles, all energy-desk copy about the commission."
-cbo,org,congressional-budget-office,Official acronym for the agency. 6 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-fdic,org,federal-deposit-insurance-corporation,Official acronym for the agency. 6 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-nlrb,org,national-labor-relations-board,Official acronym for the agency. 5 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-ssa,org,social-security-administration,Official acronym for the agency. 4 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-gsa,org,general-services-administration,Official acronym for the agency. 4 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-osha,org,occupational-safety-and-health-administration,Official acronym for the agency. 2 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-opm,org,office-of-personnel-management,Official acronym for the agency. 2 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-bls,org,bureau-of-labor-statistics,Official acronym for the agency. 1 article; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
-tva,org,tennessee-valley-authority,Official acronym for the agency. 1 article; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.
+alias,entity_type,canonical_id,notes,match_case
+trump,politician,EXEC-TRUMP-DJ,Surname alone appears in 16216 articles. Unambiguous in the catalog — verified single match 2026-08-05.,
+biden,politician,EXEC-BIDEN-JR,"Unambiguous in the catalog. Canonical name is 'Joseph R. Biden Jr.', which news copy never uses.",
+putin,politician,FOREIGN-PUTIN-V,Unambiguous in the catalog.,
+netanyahu,politician,FOREIGN-NETANYAHU-B,Unambiguous in the catalog.,
+zelensky,politician,FOREIGN-ZELENSKY-V,Unambiguous in the catalog.,
+zelenskyy,politician,FOREIGN-ZELENSKY-V,Alternate transliteration; the catalog spells it Zelensky. Both are in wide use.,
+vance,politician,EXEC-VANCE-J,Unambiguous in the catalog.,
+musk,politician,EXEC-MUSK-E,Unambiguous in the catalog.,
+obama,politician,EXEC-OBAMA-B,Unambiguous in the catalog.,
+bondi,politician,EXEC-BONDI-P,Unambiguous in the catalog.,
+hegseth,politician,EXEC-HEGSETH-P,Unambiguous in the catalog.,
+noem,politician,EXEC-NOEM-K,Unambiguous in the catalog.,
+rubio,politician,EXEC-RUBIO-MARCO-STATE,Unambiguous in the catalog.,
+bessent,politician,EXEC-BESSENT-S,Unambiguous in the catalog.,
+schumer,politician,S000148,Unambiguous in the catalog.,
+thune,politician,T000250,Unambiguous in the catalog.,
+jeffries,politician,J000294,Unambiguous in the catalog.,
+pentagon,org,united-states-department-of-defense,Standard metonym for the department. 756 articles.,
+white house,org,the-white-house,1610 articles.,
+supreme court,org,supreme-court-of-the-united-states,"2018 articles. US-only corpus, so the unqualified form means SCOTUS.",
+scotus,org,supreme-court-of-the-united-states,Common abbreviation.,
+federal reserve,org,federal-reserve-system,1237 articles.,
+the fed,org,federal-reserve-system,Standard shorthand. 'fed' alone is excluded — too short and too common a word.,
+justice department,org,united-states-department-of-justice,605 articles.,
+department of justice,org,united-states-department-of-justice,Long form without the 'United States' prefix.,
+state department,org,united-states-department-of-state,208 articles.,
+department of state,org,united-states-department-of-state,Long form without the 'United States' prefix.,
+treasury department,org,united-states-department-of-the-treasury,,
+department of the treasury,org,united-states-department-of-the-treasury,Long form without the 'United States' prefix.,
+homeland security,org,united-states-department-of-homeland-security,,
+interior department,org,united-states-department-of-the-interior,,
+education department,org,united-states-department-of-education,,
+commerce department,org,united-states-department-of-commerce,,
+energy department,org,united-states-department-of-energy,,
+labor department,org,united-states-department-of-labor,,
+agriculture department,org,united-states-department-of-agriculture,,
+veterans affairs,org,united-states-department-of-veterans-affairs,,
+secret service,org,united-states-secret-service,229 articles.,
+census bureau,org,united-states-census-bureau,,
+nasa,org,national-aeronautics-and-space-administration,"438 articles, mostly in the science category.",
+senate,org,united-states-senate,"1232 articles. US-only corpus, so the unqualified form means the US Senate.",
+house of representatives,org,united-states-house-of-representatives,"The bare word 'House' is deliberately NOT aliased — it collides with surnames, which longest-match-wins does not help with (news copy writes the surname alone).",
+congress,org,united-states-congress,"1245 articles. Collides only with 'Library of Congress', which longest-match-wins resolves: the longer key owns the span.",
+postal service,org,united-states-postal-service,"Collides only with bill hr-3076-117 ('Postal Service Reform Act'), which longest-match-wins resolves: the bill's longer key owns the span.",
+rfk jr,politician,EXEC-KENNEDY-RFK,"337 articles. Canonical 'Robert F. Kennedy Jr.' is rarely written out; copy uses the initialism. Largest single miss bucket in the 2026-08-05 gate eval (23 of ~110). Unambiguous: the catalog's other Kennedys (John K000393, Timothy K000402, Mike K000403) share no whole-word overlap with this form.",
+robert f. kennedy,politician,EXEC-KENNEDY-RFK,"168 articles. Rescues the possessive case the canonical name cannot match: _word_pattern anchors a word boundary after the trailing period, so 'Robert F. Kennedy Jr.'s' fails to match 'Robert F. Kennedy Jr.' while this shorter form matches. No RFK Sr. dossier exists, so the referent is unambiguous in this catalog.",
+fauci,politician,EXEC-FAUCI-A,"379 articles. Second-largest miss bucket in the 2026-08-05 gate eval (16 of ~110). Surname alone, and the only Fauci in the catalog. Curated rather than derived, per the #40 rule: the hazard there was common-noun surnames (Cloud, Banks, Hill), and 'Fauci' is not a common noun.",
+bbc,outlet,bbc-news,1068 articles — the single most-mentioned blocked form in the corpus. Canonical is 'BBC News' but copy overwhelmingly writes the initialism alone. Needs _MIN_CURATED_KEY_LENGTH (3 chars); was silently undroppable-but-unmatchable before that existed. Sampled titles are all the broadcaster.,
+cnn,outlet,cnn,"397 articles. Canonical name IS 'CNN', so the outlet was unlinkable on its own name until the curated floor landed — primary_name gets no exemption, only curated rows do. Self-referential alias is intentional and is how a sub-4-char canonical name becomes searchable.",
+npr,outlet,npr,241 articles. Same self-referential case as cnn. Sampled titles are all the broadcaster.,
+stat news,outlet,stat-news,"The narrower-alias escape hatch for a blocked name: canonical 'STAT' is in _REGEX_INELIGIBLE_NAMES because all 111 third-party chips were the common noun ('Most Absurd Stat', 'add to your cart stat'). Restores 0 links today — measured 2026-08-06, the corpus holds zero third-party mentions of STAT in any casing, and all 37 articles containing 'STAT News' are STAT's own. Curated anyway so the outlet stays linkable in principle rather than silently unnameable; this is the row a future third-party 'STAT News reported' mention will land on.",
+nature study,outlet,nature,"The narrower-alias escape hatch for a blocked name: canonical 'Nature' is in _REGEX_INELIGIBLE_NAMES because 93% of its matches were the common noun ('the nature of the meeting'). Measured 2026-08-06: 10 corpus matches, 0 followed by a Nature sub-journal, all the journal. Restores 1 link today — 9 of the 10 are Nature's own feed and self-outlet suppressed. Curated for the third-party case ('A Nature study found that TikTok's algorithm...', The Guardian US).",
+study in nature,outlet,nature,"Second measured-safe form for the blocked 'Nature'. 2 corpus matches 2026-08-06, both the journal, both Nature's own feed — so it restores 0 links today, same posture as 'stat news'. Deliberately NOT 'published in Nature': that has 88 third-party matches but 62 continue into a different journal ('Nature Communications', 'Nature Medicine'), and a whole-phrase key matches the boundary after 'Nature', so it would be 70% wrong. Those 26 genuine bare mentions stay with the LLM path.",
+doj,org,united-states-department-of-justice,Official acronym for the agency. 1148 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+fbi,org,federal-bureau-of-investigation,Official acronym for the agency. 868 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+fda,org,food-and-drug-administration,Official acronym for the agency. 768 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+dhs,org,united-states-department-of-homeland-security,Official acronym for the agency. 487 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+cdc,org,centers-for-disease-control-and-prevention,Official acronym for the agency. 392 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+irs,org,internal-revenue-service,Official acronym for the agency. 309 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+fcc,org,federal-communications-commission,Official acronym for the agency. 298 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+hhs,org,united-states-department-of-health-and-human-services,Official acronym for the agency. 224 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+cia,org,central-intelligence-agency,Official acronym for the agency. 211 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+epa,org,environmental-protection-agency,Official acronym for the agency. 178 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+tsa,org,transportation-security-administration,Official acronym for the agency. 160 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+faa,org,federal-aviation-administration,Official acronym for the agency. 124 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+ftc,org,federal-trade-commission,Official acronym for the agency. 104 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+nih,org,national-institutes-of-health,Official acronym for the agency. 98 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+usda,org,united-states-department-of-agriculture,Official acronym for the agency. 84 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+fema,org,federal-emergency-management-agency,Official acronym for the agency. 74 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+cms,org,centers-for-medicare-and-medicaid-services,"Official acronym. 64 articles, overwhelmingly health-desk copy about the agency. The generic 'content management system' sense did not appear in a sample of the corpus.",
+usaid,org,united-states-agency-for-international-development,Official acronym for the agency. 57 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+omb,org,office-of-management-and-budget,Official acronym for the agency. 45 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+noaa,org,national-oceanic-and-atmospheric-administration,Official acronym for the agency. 45 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+usps,org,united-states-postal-service,Official acronym for the agency. 45 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+cbp,org,us-customs-and-border-protection,Official acronym for the agency. 40 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+ntsb,org,national-transportation-safety-board,Official acronym for the agency. 35 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+cisa,org,cybersecurity-and-infrastructure-security-agency,Official acronym for the agency. 33 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+eeoc,org,equal-employment-opportunity-commission,Official acronym for the agency. 29 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+nsa,org,national-security-agency,Official acronym for the agency. 26 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+nsf,org,national-science-foundation,Official acronym for the agency. 26 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+atf,org,bureau-of-alcohol-tobacco-firearms-and-explosives,Official acronym for the agency. 24 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+dod,org,united-states-department-of-defense,"Official acronym. 24 articles; the 7 non-uppercase hits are all the standard 'DoD' styling, not a collision. Complements the existing 'pentagon' alias, which covers the metonym.",
+ferc,org,federal-energy-regulatory-commission,Official acronym for the agency. 22 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+cfpb,org,consumer-financial-protection-bureau,Official acronym for the agency. 15 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+usgs,org,united-states-geological-survey,Official acronym for the agency. 11 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+nist,org,national-institute-of-standards-and-technology,Official acronym for the agency. 7 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+nrc,org,nuclear-regulatory-commission,"Official acronym. 6 articles, all energy-desk copy about the commission.",
+cbo,org,congressional-budget-office,Official acronym for the agency. 6 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+fdic,org,federal-deposit-insurance-corporation,Official acronym for the agency. 6 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+nlrb,org,national-labor-relations-board,Official acronym for the agency. 5 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+ssa,org,social-security-administration,Official acronym for the agency. 4 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+gsa,org,general-services-administration,Official acronym for the agency. 4 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+osha,org,occupational-safety-and-health-administration,Official acronym for the agency. 2 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+opm,org,office-of-personnel-management,Official acronym for the agency. 2 articles; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+bls,org,bureau-of-labor-statistics,Official acronym for the agency. 1 article; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+tva,org,tennessee-valley-authority,Official acronym for the agency. 1 article; the uppercase form accounts for every whole-word occurrence in the corpus. Verified 2026-08-07.,
+ICE,org,us-immigration-and-customs-enforcement,"Case-sensitive (migration 017): stored with its casing because the lowercase form is an ordinary word. Measured 2026-08-07 — whole-word uppercase ICE appears in 1,725 articles, 1,386 of them politics, and 15 of 15 randomly sampled were the agency; 0 titles are all-caps, so a shouted headline cannot defeat the casing. Case-INsensitive would add 672 matches of 'ice'/'Ice' (ice cream, sea ice, hockey) across the 85k sports and 48k entertainment rows, which is why the bare alias was never curated. Known cost: ~5 business/energy articles where ICE is Intercontinental Exchange, the futures market — accepted at ~99.7% precision against 0 links today.",true
