@@ -448,6 +448,12 @@ CREATE TABLE IF NOT EXISTS entity_aliases (
     -- the live tables and refuses an unresolvable target.
     canonical_id TEXT NOT NULL,
     notes        TEXT,              -- justification; an alias is a claim that two names denote one entity
+    -- Migration 017. When true the linker matches this alias case-sensitively
+    -- and `alias` above holds the exact casing to match ("ICE"), rather than
+    -- the lowercased form every other row stores. For acronyms whose lowercase
+    -- is an ordinary word: `ice` is ice cream and sea ice in 672 articles,
+    -- `ICE` is the agency in 1,725.
+    match_case   BOOLEAN NOT NULL DEFAULT FALSE,
     added_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

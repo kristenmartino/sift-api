@@ -36,6 +36,12 @@ Five validations, all fatal to the row (never to the run):
      "Miller" and "Collins" out. See `blocking_conflicts` for what counts
      as resolvable now that `link_text` does longest-match-wins.
 
+A sixth check applies only to `match_case` rows (migration 017): the alias must
+actually carry uppercase, or the flag is a no-op and the row misrepresents
+itself. Such a row keeps its casing on the way into the table — it is the
+string the linker matches — while all five checks above run on the lowercased
+form, so capitalizing a blocked or stopworded name cannot smuggle it past them.
+
 Idempotent UPSERT on the alias PK. --prune removes DB rows absent from the CSV,
 so unlike the other seeders this one can be the source of truth.
 """
@@ -75,6 +81,25 @@ _TARGET = {
 # head: "Library **of** Congress" is a library, not a congress. Without
 # this, any name ending in the alias would look head-shared.
 _HEAD_INVERTING = frozenset({"of", "for", "in", "on", "at", "and", "against"})
+
+_TRUE = {"true", "yes", "1", "t", "y"}
+_FALSE = {"false", "no", "0", "f", "n", ""}
+
+
+def _parse_bool(value: str | None) -> bool:
+    """Parse the CSV's `match_case` cell. Unknown text is FALSE, loudly.
+
+    Defaulting an unparseable value to False keeps the safe behaviour — the
+    alias stays case-insensitive, which is what every row before 017 was —
+    rather than silently switching a row to a stricter match the curator did
+    not ask for.
+    """
+    v = (value or "").strip().lower()
+    if v in _TRUE:
+        return True
+    if v not in _FALSE:
+        print(f"  WARN: unrecognized match_case {value!r} — treating as false")
+    return False
 
 
 def blocking_conflicts(
@@ -155,17 +180,35 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
                 names.append((r["t"], r["id"], r["name"].lower()))
         canonical_names = {n for _, _, n in names}
 
-        accepted: list[tuple[str, str, str, str | None]] = []
+        accepted: list[tuple[str, str, str, str | None, bool]] = []
         rejected: list[tuple[str, str]] = []
 
         for row in rows:
-            alias = (row.get("alias") or "").strip().lower()
+            raw_alias = (row.get("alias") or "").strip()
             etype = (row.get("entity_type") or "").strip()
             cid = (row.get("canonical_id") or "").strip()
             notes = (row.get("notes") or "").strip() or None
+            match_case = _parse_bool(row.get("match_case"))
+
+            # A match_case row keeps the casing it will match on ("ICE");
+            # every other row is lowercased as before. `alias` below is the
+            # value that gets stored and matched. `probe` is its lowercase
+            # form, and every validation runs on THAT — a blocked or
+            # stopworded name must not become admissible just by being
+            # capitalized, and build_search_dict applies its own gates to the
+            # normalized form for the same reason.
+            alias = raw_alias if match_case else raw_alias.lower()
+            probe = raw_alias.lower()
 
             if not alias or not etype or not cid:
                 rejected.append((alias or "(blank)", "missing a required field"))
+                continue
+            if match_case and raw_alias == probe:
+                rejected.append((
+                    alias,
+                    "match_case is set but the alias has no uppercase — it would "
+                    "match identically either way, so the flag is a no-op",
+                ))
                 continue
             if etype not in VALID_TYPES:
                 rejected.append((alias, f"unknown entity_type {etype!r}"))
@@ -180,16 +223,16 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
             # build_search_dict grants curated keys — otherwise this check
             # would reject exactly the rows that floor was relaxed for
             # ("bbc", "cnn"), and the two would silently disagree.
-            if len(alias) < _MIN_CURATED_KEY_LENGTH:
+            if len(probe) < _MIN_CURATED_KEY_LENGTH:
                 rejected.append((
                     alias,
                     f"shorter than _MIN_CURATED_KEY_LENGTH ({_MIN_CURATED_KEY_LENGTH})",
                 ))
                 continue
-            if alias in _STOPWORDS:
+            if probe in _STOPWORDS:
                 rejected.append((alias, "is a linker stopword"))
                 continue
-            if alias in _REGEX_INELIGIBLE_NAMES:
+            if probe in _REGEX_INELIGIBLE_NAMES:
                 # build_search_dict drops these BEFORE the curated floor, so an
                 # alias equal to a blocked name is accepted here and silently
                 # ignored by the linker — the "row is a lie" case this check
@@ -198,16 +241,16 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
                 rejected.append((alias, "is a regex-ineligible catalog name"))
                 continue
             # 4. Must not be another entity's canonical name.
-            if alias in canonical_names:
+            if probe in canonical_names:
                 owner = next(
-                    ((t, i) for t, i, n in names if n == alias and (t, i) != (etype, cid)),
+                    ((t, i) for t, i, n in names if n == probe and (t, i) != (etype, cid)),
                     None,
                 )
                 if owner is not None:
                     rejected.append((alias, f"is the canonical name of {owner[0]} {owner[1]!r}"))
                     continue
             # 5. Any remaining ambiguity must be one longest-match-wins fixes.
-            hits = blocking_conflicts(alias, etype, cid, names)
+            hits = blocking_conflicts(probe, etype, cid, names)
             if hits:
                 sample = ", ".join(f"{t}:{i}" for t, i in hits[:3])
                 rejected.append((
@@ -216,12 +259,12 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
                 ))
                 continue
 
-            accepted.append((alias, etype, cid, notes))
+            accepted.append((alias, etype, cid, notes, match_case))
 
         existing = {
             r["alias"] for r in await pool.fetch("SELECT alias FROM entity_aliases")
         }
-        accepted_aliases = {a for a, _, _, _ in accepted}
+        accepted_aliases = {a for a, *_ in accepted}
         stale = sorted(existing - accepted_aliases)
 
         print(f"CSV rows:        {len(rows)}")
@@ -238,10 +281,16 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
                 print(f"  {alias:<28} {why}")
             print()
 
+        cased = [a for a, _, _, _, mc in accepted if mc]
+        if cased:
+            print(f"Case-sensitive:  {len(cased)} ({', '.join(cased)})")
+            print()
+
         if dry_run:
             print("Dry run — nothing written.")
-            for alias, etype, cid, _ in accepted[:10]:
-                print(f"  would upsert  {alias:<28} -> {etype}:{cid}")
+            for alias, etype, cid, _, mc in accepted[:10]:
+                flag = "  [case-sensitive]" if mc else ""
+                print(f"  would upsert  {alias:<28} -> {etype}:{cid}{flag}")
             if len(accepted) > 10:
                 print(f"  … and {len(accepted) - 10} more")
             return 0
@@ -249,12 +298,14 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
         async with pool.acquire() as conn, conn.transaction():
             await conn.executemany(
                 """
-                INSERT INTO entity_aliases (alias, entity_type, canonical_id, notes)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO entity_aliases
+                    (alias, entity_type, canonical_id, notes, match_case)
+                VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (alias) DO UPDATE
                   SET entity_type  = EXCLUDED.entity_type,
                       canonical_id = EXCLUDED.canonical_id,
-                      notes        = EXCLUDED.notes
+                      notes        = EXCLUDED.notes,
+                      match_case   = EXCLUDED.match_case
                 """,
                 accepted,
             )

@@ -161,3 +161,21 @@ def test_stat_news_has_a_curated_alias():
     row is the only thing keeping the outlet linkable by name at all."""
     aliases = {(r["alias"].strip().lower(), r["canonical_id"]) for r in _csv_rows()}
     assert ("stat news", "stat-news") in aliases
+
+
+# ── match_case (migration 017) ────────────────────────────────
+
+
+def test_parse_bool_reads_the_csv_spellings():
+    from scripts.seed_entity_aliases import _parse_bool
+    for truthy in ("true", "TRUE", "yes", "1", "t", "y"):
+        assert _parse_bool(truthy) is True, truthy
+    for falsy in ("false", "no", "0", "", None, "   "):
+        assert _parse_bool(falsy) is False, falsy
+
+
+def test_parse_bool_defaults_unknown_text_to_false():
+    """Safe direction: an unparseable cell leaves the alias as it always was,
+    rather than silently tightening it to a match the curator didn't ask for."""
+    from scripts.seed_entity_aliases import _parse_bool
+    assert _parse_bool("maybe") is False

@@ -380,6 +380,24 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON entity_aliases (entity_type, canonical_id)"
         )
 
+        # Per-alias case-sensitive matching
+        # (migrations/017_entity_alias_match_case.sql).
+        # `_word_pattern` compiles every key with IGNORECASE, which makes an
+        # acronym whose lowercase form is an ordinary word unusable: the
+        # us-immigration-and-customs-enforcement dossier has existed all along,
+        # yet ICE links in 8 of 300 sampled articles, because the alias `ice`
+        # would also fire on ice cream, sea ice and hockey across the corpus's
+        # 85k sports and 48k entertainment rows. Measured 2026-08-07: 1,725
+        # articles carry whole-word uppercase ICE, 15 of 15 sampled were the
+        # agency, and 0 titles are all-caps. Also the mechanism sift-api#151
+        # asked for on `variety` / `the athletic` / `wired` / `the hill`.
+        # DEFAULT FALSE, so all 96 existing rows keep the behaviour they were
+        # curated under.
+        await conn.execute(
+            "ALTER TABLE entity_aliases "
+            "ADD COLUMN IF NOT EXISTS match_case BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+
         # Structured, primary-record role provenance on executive dossiers
         # (migrations/015_politician_role_provenance.sql).
         # All 102 chamber IN ('executive','foreign-executive') rows carried an
