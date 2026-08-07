@@ -66,12 +66,14 @@ ROLE_COLUMNS = [
     "confirmation_vote_result",
     "predecessor_name",
     "predecessor_source",
+    "role_verified_at",
 ]
 DATE_COLUMNS = {
     "role_start_date",
     "role_end_date",
     "nomination_date",
     "confirmation_date",
+    "role_verified_at",
 }
 
 
@@ -88,8 +90,13 @@ def _db_url() -> str:
     return url
 
 
-def _load_verified() -> set[str]:
-    """bioguide_ids whose role_title_source was refetched and confirmed."""
+def _load_verified() -> dict[str, str]:
+    """bioguide_id -> the date its role_title_source was refetched and confirmed.
+
+    The date comes from the report, not from `today` at seed time: a CSV
+    seeded months after it was verified must not read as freshly checked,
+    because the publish floor expires foreign rows on this value (017).
+    """
     if not os.path.exists(VERIFICATION):
         raise SystemExit(
             f"{VERIFICATION} missing — run scripts/verify_role_sources.py first"
@@ -101,7 +108,7 @@ def _load_verified() -> set[str]:
         )
     with open(VERIFICATION, newline="", encoding="utf-8") as fh:
         return {
-            row["bioguide_id"]
+            row["bioguide_id"]: (row.get("verified_at") or "").strip()
             for row in csv.DictReader(fh)
             if row.get("verdict") == "OK"
         }
@@ -165,6 +172,10 @@ async def main() -> int:
                 skipped.append(f"{bioguide} (role source did not verify)")
                 continue
 
+            # role_verified_at is not in the profiles CSV — it comes from the
+            # verification report, so the write cannot claim a check that
+            # didn't happen.
+            row = dict(row, role_verified_at=verified.get(bioguide, ""))
             values = [
                 _as_date(row.get(column)) if column in DATE_COLUMNS
                 else _clean(row.get(column))

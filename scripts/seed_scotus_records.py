@@ -75,7 +75,7 @@ def _db_url() -> str:
     return url
 
 
-def _load_verified() -> set[str]:
+def _load_verified() -> dict[str, str]:
     """bioguide_ids whose role_title_source was refetched and confirmed.
 
     The id column is named `bioguide_id` rather than `canonical_id` because
@@ -96,7 +96,7 @@ def _load_verified() -> set[str]:
         )
     with open(VERIFICATION, newline="", encoding="utf-8") as fh:
         return {
-            row["bioguide_id"]
+            row["bioguide_id"]: (row.get("verified_at") or "").strip()
             for row in csv.DictReader(fh)
             if row.get("verdict") == "OK"
         }
@@ -177,6 +177,7 @@ async def main() -> int:
                 nomination_url,
                 _clean(row.get("predecessor_name")) if nomination_url else None,
                 _clean(row.get("predecessor_source")),
+                _as_date(verified.get(canonical_id, "")),
             ))
 
         for line in skipped:
@@ -206,6 +207,7 @@ async def main() -> int:
                 "  confirmation_vote_result = $6, role_dates_source = $7, "
                 "  nomination_date = $8, nomination_url = $9, "
                 "  predecessor_name = $10, predecessor_source = $11, "
+                "  role_verified_at = $12, "
                 "  notes = NULL, updated_at = NOW() "
                 "WHERE bioguide_id = $1",
                 writes,

@@ -29,6 +29,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import date
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_INPUT = os.path.join(REPO_ROOT, "data", "executive_profiles.csv")
@@ -175,7 +176,14 @@ def main() -> int:
 
     with open(args.report, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["bioguide_id", "role_title", "role_title_source", "verdict"])
+        # `verified_at` is the date the source was actually refetched, not the
+        # date it is seeded. The publish floor expires foreign rows on it (see
+        # migration 017), so it has to record the check, not the write — a CSV
+        # seeded months after verification must not read as freshly checked.
+        checked_on = date.today().isoformat()
+        writer.writerow([
+            "bioguide_id", "role_title", "role_title_source", "verdict", "verified_at",
+        ])
         for row in rows:
             src = (row.get("role_title_source") or "").strip()
             title = (row.get("role_title") or "").strip()
@@ -184,7 +192,10 @@ def main() -> int:
                 if src and title
                 else "NO SOURCE — will not be published"
             )
-            writer.writerow([row.get("bioguide_id", ""), title, src, verdict])
+            writer.writerow([
+                row.get("bioguide_id", ""), title, src, verdict,
+                checked_on if verdict == "OK" else "",
+            ])
 
     failed = sum(1 for v in results.values() if v != "OK")
     unsourced = sum(
