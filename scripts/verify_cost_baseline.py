@@ -53,6 +53,7 @@ import asyncio
 import json
 import os
 import sys
+from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -99,19 +100,32 @@ EXPECTED_RETAINED = {
 }
 
 
-async def _rows(conn, since: str | None, days: int):
-    where = "usage_date >= $1::date" if since else \
-        f"usage_date > (CURRENT_DATE - INTERVAL '{days} days')"
-    args = [since] if since else []
-    return await conn.fetch(f"""
+async def _window_start(conn, since: date | None, days: int) -> date:
+    """Resolve one start date for BOTH queries below.
+
+    They used to derive their windows independently — the ledger honoured
+    `--since` while the article count always used `--days`. Nothing errored;
+    the volume denominator just came from a different span than the spend,
+    which silently corrupts the vol-adj column and every target computed from
+    it. One date, used twice, removes the possibility.
+    """
+    if since is not None:
+        return since
+    return await conn.fetchval(
+        f"SELECT (CURRENT_DATE - INTERVAL '{days} days')::date + 1"
+    )
+
+
+async def _rows(conn, start: date):
+    return await conn.fetch("""
         SELECT operation,
                sum(estimated_cost_usd) / count(DISTINCT usage_date) AS per_day,
                sum(call_count)         / count(DISTINCT usage_date) AS calls_per_day,
                count(DISTINCT usage_date) AS days
         FROM ai_usage_daily
-        WHERE {where}
+        WHERE usage_date >= $1
         GROUP BY operation
-    """, *args)
+    """, start)
 
 
 def _arrow(cur: float, base: float) -> str:
@@ -121,18 +135,20 @@ def _arrow(cur: float, base: float) -> str:
     return f"{pct:+6.1f}%"
 
 
-async def main(since: str | None, days: int, out_json: str | None) -> int:
+async def main(since: date | None, days: int, out_json: str | None) -> int:
     db_url = settings.database_url
     conn = await asyncpg.connect(db_url, ssl="require" if "neon.tech" in db_url else False)
     try:
-        rows = await _rows(conn, since, days)
-        # Articles/day over the same window — the denominator that turns call
-        # counts into the per-article ratio the deploy check reads.
-        arts = await conn.fetchval(f"""
+        start = await _window_start(conn, since, days)
+        rows = await _rows(conn, start)
+        # Articles/day over THE SAME window — the denominator that turns call
+        # counts into the per-article ratio the deploy check reads, and the
+        # volume ratio every adjusted figure depends on.
+        arts = await conn.fetchval("""
             SELECT count(*)::float / GREATEST(count(DISTINCT created_at::date), 1)
             FROM articles
-            WHERE created_at > (CURRENT_DATE - INTERVAL '{days} days')
-        """)
+            WHERE created_at::date >= $1
+        """, start)
     finally:
         await conn.close()
 
@@ -153,7 +169,7 @@ async def main(since: str | None, days: int, out_json: str | None) -> int:
     vol = (arts / BASELINE_ARTICLES_PER_DAY) if arts else 1.0
 
     print(f"baseline {BASELINE_START}..{BASELINE_END} (~{BASELINE_ARTICLES_PER_DAY:,} articles/day)")
-    print(f"current  {window_days} day(s), ~{arts:,.0f} articles/day  "
+    print(f"current  from {start} · {window_days} day(s), ~{arts:,.0f} articles/day  "
           f"→ volume {vol:.2f}x baseline\n")
 
     print(f"{'operation':32} {'base $/d':>9} {'now $/d':>9} {'raw':>7} "
@@ -223,7 +239,10 @@ async def main(since: str | None, days: int, out_json: str | None) -> int:
 if __name__ == "__main__":
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--since", help="ISO date; overrides --days")
+    p.add_argument("--since", type=date.fromisoformat, metavar="YYYY-MM-DD",
+                   help="ISO date; overrides --days. Validated at parse time — asyncpg\n"
+                        "needs a real date object for a date-typed parameter, and a bare\n"
+                        "string raised DataError at query time instead.")
     p.add_argument("--days", type=int, default=2, help="lookback window (default 2)")
     p.add_argument("--json", dest="out_json", help="also write the report here")
     args = p.parse_args()
