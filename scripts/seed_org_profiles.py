@@ -30,6 +30,7 @@ import csv
 import json
 import os
 import sys
+from datetime import date
 
 # Add parent dir to path so imports resolve
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -49,10 +50,12 @@ ORG_TYPES = {
     "think-tank", "advocacy", "union", "pac", "super-pac",
     "foundation", "industry-group", "agency", "other",
 }
-LEAN_VALUES = {
-    "left", "lean-left", "center", "lean-right", "right",
-    "mixed", "nonpartisan",
-}
+# No LEAN_VALUES: the Sift-assigned `political_lean` column was dropped from
+# org_profiles (D37 follow-through) — an in-house characterization of a real
+# org is exactly the unsourced-claim failure the self_description +
+# governance_structure pair replaced it with. The CSV lost the column too;
+# this script kept writing it until 2026-08-07, which meant every run died on
+# `UndefinedColumnError` before writing a single row.
 
 
 def _empty_to_none(value: str | None) -> str | None:
@@ -95,6 +98,26 @@ def _parse_bool(value: str | None) -> bool | None:
         return False
     print(f"  WARN: invalid bool '{value}' — storing FALSE (schema default)")
     return False
+
+
+def _parse_date(value: str | None) -> date | None:
+    """Parse an ISO `YYYY-MM-DD` CSV cell into a `date`.
+
+    Must return a real `date`, not the raw string: the insert casts the
+    parameter (`$13::date`), so asyncpg binds it as a date and rejects a
+    `str` with `'str' object has no attribute 'toordinal'`. Ten of the 25
+    curated rows carry a `self_description_checked` value, so this was a
+    guaranteed failure — it just never surfaced, because every run died
+    earlier on the dropped `political_lean` column.
+    """
+    v = _empty_to_none(value)
+    if v is None:
+        return None
+    try:
+        return date.fromisoformat(v)
+    except ValueError:
+        print(f"  WARN: invalid date '{value}' (want YYYY-MM-DD) — storing NULL")
+        return None
 
 
 def _parse_jsonb(value: str | None, default: str) -> str:
@@ -140,14 +163,10 @@ async def main(dry_run: bool) -> None:
 
     print(f"Loaded {len(rows)} org profiles from {CSV_PATH}")
     by_type: dict[str, int] = {}
-    by_lean: dict[str, int] = {}
     for r in rows:
         t = (r.get("type") or "").strip().lower() or "?"
-        lean = (r.get("political_lean") or "").strip().lower() or "?"
         by_type[t] = by_type.get(t, 0) + 1
-        by_lean[lean] = by_lean.get(lean, 0) + 1
     print(f"  By type: {dict(sorted(by_type.items()))}")
-    print(f"  By lean: {dict(sorted(by_lean.items()))}")
     fara_count = sum(1 for r in rows if (r.get("fara_registered") or "").strip().lower() in {"true", "yes", "1", "t", "y"})
     print(f"  FARA-registered: {fara_count}/{len(rows)}")
 
@@ -167,9 +186,6 @@ async def main(dry_run: bool) -> None:
                 "slug": slug,
                 "name": (raw.get("name") or "").strip(),
                 "type": _validate_enum(raw.get("type"), ORG_TYPES, "type", slug),
-                "political_lean": _validate_enum(
-                    raw.get("political_lean"), LEAN_VALUES, "political_lean", slug,
-                ),
                 "founded_year": _parse_int(raw.get("founded_year")),
                 "annual_budget_usd": _parse_numeric(raw.get("annual_budget_usd")),
                 "major_funders": _parse_jsonb(raw.get("major_funders"), "[]"),
@@ -182,7 +198,7 @@ async def main(dry_run: bool) -> None:
                 # Enforced below, not just by convention.
                 "self_description": _empty_to_none(raw.get("self_description")),
                 "self_description_source": _empty_to_none(raw.get("self_description_source")),
-                "self_description_checked": _empty_to_none(raw.get("self_description_checked")),
+                "self_description_checked": _parse_date(raw.get("self_description_checked")),
                 "governance_structure": _empty_to_none(raw.get("governance_structure")),
                 "governance_source": _empty_to_none(raw.get("governance_source")),
             }
@@ -208,21 +224,20 @@ async def main(dry_run: bool) -> None:
             await pool.execute(
                 """
                 INSERT INTO org_profiles
-                    (slug, name, type, political_lean, founded_year,
+                    (slug, name, type, founded_year,
                      annual_budget_usd, major_funders, fara_registered,
                      fara_countries, external_links, notes,
                      self_description, self_description_source,
                      self_description_checked, governance_structure,
                      governance_source, updated_at)
                 VALUES
-                    ($1, $2, $3, $4, $5,
-                     $6, $7::jsonb, $8,
-                     $9::jsonb, $10::jsonb, $11,
-                     $12, $13, $14::date, $15, $16, NOW())
+                    ($1, $2, $3, $4,
+                     $5, $6::jsonb, $7,
+                     $8::jsonb, $9::jsonb, $10,
+                     $11, $12, $13::date, $14, $15, NOW())
                 ON CONFLICT (slug) DO UPDATE SET
                     name              = EXCLUDED.name,
                     type              = EXCLUDED.type,
-                    political_lean    = EXCLUDED.political_lean,
                     founded_year      = EXCLUDED.founded_year,
                     annual_budget_usd = EXCLUDED.annual_budget_usd,
                     major_funders     = EXCLUDED.major_funders,
@@ -237,7 +252,7 @@ async def main(dry_run: bool) -> None:
                     governance_source        = EXCLUDED.governance_source,
                     updated_at        = NOW()
                 """,
-                row["slug"], row["name"], row["type"], row["political_lean"],
+                row["slug"], row["name"], row["type"],
                 row["founded_year"], row["annual_budget_usd"], row["major_funders"],
                 row["fara_registered"], row["fara_countries"], row["external_links"],
                 row["notes"],
