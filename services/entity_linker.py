@@ -183,6 +183,42 @@ _REGEX_INELIGIBLE_NAMES: frozenset[str] = frozenset({
     # Blocks the bare word only. The curated "stat news" alias is unaffected
     # (it is a different key) and is what keeps the outlet linkable.
     "stat",
+    # The four #141 kept and #151 re-flagged. Rates below are third-party
+    # chips only — `the hill` had 44 of its 84 sitting on The Hill's own
+    # articles, and a self-reference proves nothing (the `stat` lesson).
+    # Measured 2026-08-07 over every stored chip, then hand-classified.
+    #
+    #   variety        81%  45 of 70 all-lowercase, plus 12 of 25 cased
+    #   the hill       88%  "King of the Hill", "the Hill Country", "the Hill
+    #                       Dickinson Stadium", "The Hill & Valley Forum",
+    #                       "returns to the Hill" (Capitol Hill)
+    #   the athletic   53%  65 of 127 all-lowercase ("the athletic director")
+    #   wired          44%  19 of 79 all-lowercase ("electronically wired"),
+    #                       plus 8 of 30 cased ("Wired Headphones", "Ring's
+    #                       Wired Doorbell", "Wired for Security")
+    #
+    # Every one clears the 40% (`the atlantic`) / 47% (`the verge`) bar that
+    # earned the entries above, so as case-insensitive keys they belong here.
+    #
+    # **#151 proposed a casing rule instead, and the measurement does not
+    # support it for three of the four.** The issue's own caveat — "worth
+    # measuring what share of each name's remaining false positives are
+    # title-case" — is the whole answer: `Variety` is still 48% wrong when
+    # correctly cased ("Outstanding Variety Series", "Garden Variety", "A
+    # Variety Of Content"), and `the Hill` 86% ("King of the Hill"). Casing
+    # cannot separate a proper noun from a title-cased common noun.
+    #
+    # `the athletic` is the one it does fix, and it is restored by the cased
+    # alias "The Athletic" (migration 017): both false chips in that sample
+    # were "The athletic", which an exact-case key excludes by construction.
+    # `wired` measures 27% cased — below the blocklist bar but well above the
+    # ~12-15% this file has knowingly tolerated, so it is left to the LLM
+    # path pending a narrower form; nearly every true hit is the byline
+    # "(Author/Wired)", which is the shape to measure next.
+    "variety",
+    "the hill",
+    "the athletic",
+    "wired",
 })
 
 # The same floor for keys that came from the curated entity_aliases table.
@@ -299,13 +335,28 @@ def build_search_dict(
             # before the curated-alias floor below so the alias table cannot
             # reintroduce one. The row itself is untouched — the LLM linker
             # reads `rows`, not this dict, and still gets to link it.
-            if normalized in _REGEX_INELIGIBLE_NAMES:
+            if normalized in _REGEX_INELIGIBLE_NAMES and normalized not in cased:
                 ineligible += 1
                 logger.debug(
                     "entity_linker: %r is regex-ineligible (common English) — "
                     "LLM path only", normalized,
                 )
                 continue
+            # A case-sensitive alias may restore a blocklisted name, because it
+            # is not the key that was blocked. Every entry in
+            # _REGEX_INELIGIBLE_NAMES is a measurement of the *case-insensitive*
+            # key: "the athletic" is 53% the athletic director, while "The
+            # Athletic" is the outlet. Same escape hatch the blocklist already
+            # documents ("curate a narrower alias"), with casing as the
+            # narrowing instead of extra words.
+            #
+            # This does hand the curator the safety catch: the seeder can no
+            # longer refuse a cased alias on a blocked name, so nothing stops
+            # someone re-adding "Nature", which is still ~93% the common noun.
+            # That catch was never a precision guarantee — it existed to stop a
+            # row that would be *stored and then silently ignored*, which a
+            # cased alias is not. Precision is, as everywhere else here, the
+            # measurement recorded in `notes`.
             # Curated keys get the lower floor: the 4-char rule is a proxy for
             # "derived, so unvouched-for", and a hand-checked row is exactly
             # the case it was never meant to catch. See _MIN_CURATED_KEY_LENGTH.

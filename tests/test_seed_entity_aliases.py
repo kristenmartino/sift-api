@@ -151,9 +151,15 @@ def test_no_shipped_alias_is_dropped_by_the_linker():
 
     for row in _csv_rows():
         alias = (row["alias"] or "").strip().lower()
+        match_case = (row.get("match_case") or "").strip().lower() in {
+            "true", "yes", "1", "t", "y"}
         assert len(alias) >= _MIN_CURATED_KEY_LENGTH, alias
         assert alias not in _STOPWORDS, alias
-        assert alias not in _REGEX_INELIGIBLE_NAMES, alias
+        # A cased alias is allowed to sit on a blocked name — it is not the
+        # key the blocklist measured. See build_search_dict, and
+        # test_a_cased_alias_restores_a_blocklisted_name.
+        if not match_case:
+            assert alias not in _REGEX_INELIGIBLE_NAMES, alias
 
 
 def test_stat_news_has_a_curated_alias():

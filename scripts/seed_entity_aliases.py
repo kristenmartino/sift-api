@@ -232,12 +232,18 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
             if probe in _STOPWORDS:
                 rejected.append((alias, "is a linker stopword"))
                 continue
-            if probe in _REGEX_INELIGIBLE_NAMES:
+            if probe in _REGEX_INELIGIBLE_NAMES and not match_case:
                 # build_search_dict drops these BEFORE the curated floor, so an
                 # alias equal to a blocked name is accepted here and silently
                 # ignored by the linker — the "row is a lie" case this check
                 # exists to prevent, and the one it used to miss. The escape
                 # hatch is a narrower form: "stat news", not "stat".
+                #
+                # `and not match_case` because a cased alias is not the key
+                # that was blocked: every blocklist entry measures the
+                # case-insensitive form, and build_search_dict lets a cased
+                # one through for that reason. It is not silently ignored, so
+                # the row is not a lie, so this check does not apply.
                 rejected.append((alias, "is a regex-ineligible catalog name"))
                 continue
             # 4. Must not be another entity's canonical name.

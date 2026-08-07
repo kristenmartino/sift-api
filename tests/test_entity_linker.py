@@ -497,12 +497,23 @@ def test_stat_news_stays_linkable_through_its_curated_alias():
 
 def test_unlisted_lookalike_names_are_untouched():
     """Measured and deliberately kept: blocking these would cost far more real
-    links than it saves. Guards against over-broad additions to the blocklist."""
+    links than it saves. Guards against over-broad additions to the blocklist.
+
+    Three of the original four moved to the blocklist on 2026-08-07 (#151),
+    which is why they are gone from this list rather than merely re-worded.
+    Re-measuring third-party chips only put `variety` at 81% false, `the hill`
+    at 88% and `the athletic` at 53% — all past the 40% bar the entries above
+    were set at. `the athletic` comes back through the cased alias tested in
+    test_a_cased_alias_restores_a_blocklisted_name; the other two go to the
+    LLM path, which reads context and can tell an outlet from an adjective.
+
+    What stays here is the case this test was really for: a name that looks
+    like it belongs on the blocklist and measures clean (`the guardian`, ~3%).
+    """
     for slug, name, real in [
-        ("the-athletic", "The Athletic", "Ranked in the top 20 by The Athletic."),
-        ("the-hill", "The Hill", "According to The Hill, the vote slipped."),
         ("the-guardian", "The Guardian", "Records reviewed by The Guardian show delays."),
-        ("variety", "Variety", "Variety published its annual New Leaders list."),
+        ("the-economist", "The Economist", "First reported by The Economist."),
+        ("forbes", "Forbes", "Forbes ranked the firm eighth."),
     ]:
         search_dict = build_search_dict(_outlet_catalog(slug, name))
         assert [link["canonical_id"] for link in link_text(real, search_dict)] == [slug]
@@ -942,21 +953,21 @@ def test_uncased_alias_would_have_matched_the_common_noun():
     assert link_text("The shop sells ice cream and coffee.", d) != []
 
 
-def test_cased_alias_cannot_smuggle_a_regex_ineligible_name():
-    """Capitalizing a blocked name must not make it admissible.
+def test_a_blocked_name_is_not_reachable_by_casing_the_canonical_name():
+    """The canonical name is still gated by the blocklist, in every casing.
 
-    build_search_dict tests _REGEX_INELIGIBLE_NAMES against the normalized
-    form precisely so "Nature" cannot get in where "nature" cannot.
+    This asserted more than that until 2026-08-07: that a *curated cased
+    alias* could not restore a blocked name either. #151 is why it changed —
+    `the athletic` measures 53% false as a case-insensitive key and ~0% as
+    "The Athletic", so the two are different claims and the blocklist only
+    ever measured the first. Only an explicit `match_case` alias crosses;
+    the name itself never does, which is what this still pins.
     """
     catalog = build_catalog(
         outlets=[{"slug": "nature", "name": "Nature"}],
         politicians=[], orgs=[], bills=[],
-        aliases=[{"alias": "Nature", "entity_type": "outlet",
-                  "canonical_id": "nature", "match_case": True}],
     )
-    d = build_search_dict(catalog)
-    assert "Nature" not in d
-    assert "nature" not in d
+    assert build_search_dict(catalog) == {}
 
 
 def test_cased_and_uncased_keys_that_collide_still_drop_each_other():
@@ -993,3 +1004,68 @@ def test_missing_match_case_key_reads_as_false():
     row = next(r for r in catalog if r["type"] == "outlet")
     assert "cased" not in row
     assert "cnn" in build_search_dict(catalog)
+
+
+# ── #151: the four names re-blocked, one restored by casing ───
+
+
+def _outlet_cat(slug, name, alias=None, match_case=False):
+    return build_catalog(
+        outlets=[{"slug": slug, "name": name}],
+        politicians=[], orgs=[], bills=[],
+        aliases=([{"alias": alias, "entity_type": "outlet",
+                   "canonical_id": slug, "match_case": match_case}]
+                 if alias else None),
+    )
+
+
+@pytest.mark.parametrize("slug,name", [
+    ("variety", "Variety"),
+    ("the-hill", "The Hill"),
+    ("the-athletic", "The Athletic"),
+    ("wired", "WIRED"),
+])
+def test_the_four_151_names_are_no_longer_regex_keys(slug, name):
+    """Each measured above the 40% bar as a case-insensitive key (#151)."""
+    assert build_search_dict(_outlet_cat(slug, name)) == {}
+
+
+@pytest.mark.parametrize("prose", [
+    "The athletic director believes the school is at a crossroads.",
+    "A Variety Of Content Coming, says the CEO.",
+    "Online age verification is the hill to die on.",
+    "Trump's payout was electronically wired to E. Jean Carroll.",
+    "Ring's Wired Doorbell Pro is cheaper than usual.",
+    "King of the Hill Season 15 gets a release date.",
+])
+def test_the_common_noun_readings_no_longer_chip(prose):
+    catalog = (_outlet_cat("variety", "Variety")
+               + _outlet_cat("the-hill", "The Hill")
+               + _outlet_cat("the-athletic", "The Athletic")
+               + _outlet_cat("wired", "WIRED"))
+    assert link_text(prose, build_search_dict(catalog)) == []
+
+
+def test_a_cased_alias_restores_a_blocklisted_name():
+    """"The Athletic" is not the key that was blocked — "the athletic" was."""
+    d = build_search_dict(
+        _outlet_cat("the-athletic", "The Athletic", "The Athletic", True))
+    assert d == {"The Athletic": ("outlet", "the-athletic")}
+    out = link_text("Russini resigned from The Athletic on Friday.", d)
+    assert [x["canonical_id"] for x in out] == ["the-athletic"]
+
+
+def test_the_restored_alias_still_ignores_the_common_noun():
+    d = build_search_dict(
+        _outlet_cat("the-athletic", "The Athletic", "The Athletic", True))
+    # The two false chips a 14-sample turned up were both this spelling.
+    assert link_text("The athletic director resigned.", d) == []
+    assert link_text("the athletic department is under review", d) == []
+
+
+def test_an_uncased_alias_still_cannot_restore_a_blocklisted_name():
+    """The bypass is for cased aliases only — otherwise the blocklist is
+    trivially defeatable and the row would be stored then ignored."""
+    d = build_search_dict(
+        _outlet_cat("the-athletic", "The Athletic", "the athletic", False))
+    assert d == {}
