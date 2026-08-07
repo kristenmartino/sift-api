@@ -98,9 +98,22 @@ def _format_catalog_block(catalog: list[CatalogEntry]) -> str:
         by_type.setdefault(row["type"], []).append(row)
 
     lines: list[str] = []
+    # Keep these descriptions true to what the roster actually holds. They are
+    # the model's only cue for what a section covers, so an understated one
+    # suppresses real matches: this read "sitting U.S. Congress members" while
+    # the roster already carried 111 executive, foreign-executive, and SCOTUS
+    # rows (migrations 015/016), and "think tanks, advocacy, PACs" while 93 of
+    # the 103 orgs were federal agencies.
     type_headings = {
-        "politician": "POLITICIANS (sitting U.S. Congress members)",
-        "org": "ORGANIZATIONS (think tanks, advocacy, PACs)",
+        "politician": (
+            "PUBLIC OFFICIALS (sitting U.S. Congress members; current and "
+            "former U.S. executive-branch officials; heads of state and "
+            "government of other countries; U.S. Supreme Court Justices)"
+        ),
+        "org": (
+            "ORGANIZATIONS (U.S. federal agencies and departments, think "
+            "tanks, advocacy groups, PACs)"
+        ),
         "bill": "BILLS",
         "outlet": "OUTLETS (news organizations)",
     }

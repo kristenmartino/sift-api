@@ -67,7 +67,7 @@ SAMPLE_CATALOG = [
 def test_format_catalog_block_groups_by_type():
     text = _format_catalog_block(SAMPLE_CATALOG)
     # Each type heading appears exactly once.
-    for heading in ("POLITICIANS", "ORGANIZATIONS", "BILLS", "OUTLETS"):
+    for heading in ("PUBLIC OFFICIALS", "ORGANIZATIONS", "BILLS", "OUTLETS"):
         assert text.count(heading) == 1, heading
     # Canonical_id + primary_name on the entry lines.
     assert "S000148 | Chuck Schumer" in text
@@ -80,9 +80,31 @@ def test_format_catalog_block_skips_missing_types():
         {"type": "politician", "canonical_id": "X", "primary_name": "X Y", "aliases": []},
     ]
     text = _format_catalog_block(catalog)
-    assert "POLITICIANS" in text
+    assert "PUBLIC OFFICIALS" in text
     assert "OUTLETS" not in text
     assert "ORGANIZATIONS" not in text
+
+
+def test_politician_heading_covers_the_whole_roster():
+    """The heading is the model's only cue for what the section contains.
+
+    It described the roster as "sitting U.S. Congress members" long after
+    migrations 015/016 added executive, foreign-executive, and SCOTUS rows,
+    which understates the section to the model. Assert on the roles rather
+    than the exact wording so a rephrase doesn't fail, but a silent
+    narrowing does.
+    """
+    text = _format_catalog_block(SAMPLE_CATALOG).lower()
+    for role in ("congress", "executive", "supreme court"):
+        assert role in text, role
+    assert "sitting u.s. congress members)" not in text
+
+
+def test_org_heading_names_federal_agencies():
+    """90% of org_profiles are federal agencies; the heading listed only
+    think tanks, advocacy, and PACs."""
+    text = _format_catalog_block(SAMPLE_CATALOG).lower()
+    assert "agencies" in text
 
 
 # ── Prompts ─────────────────────────────────────────────────────────
