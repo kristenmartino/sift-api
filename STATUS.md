@@ -109,6 +109,21 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
 ## Recent decisions
 
+- **2026-08-07** — **#151 asked for a casing rule for four names; measuring it says casing fixes exactly one ([#151](https://github.com/kristenmartino/sift-api/issues/151)).** The issue proposed rejecting all-lowercase matched spans, and flagged its own caveat: *"worth measuring what share of each name's remaining false positives are title-case before committing to the design."* That caveat is the whole answer. Counting third-party chips only — `the hill` had **44 of 84 on The Hill's own articles**, and a self-reference proves nothing (the `stat` lesson) — then hand-classifying the cased remainder:
+
+  | name | false, all-in | still false when correctly cased |
+  |---|---|---|
+  | `the hill` | 88% | **86%** — "King of the Hill", "the Hill Country", "the Hill Dickinson Stadium", "The Hill & Valley Forum", "returns to the Hill" |
+  | `variety` | 81% | **48%** — "Outstanding Variety Series", "Garden Variety", "A Variety Of Content" |
+  | `the athletic` | 53% | **~0%** — the two false in a 14-chip sample were both "The athletic" |
+  | `wired` | 44% | **27%** — "Wired Headphones", "Ring's Wired Doorbell", "Wired for Security" |
+
+  **Casing cannot separate a proper noun from a title-cased common noun**, and headline case is everywhere in this corpus. All four clear the 40% (`the atlantic`) / 47% (`the verge`) bar as case-insensitive keys, so all four are blocklisted. `the athletic` is restored by the cased alias **"The Athletic"** — 55 chips survive of 127, and the 72 removed are the ones that were wrong. `variety`, `wired` and `the hill` go to the LLM path, which reads context. Net across the four: **360 chips → 55**.
+
+  **`wired` is the judgment call to revisit.** At 27% cased it sits in the band this file has never occupied — below the 40% that earns a blocklist entry, well above the ~12-15% knowingly tolerated. Blocklisting it costs ~44 true chips. Nearly every true hit is the byline form "(Author/Wired)", so the measured next step is a narrower alias, not a looser bar.
+
+  **The mechanism change: a `match_case` alias may now restore a blocklisted name.** Every blocklist entry measures the *case-insensitive* key, so a cased alias is a different claim, not a loophole — the same escape hatch the blocklist already documents, with casing as the narrowing instead of extra words. This reverses an assertion added the same day with migration 017. That check was never a precision guarantee; it existed to stop a row being **stored and then silently ignored**, which a cased alias is not.
+
 - **2026-08-07** — **Casing is a per-alias property, not a global matcher setting (migration 017).** `ICE` was the most-mentioned agency the linker could not name: **1,725 articles** carry it whole-word in uppercase, 1,386 of them politics, against a dossier that has existed the whole time and links in 8 of 300 sampled. The blocker was never curation — `_word_pattern` compiles every key with `IGNORECASE`, so the alias `ice` would also fire on the **672** occurrences of "ice"/"Ice" across the 85k sports and 48k entertainment rows. `entity_aliases.match_case` lets one row opt out of `IGNORECASE` while every other row keeps the behaviour it was curated under.
 
   **Measured before building, which is what decided it.** 15 of 15 randomly sampled uppercase occurrences were the agency, and **0 titles in the corpus are all-caps**, so a shouted headline cannot defeat the casing — the failure mode that would have killed the idea. Known cost: ~5 business/energy articles where ICE is Intercontinental Exchange. End-to-end against the prod catalog: **600/600** uppercase-ICE articles link, **0/424** lowercase-only articles falsely link.
