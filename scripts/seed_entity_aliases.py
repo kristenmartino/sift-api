@@ -14,7 +14,7 @@ false-matched constantly. See politician_aliases() in services/entity_linker.py.
 The lesson was that derived aliases are unsafe, not that aliases are — so every
 row here is hand-checked and this script refuses anything it cannot verify.
 
-Four validations, all fatal to the row (never to the run):
+Five validations, all fatal to the row (never to the run):
   1. The target must exist in the right profile table. A dangling alias means
      a dossier was deleted or a slug changed — the D40 drift failure.
   2. The alias must survive build_search_dict: >= _MIN_CURATED_KEY_LENGTH and
@@ -23,10 +23,14 @@ Four validations, all fatal to the row (never to the run):
      rule exists to suppress *derived* keys, and applying it here would reject
      the three-letter outlet names ("CNN", "NPR", "Vox", the bare "BBC") that
      are among the most-mentioned entities in the corpus.
-  3. The alias must not already be some *other* entity's canonical name.
+  3. The alias must not be a name `_REGEX_INELIGIBLE_NAMES` blocks. That
+     check runs ahead of the curated floor in build_search_dict, so such a
+     row would be stored and then ignored. Curate a narrower form instead —
+     "stat news" rather than "stat".
+  4. The alias must not already be some *other* entity's canonical name.
      Aliasing "Congress" onto an org is fine; aliasing "Susan Collins" onto
      someone else is not.
-  4. The alias must be unambiguous within the catalog — if it appears as a
+  5. The alias must be unambiguous within the catalog — if it appears as a
      whole word in another profile name, that collision must be one the
      linker can actually resolve. This is the check that keeps "Kennedy",
      "Miller" and "Collins" out. See `blocking_conflicts` for what counts
@@ -50,7 +54,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import asyncpg
 
 from app.config import settings
-from services.entity_linker import _MIN_CURATED_KEY_LENGTH, _STOPWORDS
+from services.entity_linker import (
+    _MIN_CURATED_KEY_LENGTH,
+    _REGEX_INELIGIBLE_NAMES,
+    _STOPWORDS,
+)
 
 VALID_TYPES = {"politician", "org", "bill", "outlet"}
 
@@ -181,7 +189,15 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
             if alias in _STOPWORDS:
                 rejected.append((alias, "is a linker stopword"))
                 continue
-            # 3. Must not be another entity's canonical name.
+            if alias in _REGEX_INELIGIBLE_NAMES:
+                # build_search_dict drops these BEFORE the curated floor, so an
+                # alias equal to a blocked name is accepted here and silently
+                # ignored by the linker — the "row is a lie" case this check
+                # exists to prevent, and the one it used to miss. The escape
+                # hatch is a narrower form: "stat news", not "stat".
+                rejected.append((alias, "is a regex-ineligible catalog name"))
+                continue
+            # 4. Must not be another entity's canonical name.
             if alias in canonical_names:
                 owner = next(
                     ((t, i) for t, i, n in names if n == alias and (t, i) != (etype, cid)),
@@ -190,7 +206,7 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
                 if owner is not None:
                     rejected.append((alias, f"is the canonical name of {owner[0]} {owner[1]!r}"))
                     continue
-            # 4. Any remaining ambiguity must be one longest-match-wins fixes.
+            # 5. Any remaining ambiguity must be one longest-match-wins fixes.
             hits = blocking_conflicts(alias, etype, cid, names)
             if hits:
                 sample = ", ".join(f"{t}:{i}" for t, i in hits[:3])

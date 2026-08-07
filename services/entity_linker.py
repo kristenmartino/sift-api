@@ -123,14 +123,37 @@ _MIN_KEY_LENGTH = 4
 #   slate            ~70%  "a robust slate of returning shows"
 #   the verge         47%  "on the verge of" — 14 of 30 sampled
 #   the atlantic      40%  "the Atlantic Ocean", "the Atlantic Division"
+#   stat             100%  of third-party copy — see below
+#
+# `stat` was added 2026-08-06, and the first audit had cleared it at "~0%".
+# **Count the share separately for the outlet's OWN articles and for everybody
+# else's.** Of 873 stored `stat-news` chips, 762 sat on STAT News's own copy
+# and 111 on third-party copy, so a pooled rate reads 12.7% — respectable, and
+# wrong. Split, it is 0% on STAT's own articles and **111 of 111 on everyone
+# else's**: "Red Sox's Most Absurd Stat", "this Walker Kessler stat", "add to
+# your cart stat". A self-reference is the one match that proves nothing, since
+# the outlet is already named in `source_name`; the corpus carries **zero**
+# third-party mentions of STAT in any casing. That is the shape to watch for on
+# any outlet that publishes into its own corpus, and it is invisible to a
+# pooled sample no matter how randomly it is drawn.
 #
 # Deliberately NOT blocked, having been measured rather than assumed:
 # the athletic (~12% — "the athletic department"), the hill (~15%), variety
-# (~6%), the guardian (~3%), stat / wired / forbes / the economist /
-# national review / the dispatch (~0%). "the federalist" survives on its own
-# because longest-match-wins hands "the Federalist Society" to the org row.
-# Every `org_profiles.name` and `bill_profiles.short_title` was audited too:
-# all are distinctive proper nouns, none collide.
+# (~6%), the guardian (~3%), wired / forbes / the economist / national review /
+# the dispatch (~0%). "the federalist" survives on its own because
+# longest-match-wins hands "the Federalist Society" to the org row. Every
+# `org_profiles.name` and `bill_profiles.short_title` was audited too: all are
+# distinctive proper nouns, none collide.
+#
+# **Those four rates are under review and are probably too low** (sift-api#151,
+# measured 2026-08-06). Screening every stored chip for an all-lowercase
+# `surface_form` — a rendering a proper noun essentially never takes in edited
+# copy — flags `variety` 42 of 67 chips, `the athletic` 64 of 123, `wired` 19
+# of 79 and `the hill` 3 of 84, and every one sampled was the common noun ("a
+# variety of", "the athletic department", "electronically wired to", "the hill
+# to die on"). They are NOT blocked here because, unlike `stat`, each also has
+# real correctly-cased third-party mentions that a blocklist would destroy;
+# the fix they need is a casing rule, not a blocklist entry. See #151.
 #
 # Like `_STOPWORDS`, this applies to curated `entity_aliases` rows as well —
 # a blocked name cannot be smuggled back in through the alias table. That is
@@ -147,6 +170,9 @@ _REGEX_INELIGIBLE_NAMES: frozenset[str] = frozenset({
     "the atlantic",
     "the times",
     "the free press",
+    # Blocks the bare word only. The curated "stat news" alias is unaffected
+    # (it is a different key) and is what keeps the outlet linkable.
+    "stat",
 })
 
 # The same floor for keys that came from the curated entity_aliases table.
