@@ -75,6 +75,15 @@ MAX_QUEUE = 200
 RECENCY_WINDOW_HOURS = 48
 
 
+# Neighbours between this and SIMILARITY_THRESHOLD are recorded but not acted
+# on. They exist to answer "is 0.60 leaving matches on the table?" — a question
+# the threshold calibration cannot answer about itself, because its 283 pairs
+# were only ever found inside a ~3.3h window and so under-represent exactly the
+# long-range matches this design targets. Without this band, a threshold set
+# too high looks identical to a corpus with nothing to find.
+NEAR_MISS_FLOOR = 0.50
+
+
 class Candidate(TypedDict):
     """One new article and the neighbours worth asking the LLM about."""
 
@@ -85,6 +94,13 @@ class Candidate(TypedDict):
     existing_stories: dict[str, list[dict]]
     # Strong neighbours with no story yet — a potential new cluster.
     loose_neighbours: list[dict]
+    # NEAR_MISS_FLOOR <= similarity < threshold. Observation only.
+    near_misses: list[dict]
+    # Unique outlets across the article and its strong neighbours. A new
+    # cluster needs >= 2 to survive the gate in incremental_threading, so this
+    # predicts gate survival before any LLM call is made. Irrelevant to the
+    # attach case, where the story already exists.
+    unique_outlets: int
 
 
 async def fetch_queue(pool, limit: int = MAX_QUEUE) -> list[dict]:
@@ -152,24 +168,44 @@ async def find_candidates(
 
         existing: dict[str, list[dict]] = {}
         loose: list[dict] = []
+        near: list[dict] = []
         for r in rows:
-            if (r["similarity"] or 0) < threshold:
+            sim = r["similarity"] or 0
+            if sim < NEAR_MISS_FLOOR:
                 # Ordered by distance, so everything after this is worse.
                 break
             n = dict(r)
-            if n["story_id"]:
+            if sim < threshold:
+                near.append(n)
+            elif n["story_id"]:
                 existing.setdefault(n["story_id"], []).append(n)
             else:
                 loose.append(n)
 
+        strong = [*[x for v in existing.values() for x in v], *loose]
+        outlets = {article.get("source_name")} | {
+            n.get("source_name") for n in strong
+        }
         out.append(Candidate(
-            article=article, existing_stories=existing, loose_neighbours=loose,
+            article=article,
+            existing_stories=existing,
+            loose_neighbours=loose,
+            near_misses=near,
+            unique_outlets=len([o for o in outlets if o]),
         ))
     return out
 
 
 def summarize(candidates: list[Candidate]) -> dict:
-    """Counts for the structured run event, and for shadow-mode comparison."""
+    """Counts for the structured run event, and for shadow-mode comparison.
+
+    Candidate counts are an UPPER BOUND on grouping, not a prediction of it.
+    Two filters sit between them and a grouped article, and neither runs here:
+    the confirmer rejects same-topic-different-event, and a new cluster needs
+    >= 2 unique outlets. `would_survive_outlet_gate` closes the second gap for
+    free; only the confirmer's judgement is still unmeasured, which is what
+    the dry run in `shadow_report` exists for.
+    """
     attach = sum(1 for c in candidates if c["existing_stories"])
     new_cluster = sum(
         1 for c in candidates
@@ -179,28 +215,49 @@ def summarize(candidates: list[Candidate]) -> dict:
         1 for c in candidates
         if not c["existing_stories"] and not c["loose_neighbours"]
     )
+    # Of the new-cluster candidates, how many bring enough outlet diversity to
+    # survive MIN_UNIQUE_OUTLETS. Attach candidates are exempt — their story
+    # already exists and already passed the gate.
+    survivable = sum(
+        1 for c in candidates
+        if not c["existing_stories"] and c["loose_neighbours"]
+        and c.get("unique_outlets", 0) >= 2
+    )
+    # Articles with nothing above the threshold but something in the near-miss
+    # band. A large number here means 0.60 may be too strict.
+    near_only = sum(
+        1 for c in candidates
+        if not c["existing_stories"] and not c["loose_neighbours"]
+        and c.get("near_misses")
+    )
     return {
         "queued": len(candidates),
         "attach_candidates": attach,
         "new_cluster_candidates": new_cluster,
+        "new_clusters_passing_outlet_gate": survivable,
         "parked": parked,
+        "parked_with_near_miss": near_only,
+        "near_miss_floor": NEAR_MISS_FLOOR,
         # The share needing any LLM opinion at all. Everything else is free.
         "llm_relevant": attach + new_cluster,
     }
 
 
-async def shadow_report(pool) -> dict:
+async def shadow_report(pool, *, confirm=None) -> dict:
     """Run the candidate step read-only and report what it *would* group.
 
-    No LLM call, no writes, nothing marked threaded. This is how the cutover
-    bar in docs/INCREMENTAL_THREADING.md gets evidence instead of a projection
-    — the repo's own standard (STATUS.md:21) is that a detector never run
-    against a known-true case is an untested detector.
+    Writes nothing and marks nothing threaded. This is how the cutover bar in
+    docs/INCREMENTAL_THREADING.md gets evidence instead of a projection — the
+    repo's own standard (STATUS.md:21) is that a detector never run against a
+    known-true case is an untested detector.
 
-    The number to watch across runs is `llm_relevant` against the live path's
-    `cluster_stats` + `synthesis_stats`: the live path pays ~5.4 clusterer
-    calls plus ~23 synthesize calls per run, this would pay one batched
-    confirmation for `llm_relevant` articles and nothing for the rest.
+    Candidate counts alone are an UPPER BOUND, not a prediction: the confirmer
+    rejects same-topic-different-event, and a new cluster needs >= 2 outlets.
+    `summarize` now measures the outlet gate for free. Pass `confirm` to also
+    exercise the LLM judgement — it runs the real confirmation call and
+    reports what it decided, still without writing anything. That costs about
+    $0.005 per run and is the only part of the cutover evidence that cannot be
+    gathered for nothing.
     """
     queue = await fetch_queue(pool)
     if not queue:
@@ -208,6 +265,24 @@ async def shadow_report(pool) -> dict:
 
     candidates = await find_candidates(pool, queue)
     report = {"event": "incremental_threading_shadow", **summarize(candidates)}
+
+    if confirm is not None:
+        relevant = [
+            c for c in candidates
+            if c["existing_stories"] or c["loose_neighbours"]
+        ]
+        if relevant:
+            decisions = await confirm(relevant)
+            actions = {"attach": 0, "new": 0, "none": 0}
+            for d in decisions.values():
+                actions[d.get("action", "none")] = actions.get(d.get("action", "none"), 0) + 1
+            report["dry_run"] = actions
+            # The number the cutover bar actually needs: confirmed groupings,
+            # after both filters, against the live path's grouped count.
+            report["would_group"] = actions["attach"] + actions["new"]
+            report["confirm_rate"] = round(
+                report["would_group"] / len(relevant), 3
+            )
 
     # Per-category, because the live path's failure is category-shaped: sports
     # groups at 0.9% and energy at 30%, purely because LIMIT 50 collapses the

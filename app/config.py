@@ -71,6 +71,16 @@ class Settings(BaseSettings):
     # bar in docs/INCREMENTAL_THREADING.md gets evidence.
     incremental_threading_shadow: bool = True
 
+    # Also run the real confirmation call during shadow, logging what it
+    # decided and still writing nothing. OFF by default because it is the one
+    # piece of cutover evidence that costs money — ~$0.005/run, ~$0.24/day.
+    #
+    # It exists because candidate counts are an upper bound, not a prediction:
+    # the free shadow measures supply and the outlet gate, but only this
+    # measures whether the LLM agrees the candidates are the same *event*
+    # rather than merely the same topic. Turn it on for a day before cutover.
+    incremental_threading_confirm_dryrun: bool = False
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
