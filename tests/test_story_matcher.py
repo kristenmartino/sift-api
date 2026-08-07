@@ -14,12 +14,14 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services.story_matcher import (
+    NEAR_MISS_FLOOR,
     RECENCY_WINDOW_HOURS,
     SIMILARITY_THRESHOLD,
     Candidate,
     fetch_queue,
     find_candidates,
     mark_threaded,
+    shadow_report,
     summarize,
 )
 
@@ -106,16 +108,52 @@ async def test_multiple_neighbours_group_under_their_own_stories():
     assert [n["id"] for n in c["loose_neighbours"]] == ["n4"]
 
 
+def _cand(article, existing=None, loose=None, near=None, outlets=1):
+    return Candidate(article=article, existing_stories=existing or {},
+                     loose_neighbours=loose or [], near_misses=near or [],
+                     unique_outlets=outlets)
+
+
 def test_summarize_counts_what_the_run_event_reports():
     cands = [
-        Candidate(article=_article("a1"), existing_stories={"s": [{}]}, loose_neighbours=[]),
-        Candidate(article=_article("a2"), existing_stories={}, loose_neighbours=[{}]),
-        Candidate(article=_article("a3"), existing_stories={}, loose_neighbours=[]),
+        _cand(_article("a1"), existing={"s": [{}]}),
+        _cand(_article("a2"), loose=[{}], outlets=2),
+        _cand(_article("a3")),
     ]
-    assert summarize(cands) == {
-        "queued": 3, "attach_candidates": 1, "new_cluster_candidates": 1,
-        "parked": 1, "llm_relevant": 2,
-    }
+    s = summarize(cands)
+    assert s["queued"] == 3
+    assert s["attach_candidates"] == 1
+    assert s["new_cluster_candidates"] == 1
+    assert s["parked"] == 1
+    assert s["llm_relevant"] == 2
+
+
+def test_outlet_gate_is_measured_for_free_before_any_llm_call():
+    """A new cluster needs >= 2 outlets to survive. Counting that here is what
+    turns a candidate count from an upper bound into something closer to a
+    prediction — one of the two filters between candidates and grouping."""
+    cands = [
+        _cand(_article("a1"), loose=[{}], outlets=3),   # survives
+        _cand(_article("a2"), loose=[{}], outlets=1),   # one outlet, dropped
+        _cand(_article("a3"), existing={"s": [{}]}, outlets=1),  # attach, exempt
+    ]
+    s = summarize(cands)
+    assert s["new_cluster_candidates"] == 2
+    assert s["new_clusters_passing_outlet_gate"] == 1
+
+
+def test_near_miss_only_articles_are_counted_separately():
+    """If 0.60 is too strict this is where it shows. Without the band, a
+    threshold set too high is indistinguishable from a corpus with nothing
+    to find."""
+    cands = [
+        _cand(_article("a1"), near=[{"similarity": 0.55}]),
+        _cand(_article("a2")),
+    ]
+    s = summarize(cands)
+    assert s["parked"] == 2
+    assert s["parked_with_near_miss"] == 1
+    assert s["near_miss_floor"] == NEAR_MISS_FLOOR
 
 
 @pytest.mark.asyncio
@@ -149,3 +187,80 @@ async def test_mark_threaded_marks_parked_articles_too():
     await mark_threaded(pool, ["a1", "a2"])
     pool.execute.assert_awaited_once()
     assert pool.execute.call_args.args[1] == ["a1", "a2"]
+
+
+# ── near-miss band and outlet diversity ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_near_misses_are_recorded_but_not_acted_on():
+    pool = _pool([
+        _neighbour(0.70, aid="strong"),
+        _neighbour(0.55, aid="near"),
+        _neighbour(0.40, aid="weak"),
+    ])
+    [c] = await find_candidates(pool, [_article()])
+    assert [n["id"] for n in c["loose_neighbours"]] == ["strong"]
+    assert [n["id"] for n in c["near_misses"]] == ["near"]
+
+
+@pytest.mark.asyncio
+async def test_scan_still_stops_below_the_near_miss_floor():
+    """The early break moved down rather than away — everything under the
+    floor is still skipped, so widening the band costs nothing."""
+    pool = _pool([
+        _neighbour(NEAR_MISS_FLOOR - 0.01, aid="below"),
+        _neighbour(0.99, aid="unreachable"),
+    ])
+    [c] = await find_candidates(pool, [_article()])
+    assert c["near_misses"] == [] and c["loose_neighbours"] == []
+
+
+@pytest.mark.asyncio
+async def test_unique_outlets_counts_the_article_and_its_strong_neighbours():
+    pool = _pool([
+        {**_neighbour(0.80, aid="n1"), "source_name": "AP"},
+        {**_neighbour(0.75, aid="n2"), "source_name": "Reuters"},
+        {**_neighbour(0.55, aid="n3"), "source_name": "BBC"},  # near miss, excluded
+    ])
+    article = {**_article(), "source_name": "AP"}
+    [c] = await find_candidates(pool, [article])
+    # AP (article) + AP (n1) + Reuters (n2) = 2 distinct; BBC is a near miss.
+    assert c["unique_outlets"] == 2
+
+
+# ── confirm dry run ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_shadow_without_confirm_makes_no_llm_call():
+    pool = _pool([])
+    pool.fetch = AsyncMock(return_value=[])
+    r = await shadow_report(pool)
+    assert r == {"event": "incremental_threading_shadow", "queued": 0}
+
+
+@pytest.mark.asyncio
+async def test_dry_run_reports_what_the_confirmer_decided_without_writing():
+    """The one piece of cutover evidence that costs money. would_group is the
+    number the bar actually compares against the live path's grouped count."""
+    queue_row = {**_article("a1"), "image_url": None, "published_date": None,
+                 "entities": {}}
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(side_effect=[
+        [queue_row],                              # fetch_queue
+        [_neighbour(0.80, story_id="s1")],        # find_candidates
+    ])
+    pool.execute = AsyncMock()
+
+    confirm = AsyncMock(return_value={
+        "a1": {"action": "attach", "story_id": "s1", "members": []},
+    })
+    r = await shadow_report(pool, confirm=confirm)
+
+    confirm.assert_awaited_once()
+    assert r["dry_run"] == {"attach": 1, "new": 0, "none": 0}
+    assert r["would_group"] == 1
+    assert r["confirm_rate"] == 1.0
+    # Nothing written, nothing marked.
+    pool.execute.assert_not_called()

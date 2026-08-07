@@ -519,7 +519,13 @@ async def store_node(state: PipelineState) -> dict:
             from app.db import get_pool
             from services.story_matcher import shadow_report
 
-            logger.info(json.dumps(await shadow_report(await get_pool())))
+            confirm = None
+            if settings.incremental_threading_confirm_dryrun:
+                from services.story_confirmer import confirm as _c
+                confirm = _c
+            logger.info(json.dumps(
+                await shadow_report(await get_pool(), confirm=confirm)
+            ))
         except Exception as e:  # noqa: BLE001 — observation must never break ingest
             logger.warning("incremental threading shadow failed: %s", e)
 
