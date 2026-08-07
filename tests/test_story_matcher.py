@@ -15,6 +15,7 @@ import pytest
 
 from services.story_matcher import (
     NEAR_MISS_FLOOR,
+    SHADOW_SAMPLE,
     RECENCY_WINDOW_HOURS,
     SIMILARITY_THRESHOLD,
     Candidate,
@@ -121,7 +122,7 @@ def test_summarize_counts_what_the_run_event_reports():
         _cand(_article("a3")),
     ]
     s = summarize(cands)
-    assert s["queued"] == 3
+    assert s["analysed"] == 3
     assert s["attach_candidates"] == 1
     assert s["new_cluster_candidates"] == 1
     assert s["parked"] == 1
@@ -236,8 +237,28 @@ async def test_unique_outlets_counts_the_article_and_its_strong_neighbours():
 async def test_shadow_without_confirm_makes_no_llm_call():
     pool = _pool([])
     pool.fetch = AsyncMock(return_value=[])
+    pool.fetchval = AsyncMock(return_value=0)
     r = await shadow_report(pool)
-    assert r == {"event": "incremental_threading_shadow", "queued": 0}
+    assert r == {"event": "incremental_threading_shadow", "backlog": 0, "sampled": 0}
+
+
+@pytest.mark.asyncio
+async def test_shadow_samples_newest_not_the_queue():
+    """The queue is oldest-first and never drains while the flag is off, so
+    measuring it re-decides one stale slice every run — at ~10x the cost, and
+    biased favourably, because a 47h-old article sees 47h of articles
+    published after it as neighbours."""
+    pool = _pool([])
+    pool.fetchval = AsyncMock(return_value=4400)
+    pool.fetch = AsyncMock(return_value=[])
+    r = await shadow_report(pool)
+
+    sql = pool.fetch.call_args.args[0]
+    assert "ORDER BY published_date DESC" in sql
+    assert "threaded_at IS NULL" not in sql
+    assert pool.fetch.call_args.args[1] == SHADOW_SAMPLE
+    # Backlog is still reported, just not what the rates come from.
+    assert r["backlog"] == 4400
 
 
 @pytest.mark.asyncio
@@ -247,8 +268,9 @@ async def test_dry_run_reports_what_the_confirmer_decided_without_writing():
     queue_row = {**_article("a1"), "image_url": None, "published_date": None,
                  "entities": {}}
     pool = AsyncMock()
+    pool.fetchval = AsyncMock(return_value=1)
     pool.fetch = AsyncMock(side_effect=[
-        [queue_row],                              # fetch_queue
+        [queue_row],                              # fetch_recent_sample
         [_neighbour(0.80, story_id="s1")],        # find_candidates
     ])
     pool.execute = AsyncMock()

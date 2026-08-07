@@ -72,6 +72,12 @@ TOP_K = 10
 # enormous prompt. At ~40 new articles per 30-min cycle this is never hit.
 MAX_QUEUE = 200
 
+# Articles the shadow report analyses per run. Deliberately close to the real
+# steady-state arrival rate (~40 per 30-min cycle) rather than MAX_QUEUE: the
+# report exists to predict steady state, and sampling the whole backlog both
+# costs ~10x more and biases the answer. See fetch_recent_sample.
+SHADOW_SAMPLE = 40
+
 RECENCY_WINDOW_HOURS = 48
 
 
@@ -101,6 +107,60 @@ class Candidate(TypedDict):
     # predicts gate survival before any LLM call is made. Irrelevant to the
     # attach case, where the story already exists.
     unique_outlets: int
+
+
+async def queue_depth(pool) -> int:
+    """How many articles are waiting. Reported, not processed."""
+    return await pool.fetchval(
+        f"""
+        SELECT count(*) FROM articles
+        WHERE threaded_at IS NULL
+          AND from_search = false
+          AND published_date > NOW() - INTERVAL '{RECENCY_WINDOW_HOURS} hours'
+          AND embedding IS NOT NULL
+          AND jsonb_typeof(entities) = 'object'
+        """
+    ) or 0
+
+
+async def fetch_recent_sample(pool, limit: int = SHADOW_SAMPLE) -> list[dict]:
+    """The newest eligible articles — what a steady-state run actually sees.
+
+    NOT the queue. `fetch_queue` orders oldest-first, which is right for the
+    live path: it must drain the backlog without losing anything. It is wrong
+    for measurement, in two ways that both flatter the design.
+
+    Nothing drains the queue until `INCREMENTAL_THREADING_ENABLED` is on
+    (shadow reads it but never marks), so the queue stays pinned at MAX_QUEUE
+    and every run re-examines *the same* oldest 200 articles. Measured
+    2026-08-07: 104 of them relevant, 3 confirmation batches, ~$2.52/day to
+    keep re-deciding an identical slice.
+
+    Worse, that slice is the most favourable case there is. A 47-hour-old
+    article gets matched against a pool containing 47 hours of articles
+    published *after* it. In steady state an article is judged minutes after
+    ingest, when only prior articles exist as neighbours. Sampling the oldest
+    systematically overstates candidate supply — and overstating it is exactly
+    the error that would wave a cutover through.
+
+    Newest-first, bounded, is the steady-state proxy: recent arrivals, each
+    seeing only what preceded it.
+    """
+    rows = await pool.fetch(
+        f"""
+        SELECT id, source_url, source_name, title, summary, image_url,
+               published_date, category, story_id, entities
+        FROM articles
+        WHERE from_search = false
+          AND published_date > NOW() - INTERVAL '{RECENCY_WINDOW_HOURS} hours'
+          AND embedding IS NOT NULL
+          AND jsonb_typeof(entities) = 'object'
+        ORDER BY published_date DESC
+        LIMIT $1
+        """,
+        limit,
+    )
+    return [dict(r) for r in rows]
 
 
 async def fetch_queue(pool, limit: int = MAX_QUEUE) -> list[dict]:
@@ -231,7 +291,7 @@ def summarize(candidates: list[Candidate]) -> dict:
         and c.get("near_misses")
     )
     return {
-        "queued": len(candidates),
+        "analysed": len(candidates),
         "attach_candidates": attach,
         "new_cluster_candidates": new_cluster,
         "new_clusters_passing_outlet_gate": survivable,
@@ -243,28 +303,48 @@ def summarize(candidates: list[Candidate]) -> dict:
     }
 
 
-async def shadow_report(pool, *, confirm=None) -> dict:
-    """Run the candidate step read-only and report what it *would* group.
+async def shadow_report(pool, *, confirm=None, sample: int = SHADOW_SAMPLE) -> dict:
+    """Predict what incremental threading would do, without doing any of it.
 
     Writes nothing and marks nothing threaded. This is how the cutover bar in
     docs/INCREMENTAL_THREADING.md gets evidence instead of a projection — the
     repo's own standard (STATUS.md:21) is that a detector never run against a
     known-true case is an untested detector.
 
+    Analyses a bounded, newest-first SAMPLE rather than the live queue. The
+    queue is oldest-first and never drains while the flag is off, so measuring
+    it would re-decide one stale slice every run at ~10x the cost, and that
+    slice is the case most favourable to the design. See fetch_recent_sample.
+    Queue depth is still reported, because backlog size is worth knowing — it
+    is just not what the rates are computed from.
+
     Candidate counts alone are an UPPER BOUND, not a prediction: the confirmer
     rejects same-topic-different-event, and a new cluster needs >= 2 outlets.
-    `summarize` now measures the outlet gate for free. Pass `confirm` to also
-    exercise the LLM judgement — it runs the real confirmation call and
-    reports what it decided, still without writing anything. That costs about
-    $0.005 per run and is the only part of the cutover evidence that cannot be
-    gathered for nothing.
+    `summarize` measures the outlet gate for free. Pass `confirm` to exercise
+    the LLM judgement too — it runs the real confirmation call and reports
+    what it decided, still without writing. ~$0.005 per run, and the only part
+    of the cutover evidence that cannot be gathered for nothing.
     """
-    queue = await fetch_queue(pool)
-    if not queue:
-        return {"event": "incremental_threading_shadow", "queued": 0}
+    backlog = await queue_depth(pool)
+    rows = await fetch_recent_sample(pool, sample)
+    if not rows:
+        return {"event": "incremental_threading_shadow", "backlog": backlog, "sampled": 0}
 
-    candidates = await find_candidates(pool, queue)
-    report = {"event": "incremental_threading_shadow", **summarize(candidates)}
+    candidates = await find_candidates(pool, rows)
+    report = {
+        "event": "incremental_threading_shadow",
+        "backlog": backlog,
+        "sampled": len(rows),
+        **summarize(candidates),
+    }
+
+    by_cat: dict[str, int] = {}
+    for c in candidates:
+        if c["existing_stories"] or c["loose_neighbours"]:
+            cat = c["article"].get("category") or "unknown"
+            by_cat[cat] = by_cat.get(cat, 0) + 1
+    report["llm_relevant_by_category"] = by_cat
+    report["threshold"] = SIMILARITY_THRESHOLD
 
     if confirm is not None:
         relevant = [
@@ -275,25 +355,15 @@ async def shadow_report(pool, *, confirm=None) -> dict:
             decisions = await confirm(relevant)
             actions = {"attach": 0, "new": 0, "none": 0}
             for d in decisions.values():
-                actions[d.get("action", "none")] = actions.get(d.get("action", "none"), 0) + 1
+                a = d.get("action", "none")
+                actions[a] = actions.get(a, 0) + 1
             report["dry_run"] = actions
             # The number the cutover bar actually needs: confirmed groupings,
-            # after both filters, against the live path's grouped count.
+            # after both filters, comparable to the live path's grouped count
+            # because both are now measured over recent arrivals.
             report["would_group"] = actions["attach"] + actions["new"]
-            report["confirm_rate"] = round(
-                report["would_group"] / len(relevant), 3
-            )
+            report["confirm_rate"] = round(report["would_group"] / len(relevant), 3)
 
-    # Per-category, because the live path's failure is category-shaped: sports
-    # groups at 0.9% and energy at 30%, purely because LIMIT 50 collapses the
-    # window differently at different volumes.
-    by_cat: dict[str, int] = {}
-    for c in candidates:
-        if c["existing_stories"] or c["loose_neighbours"]:
-            cat = c["article"].get("category") or "unknown"
-            by_cat[cat] = by_cat.get(cat, 0) + 1
-    report["llm_relevant_by_category"] = by_cat
-    report["threshold"] = SIMILARITY_THRESHOLD
     return report
 
 
