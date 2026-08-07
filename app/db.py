@@ -410,6 +410,22 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
         """)
         # Matches the publish gate in sift/lib/db.ts listSitemapEntries, which
         # filters chamber first and then requires role_title + its source.
+        # When a role source was last refetched, and the expiry the publish
+        # floor reads (migrations/017_role_verified_at.sql). Only
+        # foreign-executive rows expire: their source is a live page that names
+        # the person, so it stops being true when they leave office. US and
+        # scotus rows rest on a statute plus a permanent Senate roll-call, and
+        # their departures are caught by the successor's confirmation instead.
+        await conn.execute(
+            "ALTER TABLE politician_profiles "
+            "ADD COLUMN IF NOT EXISTS role_verified_at DATE"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_politician_profiles_role_verified "
+            "ON politician_profiles (chamber, role_verified_at) "
+            "WHERE role_title IS NOT NULL AND role_title_source IS NOT NULL"
+        )
+
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_politician_profiles_sourced_role "
             "ON politician_profiles (chamber) "

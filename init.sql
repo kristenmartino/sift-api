@@ -336,7 +336,8 @@ CREATE TABLE IF NOT EXISTS politician_profiles (
     confirmation_vote_url           TEXT,             -- senate.gov roll-call; also sources the result
     confirmation_vote_result        TEXT,             -- verbatim, e.g. 'Confirmed 50-50'
     predecessor_name                TEXT,             -- previous holder of the office
-    predecessor_source              TEXT,             -- congress.gov PN ("vice <name>" clause) or the prior roll-call
+    predecessor_source              TEXT,
+    role_verified_at                DATE,             -- last refetch of role_title_source; expires foreign rows (017)             -- congress.gov PN ("vice <name>" clause) or the prior roll-call
     refreshed_at                    TIMESTAMPTZ DEFAULT NOW(),
     updated_at                      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -348,6 +349,9 @@ CREATE INDEX IF NOT EXISTS idx_politician_profiles_state_party
 CREATE INDEX IF NOT EXISTS idx_politician_profiles_chamber
     ON politician_profiles (chamber);
 -- Matches the publish gate in sift/lib/db.ts listSitemapEntries().
+CREATE INDEX IF NOT EXISTS idx_politician_profiles_role_verified
+    ON politician_profiles (chamber, role_verified_at)
+    WHERE role_title IS NOT NULL AND role_title_source IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_politician_profiles_sourced_role
     ON politician_profiles (chamber)
     WHERE role_title IS NOT NULL AND role_title_source IS NOT NULL;
