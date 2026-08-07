@@ -48,7 +48,12 @@ CSV_PATH = os.path.join(
 
 ORG_TYPES = {
     "think-tank", "advocacy", "union", "pac", "super-pac",
-    "foundation", "industry-group", "agency", "other",
+    "foundation", "industry-group", "agency",
+    # Intergovernmental organizations (Q8 = global, sift DECISIONS.md D47).
+    # Separate from "agency" on purpose: /agencies filters type='agency' and
+    # labels the section "Federal agencies", which the UN is not.
+    "igo",
+    "other",
 }
 # No LEAN_VALUES: the Sift-assigned `political_lean` column was dropped from
 # org_profiles (D37 follow-through) — an in-house characterization of a real
