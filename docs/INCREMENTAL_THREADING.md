@@ -8,7 +8,14 @@
 | P2 entities-lag watermark | **solved** — per-row `threaded_at` marker, no watermark |
 | P3 ship dark | **done** — flag off by default, shadow runs free every cycle |
 | Candidate engine | **done** — `services/story_matcher.py`, 10 tests, validated against prod |
-| Write path (LLM confirm → attach / synthesize) | **not started** |
+| Write path (LLM confirm → attach / synthesize) | **done** — `services/story_confirmer.py`, `workflows/incremental_threading.py`, 11 tests |
+| Cutover | **not done** — flag still off, awaiting shadow data |
+
+**Story identity is the substantive change.** `story_workflow` derives `story_id` from a sha256 of its member ids, so gaining an article makes a story a *different story* — a new row, and the old one orphaned. That plus the blanket `UPDATE articles SET story_id = NULL` is the whole mechanism behind 99.5% orphans.
+
+`seed_story_id(category, seed_member_ids)` derives an id **once, from the members that created the story**, and never again. Attaching writes one `story_id` and leaves the row alone. Deterministic rather than a uuid so a repeated seed is idempotent; derived from the seed rather than current membership so growth cannot change it.
+
+**Synthesis runs only when the outlet set changes.** `framings` is a per-outlet structure, so a story gaining its third piece from an outlet it already carries has nothing new to synthesize — the same duplicate spend #129 removed, in its incremental form.
 
 Validated against prod, 40-article simulated run: 4.5s of Postgres, $0, **18 of 40 needed an LLM opinion and 22 parked for free.** It found four outlets on the same jobs report at 0.81–0.89 similarity — one already in a story, three loose that the live path had missed.
 **Supersedes:** "raise `LIMIT 50`" (`STATUS.md` Next 3 #3, prior framing).

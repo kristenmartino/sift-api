@@ -449,6 +449,23 @@ async def store_node(state: PipelineState) -> dict:
         except Exception as e:
             logger.error("entity batch submission failed: %s", e)
 
+    from app.config import settings
+
+    # Incremental threading replaces the per-category rescan entirely when
+    # enabled: it consumes a queue across all categories in one pass, so the
+    # per-category cadence heuristics below have nothing to gate. Both paths
+    # never run together — double-threading would attach the same article
+    # twice under two different identity schemes.
+    if settings.incremental_threading_enabled:
+        try:
+            from workflows.incremental_threading import run_incremental_threading
+
+            report = await run_incremental_threading(pool)
+            return {"results": results, "total_skipped": 0, "threading": report}
+        except Exception as e:  # noqa: BLE001 — ingest must survive threading
+            logger.error("incremental threading failed: %s", e)
+            return {"results": results, "total_skipped": 0}
+
     # Run story threading for categories that received new articles.
     # Skip categories with <MIN_NEW_ARTICLES_FOR_THREADING new articles UNLESS
     # more than MAX_THREADING_INTERVAL_SECONDS has elapsed since the last
@@ -497,8 +514,6 @@ async def store_node(state: PipelineState) -> dict:
     # Postgres kNN only, no LLM call, no writes, nothing marked threaded — and
     # it runs once per pipeline run rather than per category, because the queue
     # is global by construction. Never allowed to affect the run.
-    from app.config import settings
-
     if settings.incremental_threading_shadow:
         try:
             from app.db import get_pool
