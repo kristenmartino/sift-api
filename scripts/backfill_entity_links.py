@@ -194,6 +194,51 @@ def _merge_additive(old_json: str, new_links: list[dict]) -> list[dict]:
     return merged
 
 
+# Retried once on a dropped connection. asyncpg raises these when the server
+# closed the session underneath us — distinct from a query error, and safe to
+# retry because both operations are idempotent: the read has no side effect and
+# the write is a deterministic UPDATE by primary key.
+_TRANSIENT = (
+    asyncpg.exceptions.ConnectionDoesNotExistError,
+    asyncpg.exceptions.InterfaceError,
+    ConnectionResetError,
+    OSError,
+)
+
+
+async def _fetch_chunk(pool: asyncpg.Pool, batch_ids: list[str]) -> list:
+    for attempt in (1, 2):
+        try:
+            return await pool.fetch(
+                """
+                SELECT id, title, summary, source_url, source_name,
+                       entity_links::text AS el
+                FROM articles WHERE id = ANY($1::text[])
+                """,
+                batch_ids,
+            )
+        except _TRANSIENT:
+            if attempt == 2:
+                raise
+            print("  (connection dropped on read — reconnecting)", flush=True)
+    return []
+
+
+async def _write_chunk(pool: asyncpg.Pool, writes: list[tuple[str, str]]) -> None:
+    for attempt in (1, 2):
+        try:
+            async with pool.acquire() as conn, conn.transaction():
+                await conn.executemany(
+                    "UPDATE articles SET entity_links = $1::jsonb WHERE id = $2",
+                    writes,
+                )
+            return
+        except _TRANSIENT:
+            if attempt == 2:
+                raise
+            print("  (connection dropped on write — reconnecting)", flush=True)
+
+
 async def main(
     dry_run: bool,
     include_empty: bool,
@@ -209,11 +254,16 @@ async def main(
         return 1
 
     ssl = "require" if "neon.tech" in db_url else False
-    conn = await asyncpg.connect(db_url, ssl=ssl)
+    # A pool, not a single connection. A full-corpus run holds the client open
+    # for ~an hour, and Neon closes an idle-ish session well before that: a
+    # 2026-08-05 run died at 180,000/284,540 with ConnectionDoesNotExistError
+    # mid-transaction. The pool re-establishes on acquire, so a server-side
+    # close between chunks costs nothing.
+    pool = await asyncpg.create_pool(db_url, ssl=ssl, min_size=1, max_size=3)
     try:
-        catalog = await _load_catalog(conn)
+        catalog = await _load_catalog(pool)
         search_dict = build_search_dict(catalog) if mode == "regex" else {}
-        self_outlets = await _self_outlet_map(conn) if mode == "regex" else {}
+        self_outlets = await _self_outlet_map(pool) if mode == "regex" else {}
         if mode == "regex":
             print(f"Regex mode: {len(search_dict)} search keys, "
                   f"{len(self_outlets)} source_name → outlet mappings")
@@ -238,9 +288,9 @@ async def main(
         sql = f"SELECT id FROM articles WHERE {where} ORDER BY created_at DESC"
         if limit:
             sql += f" LIMIT {int(limit)}"
-        ids = [r["id"] for r in await conn.fetch(sql, *params)]
+        ids = [r["id"] for r in await pool.fetch(sql, *params)]
 
-        total_all = await conn.fetchval("SELECT COUNT(*) FROM articles")
+        total_all = await pool.fetchval("SELECT COUNT(*) FROM articles")
         scope = "all rows" if include_empty else "already-linked rows only"
         if only_canonical:
             scope += f"; carrying {', '.join(sorted(only_canonical))}"
@@ -268,14 +318,7 @@ async def main(
         updated = cleared = added = no_change = failed = 0
         for start in range(0, len(ids), chunk_size):
             batch_ids = ids[start:start + chunk_size]
-            rows = await conn.fetch(
-                """
-                SELECT id, title, summary, source_url, source_name,
-                       entity_links::text AS el
-                FROM articles WHERE id = ANY($1::text[])
-                """,
-                batch_ids,
-            )
+            rows = await _fetch_chunk(pool, batch_ids)
             articles = [
                 {"source_url": r["source_url"], "source_name": r["source_name"],
                  "title": r["title"] or "", "summary": r["summary"] or ""}
@@ -329,11 +372,7 @@ async def main(
             # Write per chunk so an interrupted run keeps its progress. The
             # script is idempotent, so resuming is just re-running it.
             if writes and not dry_run:
-                async with conn.transaction():
-                    await conn.executemany(
-                        "UPDATE articles SET entity_links = $1::jsonb WHERE id = $2",
-                        writes,
-                    )
+                await _write_chunk(pool, writes)
 
             done = min(start + chunk_size, len(ids))
             progress = (f"  {done:>7,}/{len(ids):,}  updated={updated:,} "
@@ -356,7 +395,7 @@ async def main(
             print("--dry-run set; no DB writes.")
         return 0
     finally:
-        await conn.close()
+        await pool.close()
 
 
 if __name__ == "__main__":
