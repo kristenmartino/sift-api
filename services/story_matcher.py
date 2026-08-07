@@ -54,6 +54,7 @@ Next-3 #1's labelled corpus removes the bias.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import TypedDict
 
@@ -365,6 +366,49 @@ async def shadow_report(pool, *, confirm=None, sample: int = SHADOW_SAMPLE) -> d
             report["confirm_rate"] = round(report["would_group"] / len(relevant), 3)
 
     return report
+
+
+async def record_shadow(pool, report: dict) -> None:
+    """Persist one shadow report so the cutover aggregate is a SELECT.
+
+    Deliberately separate from `shadow_report`, which stays a pure read: the
+    property worth protecting is that shadow never touches articles or
+    stories. Writing its own telemetry row is a different thing, and keeping
+    it at the call site makes that visible rather than buried.
+
+    Never raises. Losing a telemetry row must not break ingest, and a shadow
+    run whose numbers were already logged is not worth an exception.
+    """
+    if not report or report.get("sampled", 0) == 0:
+        return
+    try:
+        await pool.execute(
+            """
+            INSERT INTO threading_shadow (
+                backlog, sampled, attach_candidates, new_cluster_candidates,
+                new_clusters_passing_outlet_gate, parked, parked_with_near_miss,
+                llm_relevant, threshold, near_miss_floor,
+                llm_relevant_by_category, dry_run, would_group, confirm_rate
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13,$14)
+            ON CONFLICT (run_at) DO NOTHING
+            """,
+            report.get("backlog", 0),
+            report.get("sampled", 0),
+            report.get("attach_candidates", 0),
+            report.get("new_cluster_candidates", 0),
+            report.get("new_clusters_passing_outlet_gate", 0),
+            report.get("parked", 0),
+            report.get("parked_with_near_miss", 0),
+            report.get("llm_relevant", 0),
+            report.get("threshold"),
+            report.get("near_miss_floor"),
+            json.dumps(report.get("llm_relevant_by_category", {})),
+            json.dumps(report["dry_run"]) if report.get("dry_run") else None,
+            report.get("would_group"),
+            report.get("confirm_rate"),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("threading_shadow insert failed: %s", e)
 
 
 async def mark_threaded(pool, article_ids: list[str]) -> None:

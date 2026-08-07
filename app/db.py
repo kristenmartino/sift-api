@@ -480,6 +480,37 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ALTER TABLE articles ADD COLUMN IF NOT EXISTS threaded_at TIMESTAMPTZ"
         )
 
+        # One row per incremental-threading shadow run
+        # (migrations/018_threading_shadow.sql).
+        #
+        # The shadow report gates the cutover, and it used to live only in the
+        # Railway log buffer — which rotates and resets on deploy, so a 24h
+        # aggregate could not be reconstructed. Same failure ai_usage_daily
+        # had: the number nobody could query was the number nobody checked.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS threading_shadow (
+                run_at                            TIMESTAMPTZ PRIMARY KEY DEFAULT NOW(),
+                backlog                           INTEGER NOT NULL,
+                sampled                           INTEGER NOT NULL,
+                attach_candidates                 INTEGER NOT NULL,
+                new_cluster_candidates            INTEGER NOT NULL,
+                new_clusters_passing_outlet_gate  INTEGER NOT NULL,
+                parked                            INTEGER NOT NULL,
+                parked_with_near_miss             INTEGER NOT NULL,
+                llm_relevant                      INTEGER NOT NULL,
+                threshold                         REAL,
+                near_miss_floor                   REAL,
+                llm_relevant_by_category          JSONB NOT NULL DEFAULT '{}'::jsonb,
+                dry_run                           JSONB,
+                would_group                       INTEGER,
+                confirm_rate                      REAL
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_threading_shadow_run_at "
+            "ON threading_shadow (run_at DESC)"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
