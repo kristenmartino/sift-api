@@ -398,9 +398,17 @@ def _outlet_catalog(slug: str, name: str, aliases: list[dict] | None = None):
     ("the-atlantic", "The Atlantic", "The storm crossed the Atlantic Ocean."),
     ("the-times", "The Times", "Here are all the times Congress recessed."),
     ("the-free-press", "The Free Press", "An oligarchic takeover of the free press."),
+    ("stat-news", "STAT", "Red Sox's Most Absurd Stat Behind Pre-All-Star Surge"),
+    ("stat-news", "STAT", "Lakers fans will love this Walker Kessler stat"),
 ])
 def test_regex_ineligible_name_produces_no_chip(slug, name, prose):
-    """The five measured offenders plus the five the audit added."""
+    """The five measured offenders plus the five the audit added, plus `stat`.
+
+    `stat` is the one that a 4-char floor lets through and that a pooled
+    false-positive rate hides: 762 of its 873 stored chips were STAT News
+    naming itself, which dilutes 111-of-111 wrong on everyone else's copy
+    down to a respectable-looking 12.7%.
+    """
     search_dict = build_search_dict(_outlet_catalog(slug, name))
     assert link_text(prose, search_dict) == []
 
@@ -439,6 +447,29 @@ def test_a_narrower_curated_alias_is_the_escape_hatch():
     search_dict = build_search_dict(catalog)
     assert link_text("It appeared in the journal Nature.", search_dict)[0]["canonical_id"] == "nature"
     assert link_text("The nature of the meeting was unclear.", search_dict) == []
+
+
+def test_stat_news_stays_linkable_through_its_curated_alias():
+    """The condition the `stat` blocklist entry was accepted under.
+
+    Blocking the bare name makes the outlet unmatchable by its own canonical
+    name — "STAT reported" no longer chips, and that is the accepted cost
+    (the corpus held zero third-party mentions of STAT in any casing when it
+    was measured). The curated two-word form is what keeps it linkable at
+    all, and it clears _MIN_CURATED_KEY_LENGTH comfortably.
+    """
+    catalog = _outlet_catalog(
+        "stat-news", "STAT",
+        aliases=[{"alias": "STAT News", "entity_type": "outlet",
+                  "canonical_id": "stat-news"}],
+    )
+    search_dict = build_search_dict(catalog)
+    assert "stat" not in search_dict
+    assert "stat news" in search_dict
+
+    linked = link_text("First reported by STAT News on Tuesday.", search_dict)
+    assert [link["canonical_id"] for link in linked] == ["stat-news"]
+    assert link_text("One Kenley Jansen Stat Proves It", search_dict) == []
 
 
 def test_unlisted_lookalike_names_are_untouched():

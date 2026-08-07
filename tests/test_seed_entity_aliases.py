@@ -122,3 +122,42 @@ def test_whole_word_only():
     matcher is word-bounded, so 'congress' never fires on 'congressional'."""
     catalog = [("org", "cbo", "congressional budget office")]
     assert blocking_conflicts("congress", "org", "us-congress", catalog) == []
+
+
+# ── the curated CSV itself ───────────────────────────────────
+#
+# `main()`'s per-row validations need a database. These two pin the parts
+# that don't: every shipped row must survive build_search_dict's DB-free
+# filters, or the row is stored and then silently ignored by the linker.
+
+
+def _csv_rows() -> list[dict]:
+    import csv
+
+    path = pathlib.Path(__file__).parent.parent / "data" / "entity_aliases.csv"
+    with path.open(encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
+
+
+def test_no_shipped_alias_is_dropped_by_the_linker():
+    """The gap that let a blocked name through: the seeder checked the length
+    floor and the stopword list, but not _REGEX_INELIGIBLE_NAMES — which
+    build_search_dict applies FIRST, and to curated rows too."""
+    from services.entity_linker import (
+        _MIN_CURATED_KEY_LENGTH,
+        _REGEX_INELIGIBLE_NAMES,
+        _STOPWORDS,
+    )
+
+    for row in _csv_rows():
+        alias = (row["alias"] or "").strip().lower()
+        assert len(alias) >= _MIN_CURATED_KEY_LENGTH, alias
+        assert alias not in _STOPWORDS, alias
+        assert alias not in _REGEX_INELIGIBLE_NAMES, alias
+
+
+def test_stat_news_has_a_curated_alias():
+    """Blocking the bare 'stat' makes the canonical name unmatchable, so this
+    row is the only thing keeping the outlet linkable by name at all."""
+    aliases = {(r["alias"].strip().lower(), r["canonical_id"]) for r in _csv_rows()}
+    assert ("stat news", "stat-news") in aliases
