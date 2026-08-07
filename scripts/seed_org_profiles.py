@@ -47,7 +47,12 @@ CSV_PATH = os.path.join(
 
 ORG_TYPES = {
     "think-tank", "advocacy", "union", "pac", "super-pac",
-    "foundation", "industry-group", "agency", "other",
+    "foundation", "industry-group", "agency",
+    # Intergovernmental organizations (Q8 = global, sift DECISIONS.md D47).
+    # Separate from "agency" on purpose: /agencies filters type='agency' and
+    # labels the section "Federal agencies", which the UN is not.
+    "igo",
+    "other",
 }
 LEAN_VALUES = {
     "left", "lean-left", "center", "lean-right", "right",
