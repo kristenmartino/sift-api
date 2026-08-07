@@ -25,6 +25,7 @@ import pathlib
 import sys
 from types import SimpleNamespace
 
+import asyncpg
 import pytest
 
 from services import entity_linker_llm
@@ -117,6 +118,40 @@ class FakeConn:
         return None
 
 
+class FakePool:
+    """Enough of asyncpg.Pool for this script.
+
+    The script moved from one long-lived connection to a pool (a full-corpus
+    run outlives Neon's session timeout), so reads go straight to the pool and
+    only the write transaction acquires. Delegates everything to one FakeConn
+    so assertions on `.writes` still see a single ledger.
+    """
+
+    def __init__(self, conn: "FakeConn"):
+        self.conn = conn
+
+    async def fetch(self, sql: str, *params):
+        return await self.conn.fetch(sql, *params)
+
+    async def fetchval(self, sql: str, *params):
+        return await self.conn.fetchval(sql, *params)
+
+    def acquire(self):
+        outer = self
+
+        class _Acq:
+            async def __aenter__(self_inner):
+                return outer.conn
+
+            async def __aexit__(self_inner, *exc):
+                return False
+
+        return _Acq()
+
+    async def close(self):
+        return None
+
+
 def _mock_response(text: str):
     block = SimpleNamespace(type="text", text=text)
     usage = SimpleNamespace(
@@ -131,11 +166,11 @@ def fake_conn(monkeypatch):
     """Wire the script to an in-memory DB and a controllable Claude."""
     conn = FakeConn([dict(a) for a in ARTICLES])
 
-    async def _connect(*a, **kw):
-        return conn
+    async def _create_pool(*a, **kw):
+        return FakePool(conn)
 
     monkeypatch.setenv("DATABASE_URL", "postgres://fake/db")
-    monkeypatch.setattr(backfill.asyncpg, "connect", _connect)
+    monkeypatch.setattr(backfill.asyncpg, "create_pool", _create_pool)
     monkeypatch.setattr(entity_linker_llm, "log_usage", lambda *a, **kw: None)
     # A real timeout, not a mocked return value — but a 10ms one.
     monkeypatch.setattr(entity_linker_llm, "LLM_TIMEOUT_SECONDS", 0.01)
@@ -182,14 +217,14 @@ async def test_llm_mode_still_clears_when_the_model_answers_empty(monkeypatch):
     additive regex pass cannot remove. A real '[]' answer still overwrites."""
     conn = FakeConn([dict(ARTICLES[0])])
 
-    async def _connect(*a, **kw):
-        return conn
+    async def _create_pool(*a, **kw):
+        return FakePool(conn)
 
     async def _create(**kwargs):
         return _mock_response("[]")
 
     monkeypatch.setenv("DATABASE_URL", "postgres://fake/db")
-    monkeypatch.setattr(backfill.asyncpg, "connect", _connect)
+    monkeypatch.setattr(backfill.asyncpg, "create_pool", _create_pool)
     monkeypatch.setattr(entity_linker_llm, "log_usage", lambda *a, **kw: None)
     monkeypatch.setattr(
         entity_linker_llm, "_client",
@@ -207,3 +242,82 @@ async def test_dry_run_writes_nothing(fake_conn):
         limit=None, chunk_size=500, assume_yes=True,
     ) == 0
     assert fake_conn.writes == []
+
+
+# ── connection resilience ────────────────────────────────────────────────
+#
+# A full-corpus run holds the client open for ~an hour. On 2026-08-05 one died
+# at 180,000/284,540 with ConnectionDoesNotExistError raised from inside
+# `conn.transaction()` — Neon had closed the session. Nothing was corrupted
+# (writes are per-chunk and committed), but the run had to be restarted from
+# the top. These cover the retry that makes that survivable.
+
+class FlakyPool(FakePool):
+    """Raises a dropped-connection error the first time, then behaves."""
+
+    def __init__(self, conn, fail_on: str):
+        super().__init__(conn)
+        self.fail_on = fail_on          # "read" | "write"
+        self.raised = False
+
+    async def fetch(self, sql: str, *params):
+        if (self.fail_on == "read" and not self.raised
+                and "entity_links::text AS el" in sql):
+            self.raised = True
+            raise asyncpg.exceptions.ConnectionDoesNotExistError(
+                "connection was closed in the middle of operation")
+        return await super().fetch(sql, *params)
+
+    def acquire(self):
+        if self.fail_on == "write" and not self.raised:
+            self.raised = True
+
+            class _Boom:
+                async def __aenter__(self_inner):
+                    raise asyncpg.exceptions.ConnectionDoesNotExistError(
+                        "connection was closed in the middle of operation")
+
+                async def __aexit__(self_inner, *exc):
+                    return False
+
+            return _Boom()
+        return super().acquire()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_on", ["read", "write"])
+async def test_dropped_connection_is_retried_not_fatal(monkeypatch, fail_on):
+    # Purpose-built rows: the shared ARTICLES fixture contains no full catalog
+    # name, so a regex pass over it writes nothing and could not distinguish a
+    # successful retry from a silently skipped chunk.
+    conn = FakeConn([
+        {
+            "id": "will-link",
+            "title": "United States Congress weighs the bill",
+            "summary": "Chuck Schumer spoke on Tuesday.",
+            "source_url": "https://example.com/1",
+            "source_name": "Reuters",
+            "el": "[]",
+        },
+    ])
+    pool = FlakyPool(conn, fail_on)
+
+    async def _create_pool(*a, **kw):
+        return pool
+
+    monkeypatch.setenv("DATABASE_URL", "postgres://fake/db")
+    monkeypatch.setattr(backfill.asyncpg, "create_pool", _create_pool)
+
+    rc = await backfill.main(
+        dry_run=False, include_empty=True, mode="regex",
+        limit=None, chunk_size=1, assume_yes=True,
+    )
+
+    assert rc == 0, "a single dropped connection must not fail the run"
+    assert pool.raised, "the test did not actually exercise the failure path"
+    # The retried chunk must still be processed, not silently skipped. "Schumer
+    # speaks" is stored as [] and the catalog holds Chuck Schumer, so the regex
+    # pass has exactly one write to make — and it is in the chunk that failed.
+    assert [w[1] for w in conn.writes] == ["will-link"], (
+        f"expected the retried chunk to still write, got {conn.writes!r}"
+    )
