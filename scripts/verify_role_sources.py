@@ -13,6 +13,20 @@ to a 990 that legally cannot support it. So this fetches every distinct
 Rows that fail are reported and MUST NOT be seeded — `seed_executive_records.py`
 refuses to write a row whose source did not verify.
 
+**A PASS IS NOT SIGN-OFF.** This tests that two strings are *present* on the
+page. It cannot test that the page *makes the claim*, and the difference is
+not academic: `iletisim.gov.tr/english` (an official Turkish government site)
+contains both "President" and "Erdogan" and passes cleanly — but the match is
+inside a syndicated press-clipping feed ("Erdogan says Türkiye could get 1m
+barrels of oil a day ... (AP)"), and "president" came from a separate headline
+about a phone call. The page never states who holds the office. That row was
+rejected by reading it, not by running this.
+
+So: a failure is decisive and blocks the seed. A pass is a filter, and a human
+still has to look at the context before the row publishes. Treating a green
+report as approval is how the Brookings FARA claim shipped
+(`sift/STATUS.md:80-84`) — a citation was present and nobody read it.
+
 Read-only. No database, no API key, no cost.
 
     ./.venv/bin/python3 scripts/verify_role_sources.py
