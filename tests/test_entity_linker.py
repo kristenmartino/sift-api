@@ -438,15 +438,38 @@ def test_curated_alias_cannot_reintroduce_an_ineligible_name():
 
 def test_a_narrower_curated_alias_is_the_escape_hatch():
     """Blocking the bare name does not block a precise one — this is how a
-    curator restores recall without reopening the prose collision."""
+    curator restores recall without reopening the prose collision.
+
+    Uses the forms actually curated in data/entity_aliases.csv. This asserted
+    on "the journal Nature" until 2026-08-06, a phrase that occurs zero times
+    in the corpus — a green test for an alias nobody could ever match.
+    """
     catalog = _outlet_catalog(
         "nature", "Nature",
-        aliases=[{"alias": "the journal Nature", "entity_type": "outlet",
+        aliases=[{"alias": a, "entity_type": "outlet", "canonical_id": "nature"}
+                 for a in ("nature study", "study in Nature")],
+    )
+    search_dict = build_search_dict(catalog)
+    assert link_text("A Nature study found the algorithm skewed.",
+                     search_dict)[0]["canonical_id"] == "nature"
+    assert link_text("Researchers published a study in Nature.",
+                     search_dict)[0]["canonical_id"] == "nature"
+    assert link_text("The nature of the meeting was unclear.", search_dict) == []
+
+
+def test_a_narrower_alias_still_does_not_reach_a_sub_brand():
+    """"published in Nature" is deliberately NOT curated: 62 of its 88
+    third-party corpus matches continue into a different journal, and a
+    whole-phrase key matches on the boundary after "Nature". Pins that the
+    forms we did curate do not have that failure mode."""
+    catalog = _outlet_catalog(
+        "nature", "Nature",
+        aliases=[{"alias": "nature study", "entity_type": "outlet",
                   "canonical_id": "nature"}],
     )
     search_dict = build_search_dict(catalog)
-    assert link_text("It appeared in the journal Nature.", search_dict)[0]["canonical_id"] == "nature"
-    assert link_text("The nature of the meeting was unclear.", search_dict) == []
+    assert link_text("The finding, published in Nature Communications, may help.",
+                     search_dict) == []
 
 
 def test_stat_news_stays_linkable_through_its_curated_alias():

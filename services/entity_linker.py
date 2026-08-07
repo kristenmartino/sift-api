@@ -158,7 +158,17 @@ _MIN_KEY_LENGTH = 4
 # Like `_STOPWORDS`, this applies to curated `entity_aliases` rows as well —
 # a blocked name cannot be smuggled back in through the alias table. That is
 # also the escape hatch: to restore recall for one of these, curate a
-# *narrower* alias ("the journal Nature") rather than reopening the bare name.
+# *narrower* alias ("A Nature study") rather than reopening the bare name.
+#
+# Pick that narrower form by MEASURING it, not by inventing one that reads
+# well. "the journal Nature" stood here until 2026-08-06 and occurs **zero**
+# times in the corpus. The obvious replacement is worse: "published in
+# Nature" appears 88 times third-party, but 62 of those continue into a
+# *different* journal ("published in Nature Communications", "…Medicine",
+# "…Physics"), and a whole-phrase key matches on the word boundary after
+# "Nature", so it would chip all 88 — 70% of them wrong. The whole-phrase
+# matcher cannot express "not followed by a sub-brand", so those 26 genuine
+# bare mentions stay with the LLM path by design.
 _REGEX_INELIGIBLE_NAMES: frozenset[str] = frozenset({
     "the nation",
     "nature",
