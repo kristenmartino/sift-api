@@ -52,6 +52,25 @@ class Settings(BaseSettings):
     # the surface forms #40 deliberately refuses to match on.
     entity_linker_regex_gate_enabled: bool = True
 
+    # Incremental story threading (docs/INCREMENTAL_THREADING.md) — OFF, and
+    # off is the right default here, unlike the gate above.
+    #
+    # That one was a small, measured, reversible saving on a leaf call site.
+    # This rewrites the core product path: threading is 43% of Anthropic spend
+    # and owns what the feed actually shows. It ships dark and proves itself in
+    # shadow first, per STATUS.md:21 — "a detector that has never been run
+    # against a known-true case is an untested detector."
+    #
+    # When false, `incremental_threading_shadow` still runs the free candidate
+    # step read-only and logs what it *would* have grouped, so the comparison
+    # against the live path is real data rather than a projection.
+    incremental_threading_enabled: bool = False
+
+    # Emit the shadow comparison. Costs nothing — Postgres kNN only, no LLM
+    # call and no writes. Safe to leave on permanently; it is how the cutover
+    # bar in docs/INCREMENTAL_THREADING.md gets evidence.
+    incremental_threading_shadow: bool = True
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

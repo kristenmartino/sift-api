@@ -1,6 +1,16 @@
 # Incremental threading
 
-**Status:** designed 2026-08-05, not started. `effort-week`, deferred by [D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md).
+**Status:** designed 2026-08-05. **Half built 2026-08-07** — candidate engine and shadow observation shipped; the write path is not. `effort-week`, deferred by [D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md).
+
+| | |
+|---|---|
+| P1 ivfflat recall | **resolved — does not apply.** The planner uses exact sort for this query shape |
+| P2 entities-lag watermark | **solved** — per-row `threaded_at` marker, no watermark |
+| P3 ship dark | **done** — flag off by default, shadow runs free every cycle |
+| Candidate engine | **done** — `services/story_matcher.py`, 10 tests, validated against prod |
+| Write path (LLM confirm → attach / synthesize) | **not started** |
+
+Validated against prod, 40-article simulated run: 4.5s of Postgres, $0, **18 of 40 needed an LLM opinion and 22 parked for free.** It found four outlets on the same jobs report at 0.81–0.89 similarity — one already in a story, three loose that the live path had missed.
 **Supersedes:** "raise `LIMIT 50`" (`STATUS.md` Next 3 #3, prior framing).
 **Companion:** [NEON_RETENTION.md](./NEON_RETENTION.md) — the other half of the structural work, independent of this.
 
@@ -74,7 +84,23 @@ The `$/day` column scales today's $3.90 by pass-through. Treat it as a bound, no
 
 ## Prerequisites — each is a thing this design would otherwise break silently
 
-### P1. Verify the vector index actually retrieves
+### P1. ~~Verify the vector index actually retrieves~~ — RESOLVED 2026-08-07, and it does not apply
+
+**The design never touches `idx_articles_embedding`.** Measured with `EXPLAIN ANALYZE` against prod on sports, politics, entertainment and energy — all four plan identically:
+
+```
+Limit → Sort (top-N heapsort)  ← exact, not approximate
+  → Bitmap Heap Scan on articles
+      → Bitmap Index Scan on idx_articles_category_date
+```
+
+`category = $1 AND published_date > NOW() - 48h` is selective enough (64–1,103 rows) that the planner filters first and sorts cosine distance **exactly**. 8.5ms for the largest pool; 40 lookups in 2.5s.
+
+So **recall is 100% by construction**, not an approximation to tune. The recall@10 bar, the `lists=20` rebuild and the `ivfflat.probes` question are all irrelevant to *this* query. They still matter for whole-corpus topic search (`sift/lib/db.ts:349`), which has no filter — but that is a separate concern and not a threading prerequisite.
+
+This was written up as the scariest gate and turned out to be a non-issue. The lesson is the ordinary one: the plan asserted a dependency nobody had checked, and checking took one `EXPLAIN`.
+
+### P1 (original text, retained for the record)
 
 `idx_articles_embedding` is `ivfflat (embedding vector_cosine_ops) WITH (lists=20)` on **282,932 rows**. The rule of thumb is ≈√n ≈ **530**, so it is ~26× undertuned. The whole candidate gate depends on kNN returning true neighbours; if it does not, the gate under-performs while reporting success — the failure class `STATUS.md` was rebuilt around.
 
@@ -87,7 +113,18 @@ A probes=1 vs probes=20 spot check on 2026-08-05 was **inconclusive** — the sa
 
 Note: [NEON_RETENTION.md](./NEON_RETENTION.md) shrinks this table ~80% first, which makes the rebuild far cheaper. Sequence retention before the rebuild if both are happening.
 
-### P2. The entities-lag bug this design introduces
+### P2. SOLVED 2026-08-07 — by not using a watermark at all
+
+The hole below is real, but the fix is simpler than the one proposed. `articles.threaded_at` (migration 017) is a **per-row marker**: NULL means queued. An article whose entities have not landed is simply not selected this run and stays NULL until they do.
+
+There is no lag window to size, no catch-up sweep to remember, and no transactional watermark advance to get right — the failure mode is designed out rather than mitigated. Marking happens for *every* article the run considers, including ones that matched nothing, so a parked singleton stops being re-queued while remaining searchable as a neighbour.
+
+Two things that fall out for free:
+
+- **No backfill.** All ~280k historical rows are NULL, but the queue also bounds on the 48h window, so they are never selected and age further out, never in. Backfilling would rewrite 280k rows and cost ~60 MB of index bloat (see [NEON_RETENTION.md](./NEON_RETENTION.md)) for no behavioural difference.
+- **No new index.** The working set is ~4,400 rows; `idx_articles_category_date` already serves the filter. A partial index on `threaded_at IS NULL` would span every historical row instead.
+
+### P2 (original text, retained for the record)
 
 `story_workflow.py:52` requires `jsonb_typeof(entities) = 'object'`, populated **asynchronously** by the batch poller. The current rescan *accidentally* protects against lag: an article skipped this run is seen again next run.
 
