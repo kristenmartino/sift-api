@@ -24,7 +24,8 @@ derived last-name aliases, so the regex will not match "Warren said" — while
 the LLM plausibly would. That is a recall hole of unknown size.
 
 THIS SCRIPT MEASURES THE HOLE. It costs nothing: no API calls, read-only SQL,
-and it scores the gate against `entity_links` the LLM has ALREADY written.
+and it scores the gate against `entity_links` ALREADY stored — which was the
+LLM's output alone until 2026-08-05. It no longer is; see the second caveat.
 
     recall     = of articles where the LLM stored >=1 link,
                  the share where the regex finds >=1 candidate
@@ -43,6 +44,33 @@ regex here DOES. That skews the two sides in opposite directions and it is not
 a wash, so the report splits recall by whether the article predates the seed.
 Prefer the post-seed number once enough articles have accumulated; treat the
 pooled number as a lower bound in the meantime.
+
+AND THIS LARGER ONE: SINCE 2026-08-05 THE RECALL NUMBER IS INFLATED
+------------------------------------------------------------------
+The metric assumes stored links came from the LLM, so that "did the regex also
+find one" is an independent question. `backfill_entity_links.py --include-empty`
+(#141) ran the **regex** over the whole corpus and wrote its output to
+`entity_links` for 54,240 articles. Those stored links are by construction
+re-findable by the regex that produced them, so the script now partly scores
+the backfill against itself.
+
+The signature is visible in the split: post-alias-seed recall read 99.91% on
+n=1,140 the first time this ran afterwards, against 97.63% pooled on the
+pre-backfill corpus (n=6 post-seed). Near-perfect is contamination, not
+improvement.
+
+**Consequence: a recall figure taken before the backfill is not reproducible
+by re-running this script, and a higher number afterwards is not evidence of a
+better gate.** Those earlier reads were clean; they are history, not something
+to re-derive here. Do not compare a pre-backfill number against a post-backfill
+one — that includes the before/after pairs already quoted in STATUS.md.
+
+Restoring a clean measurement needs a real change, not a doc fix — the scored
+set has to exclude links the regex wrote. There is no column recording which
+path produced a link, so that means either provenance on `entity_links` or an
+LLM-only re-link of a held-out sample. Until then, read this script for
+pass-through and for *misses* (which are still real and still diagnostic), and
+do not quote its recall as a before/after.
 
 Usage (from sift-api root):
 
