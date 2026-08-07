@@ -1019,7 +1019,7 @@ def _outlet_cat(slug, name, alias=None, match_case=False):
     )
 
 
-@pytest.mark.parametrize("slug,name", [
+@pytest.mark.parametrize(("slug", "name"), [
     ("variety", "Variety"),
     ("the-hill", "The Hill"),
     ("the-athletic", "The Athletic"),
