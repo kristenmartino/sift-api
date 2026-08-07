@@ -159,6 +159,12 @@ async def main() -> int:
                 skipped.append(f"{canonical_id} role source did not verify")
                 continue
             vote_url = _clean(row.get("confirmation_vote_url"))
+            # The PN record sources BOTH the nomination date and the "vice
+            # <name>" predecessor. Paired here so neither can be written
+            # without it — a Justice's seat is always filled vice a named
+            # predecessor, so unlike the executive rows this clause is the
+            # primary record rather than a fallback.
+            nomination_url = _clean(row.get("nomination_url"))
             writes.append((
                 canonical_id,
                 _clean(row.get("role_title")),
@@ -167,6 +173,10 @@ async def main() -> int:
                 vote_url,
                 _clean(row.get("confirmation_vote_result")),
                 vote_url,  # role_dates_source — the same roll-call record
+                _as_date(row.get("nomination_date")) if nomination_url else None,
+                nomination_url,
+                _clean(row.get("predecessor_name")) if nomination_url else None,
+                _clean(row.get("predecessor_source")),
             ))
 
         for line in skipped:
@@ -194,6 +204,8 @@ async def main() -> int:
                 "  role_title = $2, role_title_source = $3, "
                 "  confirmation_date = $4, confirmation_vote_url = $5, "
                 "  confirmation_vote_result = $6, role_dates_source = $7, "
+                "  nomination_date = $8, nomination_url = $9, "
+                "  predecessor_name = $10, predecessor_source = $11, "
                 "  notes = NULL, updated_at = NOW() "
                 "WHERE bioguide_id = $1",
                 writes,
