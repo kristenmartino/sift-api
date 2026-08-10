@@ -1,0 +1,543 @@
+lcv_name,state,party,chamber,year,score,lifetime_score,source_url
+"Britt, Katie",Alabama,R,senate,2025,0,2,https://www.lcv.org/moc/katie-britt/
+"Tuberville, Tommy",Alabama,R,senate,2025,0,3,https://www.lcv.org/moc/tommy-tuberville/
+"Murkowski, Lisa",Alaska,R,senate,2025,20,20,https://www.lcv.org/moc/lisa-a-murkowski/
+"Sullivan, Dan",Alaska,R,senate,2025,3,8,https://www.lcv.org/moc/dan-sullivan/
+"Gallego, Ruben",Arizona,D,senate,2025,86,93,https://www.lcv.org/moc/ruben-gallego/
+"Kelly, Mark",Arizona,D,senate,2025,91,93,https://www.lcv.org/moc/mark-kelly/
+"Boozman, John",Arkansas,R,senate,2025,3,8,https://www.lcv.org/moc/john-n-boozman/
+"Cotton, Tom",Arkansas,R,senate,2025,3,5,https://www.lcv.org/moc/tom-cotton/
+"Padilla, Alex",California,D,senate,2025,97,96,https://www.lcv.org/moc/alex-padilla/
+"Schiff, Adam",California,D,senate,2025,97,98,https://www.lcv.org/moc/adam-b-schiff/
+"Bennet, Michael",Colorado,D,senate,2025,94,91,https://www.lcv.org/moc/michael-bennet/
+"Hickenlooper, John",Colorado,D,senate,2025,91,94,https://www.lcv.org/moc/john-hickenlooper/
+"Blumenthal, Richard",Connecticut,D,senate,2025,97,98,https://www.lcv.org/moc/richard-blumenthal/
+"Murphy, Chris",Connecticut,D,senate,2025,97,97,https://www.lcv.org/moc/chris-s-murphy/
+"Blunt Rochester, Lisa",Delaware,D,senate,2025,97,98,https://www.lcv.org/moc/lisa-blunt-rochester/
+"Coons, Chris",Delaware,D,senate,2025,100,95,https://www.lcv.org/moc/chris-coons/
+"Moody, Ashley",Florida,R,senate,2025,0,0,https://www.lcv.org/moc/ashley-moody/
+"Scott, Rick",Florida,R,senate,2025,0,3,https://www.lcv.org/moc/rick-scott/
+"Ossoff, Jon",Georgia,D,senate,2025,94,96,https://www.lcv.org/moc/jon-ossoff/
+"Warnock, Raphael",Georgia,D,senate,2025,91,96,https://www.lcv.org/moc/raphael-warnock/
+"Hirono, Mazie",Hawaii,D,senate,2025,100,96,https://www.lcv.org/moc/mazie-k-hirono/
+"Schatz, Brian",Hawaii,D,senate,2025,97,97,https://www.lcv.org/moc/brian-emanuel-schatz/
+"Crapo, Michael",Idaho,R,senate,2025,3,7,https://www.lcv.org/moc/michael-d-crapo/
+"Risch, Jim",Idaho,R,senate,2025,3,8,https://www.lcv.org/moc/jim-risch/
+"Duckworth, Tammy",Illinois,D,senate,2025,100,94,https://www.lcv.org/moc/tammy-duckworth/
+"Durbin, Dick",Illinois,D,senate,2025,97,90,https://www.lcv.org/moc/dick-durbin/
+"Banks, Jim",Indiana,R,senate,2025,3,1,https://www.lcv.org/moc/jim-banks/
+"Young, Todd",Indiana,R,senate,2025,3,7,https://www.lcv.org/moc/todd-young/
+"Ernst, Joni",Iowa,R,senate,2025,0,7,https://www.lcv.org/moc/joni-ernst/
+"Grassley, Chuck",Iowa,R,senate,2025,0,17,https://www.lcv.org/moc/chuck-e-grassley/
+"Marshall, Roger",Kansas,R,senate,2025,0,5,https://www.lcv.org/moc/roger-marshall/
+"Moran, Jerry",Kansas,R,senate,2025,0,8,https://www.lcv.org/moc/jerry-moran/
+"McConnell, Mitch",Kentucky,R,senate,2025,3,8,https://www.lcv.org/moc/mitch-mcconnell/
+"Paul, Rand",Kentucky,R,senate,2025,9,9,https://www.lcv.org/moc/rand-paul/
+"Cassidy, Bill",Louisiana,R,senate,2025,0,8,https://www.lcv.org/moc/bill-cassidy/
+"Kennedy, John",Louisiana,R,senate,2025,0,5,https://www.lcv.org/moc/john-neely-kennedy/
+"Collins, Susan",Maine,R,senate,2025,31,52,https://www.lcv.org/moc/susan-m-collins/
+"King, Angus",Maine,I,senate,2025,94,92,https://www.lcv.org/moc/angus-king/
+"Alsobrooks, Angela",Maryland,D,senate,2025,97,97,https://www.lcv.org/moc/angela-alsobrooks/
+"Van Hollen, Chris",Maryland,D,senate,2025,100,98,https://www.lcv.org/moc/chris-van-hollen/
+"Markey, Ed",Massachusetts,D,senate,2025,100,95,https://www.lcv.org/moc/ed-markey/
+"Warren, Elizabeth",Massachusetts,D,senate,2025,97,96,https://www.lcv.org/moc/elizabeth-warren/
+"Peters, Gary",Michigan,D,senate,2025,100,95,https://www.lcv.org/moc/gary-c-peters/
+"Slotkin, Elissa",Michigan,D,senate,2025,94,96,https://www.lcv.org/moc/elissa-slotkin/
+"Klobuchar, Amy",Minnesota,D,senate,2025,94,93,https://www.lcv.org/moc/amy-klobuchar/
+"Smith, Tina",Minnesota,D,senate,2025,94,97,https://www.lcv.org/moc/tina-smith-7/
+"Hyde-Smith, Cindy",Mississippi,R,senate,2025,0,10,https://www.lcv.org/moc/cindy-hyde-smith/
+"Wicker, Roger",Mississippi,R,senate,2025,0,7,https://www.lcv.org/moc/roger-f-wicker/
+"Hawley, Joshua",Missouri,R,senate,2025,6,4,https://www.lcv.org/moc/joshua-hawley/
+"Schmitt, Eric",Missouri,R,senate,2025,3,2,https://www.lcv.org/moc/eric-schmitt/
+"Daines, Steve",Montana,R,senate,2025,6,8,https://www.lcv.org/moc/steve-daines/
+"Sheehy, Tim",Montana,R,senate,2025,6,6,https://www.lcv.org/moc/tim-sheehy/
+"Fischer, Deb",Nebraska,R,senate,2025,3,7,https://www.lcv.org/moc/deb-fischer/
+"Ricketts, Pete",Nebraska,R,senate,2025,3,2,https://www.lcv.org/moc/pete-ricketts/
+"Cortez Masto, Catherine",Nevada,D,senate,2025,94,96,https://www.lcv.org/moc/catherine-cortez-masto/
+"Rosen, Jacky",Nevada,D,senate,2025,94,96,https://www.lcv.org/moc/jacky-rosen/
+"Hassan, Margaret",New Hampshire,D,senate,2025,94,97,https://www.lcv.org/moc/margaret-wood-hassan/
+"Shaheen, Jeanne",New Hampshire,D,senate,2025,91,95,https://www.lcv.org/moc/jeanne-shaheen/
+"Booker, Cory",New Jersey,D,senate,2025,94,95,https://www.lcv.org/moc/cory-anthony-booker/
+"Kim, Andy",New Jersey,D,senate,2025,100,99,https://www.lcv.org/moc/andy-kim/
+"Heinrich, Martin",New Mexico,D,senate,2025,94,94,https://www.lcv.org/moc/martin-t-heinrich/
+"Luján, Ben Ray",New Mexico,D,senate,2025,94,97,https://www.lcv.org/moc/ben-ray-lujan/
+"Gillibrand, Kirsten",New York,D,senate,2025,94,96,https://www.lcv.org/moc/kirsten-e-gillibrand/
+"Schumer, Chuck",New York,D,senate,2025,100,93,https://www.lcv.org/moc/chuck-schumer/
+"Budd, Ted",North Carolina,R,senate,2025,3,4,https://www.lcv.org/moc/ted-budd/
+"Tillis, Thom",North Carolina,R,senate,2025,9,11,https://www.lcv.org/moc/thom-tillis/
+"Cramer, Kevin",North Dakota,R,senate,2025,0,5,https://www.lcv.org/moc/kevin-cramer/
+"Hoeven, John",North Dakota,R,senate,2025,0,8,https://www.lcv.org/moc/john-hoeven/
+"Husted, Jon",Ohio,R,senate,2025,3,3,https://www.lcv.org/moc/jon-husted/
+"Moreno, Bernie",Ohio,R,senate,2025,3,3,https://www.lcv.org/moc/bernie-moreno/
+"Lankford, James",Oklahoma,R,senate,2025,0,5,https://www.lcv.org/moc/james-lankford/
+"Mullin, Markwayne",Oklahoma,R,senate,2025,3,2,https://www.lcv.org/moc/markwayne-mullin/
+"Merkley, Jeff",Oregon,D,senate,2025,97,99,https://www.lcv.org/moc/jeff-merkley/
+"Wyden, Ron",Oregon,D,senate,2025,100,92,https://www.lcv.org/moc/ron-wyden/
+"Fetterman, John",Pennsylvania,D,senate,2025,80,84,https://www.lcv.org/moc/john-fetterman/
+"McCormick, David",Pennsylvania,R,senate,2025,0,0,https://www.lcv.org/moc/david-mccormick/
+"Reed, Jack",Rhode Island,D,senate,2025,100,97,https://www.lcv.org/moc/jack-reed/
+"Whitehouse, Sheldon",Rhode Island,D,senate,2025,94,97,https://www.lcv.org/moc/sheldon-whitehouse/
+"Graham, Lindsey",South Carolina,R,senate,2025,3,14,https://www.lcv.org/moc/lindsey-o-graham/
+"Scott, Tim",South Carolina,R,senate,2025,0,5,https://www.lcv.org/moc/tim-scott/
+"Rounds, Mike",South Dakota,R,senate,2025,3,8,https://www.lcv.org/moc/mike-rounds/
+"Thune, John",South Dakota,R,senate,2025,3,10,https://www.lcv.org/moc/john-r-thune/
+"Blackburn, Marsha",Tennessee,R,senate,2025,0,3,https://www.lcv.org/moc/marsha-blackburn/
+"Hagerty, Bill",Tennessee,R,senate,2025,0,4,https://www.lcv.org/moc/bill-hagerty/
+"Cornyn, John",Texas,R,senate,2025,3,6,https://www.lcv.org/moc/john-cornyn/
+"Cruz, Ted",Texas,R,senate,2025,0,3,https://www.lcv.org/moc/ted-cruz/
+"Curtis, John",Utah,R,senate,2025,3,6,https://www.lcv.org/moc/john-curtis/
+"Lee, Mike",Utah,R,senate,2025,3,7,https://www.lcv.org/moc/mike-lee/
+"Sanders, Bernie",Vermont,I,senate,2025,94,92,https://www.lcv.org/moc/bernie-sanders/
+"Welch, Peter",Vermont,D,senate,2025,97,95,https://www.lcv.org/moc/peter-f-welch/
+"Kaine, Timothy",Virginia,D,senate,2025,97,97,https://www.lcv.org/moc/timothy-kaine/
+"Warner, Mark",Virginia,D,senate,2025,97,92,https://www.lcv.org/moc/mark-r-warner/
+"Cantwell, Maria",Washington,D,senate,2025,97,94,https://www.lcv.org/moc/maria-cantwell/
+"Murray, Patty",Washington,D,senate,2025,100,93,https://www.lcv.org/moc/patty-murray/
+"Capito, Shelley Moore",West Virginia,R,senate,2025,3,16,https://www.lcv.org/moc/shelley-moore-capito/
+"Justice, James",West Virginia,R,senate,2025,3,3,https://www.lcv.org/moc/james-c-justice/
+"Baldwin, Tammy",Wisconsin,D,senate,2025,97,97,https://www.lcv.org/moc/tammy-baldwin/
+"Johnson, Ron",Wisconsin,R,senate,2025,0,5,https://www.lcv.org/moc/ron-johnson/
+"Barrasso, John",Wyoming,R,senate,2025,3,6,https://www.lcv.org/moc/john-barrasso/
+"Lummis, Cynthia",Wyoming,R,senate,2025,3,5,https://www.lcv.org/moc/cynthia-m-lummis/
+"Moore, Barry",Alabama,R,house,2025,0,1,https://www.lcv.org/moc/barry-moore/
+"Figures, Shomari",Alabama,D,house,2025,94,94,https://www.lcv.org/moc/shomari-figures/
+"Rogers, Mike",Alabama,R,house,2025,0,5,https://www.lcv.org/moc/mike-d-rogers/
+"Aderholt, Robert",Alabama,R,house,2025,0,3,https://www.lcv.org/moc/robert-b-aderholt/
+"Strong, Dale",Alabama,R,house,2025,0,0,https://www.lcv.org/moc/dale-strong/
+"Palmer, Gary",Alabama,R,house,2025,0,1,https://www.lcv.org/moc/gary-palmer/
+"Sewell, Terri",Alabama,D,house,2025,91,85,https://www.lcv.org/moc/terri-sewell/
+"Begich, Nicholas",Alaska,R,house,2025,0,0,https://www.lcv.org/moc/nicholas-j-begich/
+"Radewagen, Amata",American Samoa,R,house,2025,0,7,https://www.lcv.org/moc/amata-coleman-radewagen/
+"Schweikert, David",Arizona,R,house,2025,0,5,https://www.lcv.org/moc/david-schweikert/
+"Crane, Eli",Arizona,R,house,2025,0,1,https://www.lcv.org/moc/eli-crane/
+"Ansari, Yassamin",Arizona,D,house,2025,100,100,https://www.lcv.org/moc/yassamin-ansari/
+"Stanton, Greg",Arizona,D,house,2025,97,97,https://www.lcv.org/moc/greg-stanton/
+"Biggs, Andy",Arizona,R,house,2025,0,3,https://www.lcv.org/moc/andy-biggs/
+"Ciscomani, Juan",Arizona,R,house,2025,0,7,https://www.lcv.org/moc/juan-ciscomani/
+"Grijalva, Adelita",Arizona,D,house,2025,100,100,https://www.lcv.org/moc/adelita-grijalva/
+"Hamadeh, Abraham",Arizona,R,house,2025,0,0,https://www.lcv.org/moc/abraham-j-hamadeh/
+"Gosar, Paul",Arizona,R,house,2025,0,3,https://www.lcv.org/moc/paul-gosar/
+"Crawford, Rick",Arkansas,R,house,2025,0,4,https://www.lcv.org/moc/rick-crawford/
+"Hill, French",Arkansas,R,house,2025,0,7,https://www.lcv.org/moc/french-hill/
+"Womack, Steve",Arkansas,R,house,2025,0,5,https://www.lcv.org/moc/steve-womack/
+"Westerman, Bruce",Arkansas,R,house,2025,0,3,https://www.lcv.org/moc/bruce-westerman/
+"LaMalfa, Doug",California,R,house,2025,0,2,https://www.lcv.org/moc/doug-lamalfa/
+"Huffman, Jared",California,D,house,2025,100,98,https://www.lcv.org/moc/jared-huffman/
+"Kiley, Kevin",California,R,house,2025,0,9,https://www.lcv.org/moc/kevin-kiley/
+"Thompson, Mike",California,D,house,2025,97,94,https://www.lcv.org/moc/mike-thompson/
+"McClintock, Tom",California,R,house,2025,3,3,https://www.lcv.org/moc/tom-mcclintock/
+"Bera, Ami",California,D,house,2025,97,95,https://www.lcv.org/moc/ami-bera/
+"Matsui, Doris",California,D,house,2025,97,97,https://www.lcv.org/moc/doris-o-matsui/
+"Garamendi, John",California,D,house,2025,100,92,https://www.lcv.org/moc/john-garamendi/
+"Harder, Josh",California,D,house,2025,97,97,https://www.lcv.org/moc/josh-harder/
+"DeSaulnier, Mark",California,D,house,2025,100,100,https://www.lcv.org/moc/mark-desaulnier/
+"Pelosi, Nancy",California,D,house,2025,100,94,https://www.lcv.org/moc/nancy-pelosi/
+"Simon, Lateefah",California,D,house,2025,100,100,https://www.lcv.org/moc/lateefah-simon/
+"Gray, Adam",California,D,house,2025,61,61,https://www.lcv.org/moc/adam-gray/
+"Swalwell, Eric",California,D,house,2025,48,90,https://www.lcv.org/moc/eric-swalwell/
+"Mullin, Kevin",California,D,house,2025,97,98,https://www.lcv.org/moc/kevin-mullin/
+"Liccardo, Sam",California,D,house,2025,94,94,https://www.lcv.org/moc/sam-t-liccardo/
+"Khanna, Ro",California,D,house,2025,100,99,https://www.lcv.org/moc/ro-khanna/
+"Lofgren, Zoe",California,D,house,2025,97,93,https://www.lcv.org/moc/zoe-lofgren/
+"Panetta, Jimmy",California,D,house,2025,97,96,https://www.lcv.org/moc/jimmy-panetta/
+"Fong, Vince",California,R,house,2025,0,4,https://www.lcv.org/moc/vince-fong/
+"Costa, Jim",California,D,house,2025,67,62,https://www.lcv.org/moc/jim-costa/
+"Valadao, David",California,R,house,2025,12,9,https://www.lcv.org/moc/david-g-valadao/
+"Obernolte, Jay",California,R,house,2025,3,6,https://www.lcv.org/moc/jay-obernolte/
+"Carbajal, Salud",California,D,house,2025,97,96,https://www.lcv.org/moc/salud-carbajal/
+"Ruiz, Raul",California,D,house,2025,91,95,https://www.lcv.org/moc/raul-ruiz/
+"Brownley, Julia",California,D,house,2025,100,97,https://www.lcv.org/moc/julia-brownley/
+"Whitesides, George",California,D,house,2025,97,97,https://www.lcv.org/moc/george-whitesides/
+"Chu, Judy",California,D,house,2025,97,98,https://www.lcv.org/moc/judy-m-chu/
+"Rivas, Luz",California,D,house,2025,100,100,https://www.lcv.org/moc/luz-m-rivas/
+"Friedman, Laura",California,D,house,2025,97,97,https://www.lcv.org/moc/laura-friedman/
+"Cisneros, Gilbert",California,D,house,2025,100,99,https://www.lcv.org/moc/gilbert-cisneros/
+"Sherman, Brad",California,D,house,2025,97,98,https://www.lcv.org/moc/brad-j-sherman/
+"Aguilar, Pete",California,D,house,2025,97,96,https://www.lcv.org/moc/pete-aguilar/
+"Gomez, Jimmy",California,D,house,2025,91,97,https://www.lcv.org/moc/jimmy-gomez/
+"Torres, Norma",California,D,house,2025,97,96,https://www.lcv.org/moc/norma-torres/
+"Lieu, Ted",California,D,house,2025,97,94,https://www.lcv.org/moc/ted-lieu/
+"Kamlager-Dove, Sydney",California,D,house,2025,97,99,https://www.lcv.org/moc/sydney-kamlager-dove/
+"Sanchez, Linda",California,D,house,2025,100,95,https://www.lcv.org/moc/linda-sanchez/
+"Takano, Mark",California,D,house,2025,100,99,https://www.lcv.org/moc/mark-takano/
+"Kim, Young",California,R,house,2025,3,13,https://www.lcv.org/moc/young-kim/
+"Calvert, Ken",California,R,house,2025,3,7,https://www.lcv.org/moc/ken-s-calvert/
+"Garcia, Robert",California,D,house,2025,100,98,https://www.lcv.org/moc/robert-garcia-2/
+"Waters, Maxine",California,D,house,2025,88,92,https://www.lcv.org/moc/maxine-waters/
+"Barragán, Nanette",California,D,house,2025,97,98,https://www.lcv.org/moc/nanette-barragan/
+"Tran, Derek",California,D,house,2025,97,97,https://www.lcv.org/moc/derek-tran/
+"Correa, J.",California,D,house,2025,82,92,https://www.lcv.org/moc/j-correa/
+"Min, Dave",California,D,house,2025,100,100,https://www.lcv.org/moc/dave-min/
+"Issa, Darrell",California,R,house,2025,0,4,https://www.lcv.org/moc/darrell-issa/
+"Levin, Mike",California,D,house,2025,97,99,https://www.lcv.org/moc/mike-levin/
+"Peters, Scott",California,D,house,2025,91,94,https://www.lcv.org/moc/scott-h-peters/
+"Jacobs, Sara",California,D,house,2025,100,99,https://www.lcv.org/moc/sara-jacobs/
+"Vargas, Juan",California,D,house,2025,100,97,https://www.lcv.org/moc/juan-vargas/
+"DeGette, Diana",Colorado,D,house,2025,100,97,https://www.lcv.org/moc/diana-l-degette/
+"Neguse, Joe",Colorado,D,house,2025,100,99,https://www.lcv.org/moc/joe-neguse/
+"Hurd, Jeff",Colorado,R,house,2025,3,3,https://www.lcv.org/moc/jeff-hurd/
+"Boebert, Lauren",Colorado,R,house,2025,0,0,https://www.lcv.org/moc/lauren-boebert/
+"Crank, Jeff",Colorado,R,house,2025,0,0,https://www.lcv.org/moc/jeff-crank/
+"Crow, Jason",Colorado,D,house,2025,100,99,https://www.lcv.org/moc/jason-crow/
+"Pettersen, Brittany",Colorado,D,house,2025,100,97,https://www.lcv.org/moc/brittany-pettersen/
+"Evans, Gabe",Colorado,R,house,2025,6,6,https://www.lcv.org/moc/gabe-evans/
+"Larson, John",Connecticut,D,house,2025,97,94,https://www.lcv.org/moc/john-b-larson/
+"Courtney, Joe",Connecticut,D,house,2025,100,97,https://www.lcv.org/moc/joe-courtney/
+"DeLauro, Rosa",Connecticut,D,house,2025,100,96,https://www.lcv.org/moc/rosa-l-delauro/
+"Himes, Jim",Connecticut,D,house,2025,97,96,https://www.lcv.org/moc/jim-himes/
+"Hayes, Jahana",Connecticut,D,house,2025,100,98,https://www.lcv.org/moc/jahana-hayes/
+"McBride, Sarah",Delaware,D,house,2025,100,100,https://www.lcv.org/moc/sarah-mcbride/
+"Norton, Eleanor",District of Columbia,D,house,2025,100,100,https://www.lcv.org/moc/eleanor-holmes-norton/
+"Patronis, Jimmy",Florida,R,house,2025,0,0,https://www.lcv.org/moc/jimmy-patronis/
+"Dunn, Neal",Florida,R,house,2025,0,3,https://www.lcv.org/moc/neal-dunn/
+"Cammack, Kat",Florida,R,house,2025,0,1,https://www.lcv.org/moc/kat-cammack/
+"Bean, Aaron",Florida,R,house,2025,0,1,https://www.lcv.org/moc/aaron-bean/
+"Rutherford, John",Florida,R,house,2025,0,5,https://www.lcv.org/moc/john-rutherford/
+"Fine, Randy",Florida,R,house,2025,4,4,https://www.lcv.org/moc/randy-fine/
+"Mills, Cory",Florida,R,house,2025,0,0,https://www.lcv.org/moc/cory-mills/
+"Haridopolos, Mike",Florida,R,house,2025,3,3,https://www.lcv.org/moc/mike-haridopolos/
+"Soto, Darren",Florida,D,house,2025,97,98,https://www.lcv.org/moc/darren-soto/
+"Frost, Maxwell",Florida,D,house,2025,100,100,https://www.lcv.org/moc/maxwell-frost/
+"Webster, Daniel",Florida,R,house,2025,0,5,https://www.lcv.org/moc/daniel-webster/
+"Bilirakis, Gus",Florida,R,house,2025,0,8,https://www.lcv.org/moc/gus-bilirakis/
+"Luna, Anna Paulina",Florida,R,house,2025,0,0,https://www.lcv.org/moc/anna-paulina-luna/
+"Castor, Kathy",Florida,D,house,2025,100,95,https://www.lcv.org/moc/kathy-castor/
+"Lee, Laurel",Florida,R,house,2025,3,4,https://www.lcv.org/moc/laurel-lee/
+"Buchanan, Vern",Florida,R,house,2025,3,18,https://www.lcv.org/moc/vern-buchanan/
+"Steube, Greg",Florida,R,house,2025,0,1,https://www.lcv.org/moc/greg-steube/
+"Franklin, Scott",Florida,R,house,2025,0,1,https://www.lcv.org/moc/scott-franklin/
+"Donalds, Byron",Florida,R,house,2025,0,1,https://www.lcv.org/moc/byron-donalds/
+"Cherfilus-McCormick, Sheila",Florida,D,house,2025,100,98,https://www.lcv.org/moc/sheila-cherfilus-mccormick/
+"Mast, Brian",Florida,R,house,2025,0,16,https://www.lcv.org/moc/brian-mast/
+"Frankel, Lois",Florida,D,house,2025,100,98,https://www.lcv.org/moc/lois-frankel/
+"Moskowitz, Jared",Florida,D,house,2025,88,92,https://www.lcv.org/moc/jared-moskowitz/
+"Wilson, Frederica",Florida,D,house,2025,97,94,https://www.lcv.org/moc/frederica-wilson/
+"Wasserman Schultz, Debbie",Florida,D,house,2025,100,94,https://www.lcv.org/moc/debbie-wasserman-schultz/
+"Díaz-Balart, Mario",Florida,R,house,2025,0,12,https://www.lcv.org/moc/mario-diaz-balart/
+"Salazar, María",Florida,R,house,2025,0,11,https://www.lcv.org/moc/maria-elvira-salazar/
+"Giménez, Carlos",Florida,R,house,2025,0,6,https://www.lcv.org/moc/carlos-gimenez/
+"Carter, Buddy",Georgia,R,house,2025,0,4,https://www.lcv.org/moc/buddy-carter/
+"Bishop, Sanford",Georgia,D,house,2025,85,62,https://www.lcv.org/moc/sanford-d-bishop/
+"Jack, Brian",Georgia,R,house,2025,0,0,https://www.lcv.org/moc/brian-jack/
+"Johnson, Hank",Georgia,D,house,2025,100,97,https://www.lcv.org/moc/hank-johnson/
+"Williams, Nikema",Georgia,D,house,2025,91,98,https://www.lcv.org/moc/nikema-williams/
+"McBath, Lucy",Georgia,D,house,2025,100,97,https://www.lcv.org/moc/lucy-mcbath/
+"McCormick, Rich",Georgia,R,house,2025,0,0,https://www.lcv.org/moc/rich-mccormick/
+"Scott, Austin",Georgia,R,house,2025,0,3,https://www.lcv.org/moc/austin-scott/
+"Clyde, Andrew",Georgia,R,house,2025,0,0,https://www.lcv.org/moc/andrew-clyde/
+"Collins, Mike",Georgia,R,house,2025,0,1,https://www.lcv.org/moc/mike-collins/
+"Loudermilk, Barry",Georgia,R,house,2025,0,1,https://www.lcv.org/moc/barry-loudermilk/
+"Allen, Rick",Georgia,R,house,2025,0,1,https://www.lcv.org/moc/rick-allen/
+"Scott, David",Georgia,D,house,2025,100,87,https://www.lcv.org/moc/david-scott/
+"Greene, Marjorie",Georgia,R,house,2025,0,2,https://www.lcv.org/moc/marjorie-taylor-greene/
+"Moylan, Jim",Guam,R,house,2025,67,10,https://www.lcv.org/moc/jim-moylan/
+"Case, Ed",Hawaii,D,house,2025,97,97,https://www.lcv.org/moc/ed-case/
+"Tokuda, Jill",Hawaii,D,house,2025,100,100,https://www.lcv.org/moc/jill-tokuda/
+"Fulcher, Russ",Idaho,R,house,2025,0,2,https://www.lcv.org/moc/russ-fulcher/
+"Simpson, Mike",Idaho,R,house,2025,3,10,https://www.lcv.org/moc/mike-simpson/
+"Jackson, Jonathan",Illinois,D,house,2025,100,100,https://www.lcv.org/moc/jonathan-jackson/
+"Kelly, Robin",Illinois,D,house,2025,100,96,https://www.lcv.org/moc/robin-kelly/
+"Ramirez, Delia",Illinois,D,house,2025,97,98,https://www.lcv.org/moc/delia-ramirez/
+"García, Jesús",Illinois,D,house,2025,94,97,https://www.lcv.org/moc/jesus-garcia/
+"Quigley, Mike",Illinois,D,house,2025,100,98,https://www.lcv.org/moc/mike-quigley/
+"Casten, Sean",Illinois,D,house,2025,100,99,https://www.lcv.org/moc/sean-casten/
+"Davis, Danny",Illinois,D,house,2025,100,94,https://www.lcv.org/moc/danny-k-davis/
+"Krishnamoorthi, Raja",Illinois,D,house,2025,100,98,https://www.lcv.org/moc/raja-krishnamoorthi/
+"Schakowsky, Jan",Illinois,D,house,2025,100,97,https://www.lcv.org/moc/jan-schakowsky/
+"Schneider, Brad",Illinois,D,house,2025,97,96,https://www.lcv.org/moc/brad-schneider/
+"Foster, Bill",Illinois,D,house,2025,100,96,https://www.lcv.org/moc/bill-foster/
+"Bost, Mike",Illinois,R,house,2025,3,5,https://www.lcv.org/moc/mike-bost/
+"Budzinski, Nikki",Illinois,D,house,2025,94,96,https://www.lcv.org/moc/nikki-budzinski/
+"Underwood, Lauren",Illinois,D,house,2025,100,99,https://www.lcv.org/moc/lauren-underwood/
+"Miller, Mary",Illinois,R,house,2025,0,1,https://www.lcv.org/moc/mary-miller/
+"LaHood, Darin",Illinois,R,house,2025,0,4,https://www.lcv.org/moc/darin-lahood/
+"Sorensen, Eric",Illinois,D,house,2025,97,97,https://www.lcv.org/moc/eric-sorensen/
+"Mrvan, Frank",Indiana,D,house,2025,94,97,https://www.lcv.org/moc/frank-mrvan/
+"Yakym, Rudy",Indiana,R,house,2025,0,1,https://www.lcv.org/moc/rudy-yakym-2/
+"Stutzman, Marlin",Indiana,R,house,2025,0,4,https://www.lcv.org/moc/marlin-stutzman/
+"Baird, James",Indiana,R,house,2025,0,6,https://www.lcv.org/moc/james-baird/
+"Spartz, Victoria",Indiana,R,house,2025,0,4,https://www.lcv.org/moc/victoria-spartz/
+"Shreve, Jefferson",Indiana,R,house,2025,3,3,https://www.lcv.org/moc/jefferson-shreve/
+"Carson, Andre",Indiana,D,house,2025,100,95,https://www.lcv.org/moc/andre-carson/
+"Messmer, Mark",Indiana,R,house,2025,0,0,https://www.lcv.org/moc/mark-b-messmer/
+"Houchin, Erin",Indiana,R,house,2025,0,0,https://www.lcv.org/moc/erin-houchin/
+"Miller-Meeks, Mariannette",Iowa,R,house,2025,6,9,https://www.lcv.org/moc/mariannette-miller-meeks/
+"Hinson, Ashley",Iowa,R,house,2025,0,8,https://www.lcv.org/moc/ashley-hinson/
+"Nunn, Zach",Iowa,R,house,2025,3,6,https://www.lcv.org/moc/zach-nunn/
+"Feenstra, Randy",Iowa,R,house,2025,0,4,https://www.lcv.org/moc/randy-feenstra/
+"Mann, Tracey",Kansas,R,house,2025,0,1,https://www.lcv.org/moc/tracey-mann/
+"Schmidt, Derek",Kansas,R,house,2025,0,0,https://www.lcv.org/moc/derek-schmidt/
+"Davids, Sharice",Kansas,D,house,2025,94,95,https://www.lcv.org/moc/sharice-davids/
+"Estes, Ron",Kansas,R,house,2025,0,2,https://www.lcv.org/moc/ron-estes/
+"Comer, James",Kentucky,R,house,2025,0,4,https://www.lcv.org/moc/james-comer/
+"Guthrie, Brett",Kentucky,R,house,2025,0,5,https://www.lcv.org/moc/brett-guthrie/
+"McGarvey, Morgan",Kentucky,D,house,2025,100,100,https://www.lcv.org/moc/morgan-mcgarvey/
+"Massie, Thomas",Kentucky,R,house,2025,15,9,https://www.lcv.org/moc/thomas-massie/
+"Rogers, Harold",Kentucky,R,house,2025,0,8,https://www.lcv.org/moc/harold-rogers/
+"Barr, Garland",Kentucky,R,house,2025,0,4,https://www.lcv.org/moc/garland-barr/
+"Scalise, Steve",Louisiana,R,house,2025,0,3,https://www.lcv.org/moc/steve-scalise/
+"Carter, Troy",Louisiana,D,house,2025,100,99,https://www.lcv.org/moc/troy-carter/
+"Higgins, Clay",Louisiana,R,house,2025,0,1,https://www.lcv.org/moc/clay-higgins/
+"Letlow, Julia",Louisiana,R,house,2025,0,4,https://www.lcv.org/moc/julia-letlow/
+"Fields, Cleo",Louisiana,D,house,2025,91,79,https://www.lcv.org/moc/cleo-fields/
+"Pingree, Chellie",Maine,D,house,2025,97,97,https://www.lcv.org/moc/chellie-m-pingree/
+"Golden, Jared",Maine,D,house,2025,55,70,https://www.lcv.org/moc/jared-golden/
+"Harris, Andy",Maryland,R,house,2025,0,2,https://www.lcv.org/moc/andy-harris/
+"Olszewski, Johnny",Maryland,D,house,2025,100,100,https://www.lcv.org/moc/johnny-olszewski/
+"Elfreth, Sarah",Maryland,D,house,2025,100,100,https://www.lcv.org/moc/sarah-elfreth/
+"Ivey, Glenn",Maryland,D,house,2025,100,100,https://www.lcv.org/moc/glenn-ivey/
+"Hoyer, Steny",Maryland,D,house,2025,88,84,https://www.lcv.org/moc/steny-h-hoyer/
+"McClain Delaney, April",Maryland,D,house,2025,94,94,https://www.lcv.org/moc/april-mcclain-delaney/
+"Mfume, Kweisi",Maryland,D,house,2025,97,93,https://www.lcv.org/moc/kweisi-mfume/
+"Raskin, Jamie",Maryland,D,house,2025,100,99,https://www.lcv.org/moc/jamie-raskin/
+"Neal, Richard",Massachusetts,D,house,2025,100,94,https://www.lcv.org/moc/richard-e-neal/
+"McGovern, Jim",Massachusetts,D,house,2025,100,99,https://www.lcv.org/moc/jim-mcgovern/
+"Trahan, Lori",Massachusetts,D,house,2025,100,97,https://www.lcv.org/moc/lori-trahan/
+"Auchincloss, Jake",Massachusetts,D,house,2025,97,97,https://www.lcv.org/moc/jake-auchincloss/
+"Clark, Katherine",Massachusetts,D,house,2025,100,97,https://www.lcv.org/moc/katherine-m-clark/
+"Moulton, Seth",Massachusetts,D,house,2025,94,96,https://www.lcv.org/moc/seth-moulton/
+"Pressley, Ayanna",Massachusetts,D,house,2025,97,97,https://www.lcv.org/moc/ayanna-pressley/
+"Lynch, Stephen",Massachusetts,D,house,2025,100,95,https://www.lcv.org/moc/stephen-f-lynch/
+"Keating, Bill",Massachusetts,D,house,2025,100,96,https://www.lcv.org/moc/bill-keating/
+"Bergman, Jack",Michigan,R,house,2025,0,7,https://www.lcv.org/moc/jack-bergman/
+"Moolenaar, John",Michigan,R,house,2025,0,7,https://www.lcv.org/moc/john-moolenaar/
+"Scholten, Hillary",Michigan,D,house,2025,88,92,https://www.lcv.org/moc/hillary-scholten/
+"Huizenga, Bill",Michigan,R,house,2025,0,6,https://www.lcv.org/moc/bill-huizenga/
+"Walberg, Tim",Michigan,R,house,2025,0,4,https://www.lcv.org/moc/tim-walberg/
+"Dingell, Debbie",Michigan,D,house,2025,100,99,https://www.lcv.org/moc/debbie-dingell/
+"Barrett, Tom",Michigan,R,house,2025,0,0,https://www.lcv.org/moc/tom-barrett/
+"McDonald Rivet, Kristen",Michigan,D,house,2025,85,85,https://www.lcv.org/moc/kristen-mcdonald-rivet/
+"McClain, Lisa",Michigan,R,house,2025,0,1,https://www.lcv.org/moc/lisa-mcclain/
+"James, John",Michigan,R,house,2025,0,7,https://www.lcv.org/moc/john-james/
+"Stevens, Haley",Michigan,D,house,2025,100,98,https://www.lcv.org/moc/haley-stevens/
+"Tlaib, Rashida",Michigan,D,house,2025,100,98,https://www.lcv.org/moc/rashida-tlaib/
+"Thanedar, Shri",Michigan,D,house,2025,97,99,https://www.lcv.org/moc/shri-thanedar/
+"Finstad, Brad",Minnesota,R,house,2025,0,0,https://www.lcv.org/moc/brad-finstad/
+"Craig, Angie",Minnesota,D,house,2025,97,96,https://www.lcv.org/moc/angie-craig/
+"Morrison, Kelly",Minnesota,D,house,2025,100,100,https://www.lcv.org/moc/kelly-morrison/
+"McCollum, Betty",Minnesota,D,house,2025,100,96,https://www.lcv.org/moc/betty-mccollum/
+"Omar, Ilhan",Minnesota,D,house,2025,97,98,https://www.lcv.org/moc/ilhan-omar/
+"Emmer, Tom",Minnesota,R,house,2025,0,3,https://www.lcv.org/moc/tom-emmer/
+"Fischbach, Michelle",Minnesota,R,house,2025,0,2,https://www.lcv.org/moc/michelle-fischbach/
+"Stauber, Pete",Minnesota,R,house,2025,3,8,https://www.lcv.org/moc/pete-stauber/
+"Kelly, Trent",Mississippi,R,house,2025,0,1,https://www.lcv.org/moc/trent-kelly/
+"Thompson, Bennie",Mississippi,D,house,2025,97,85,https://www.lcv.org/moc/bennie-g-thompson/
+"Guest, Michael",Mississippi,R,house,2025,0,4,https://www.lcv.org/moc/michael-guest/
+"Ezell, Mike",Mississippi,R,house,2025,3,1,https://www.lcv.org/moc/mike-ezell/
+"Bell, Wesley",Missouri,D,house,2025,100,100,https://www.lcv.org/moc/wesley-bell/
+"Wagner, Ann",Missouri,R,house,2025,0,6,https://www.lcv.org/moc/ann-wagner/
+"Onder, Robert",Missouri,R,house,2025,0,0,https://www.lcv.org/moc/robert-f-onder/
+"Alford, Mark",Missouri,R,house,2025,0,0,https://www.lcv.org/moc/mark-alford/
+"Cleaver, Emanuel",Missouri,D,house,2025,100,91,https://www.lcv.org/moc/emanuel-cleaver/
+"Graves, Sam",Missouri,R,house,2025,0,4,https://www.lcv.org/moc/sam-graves/
+"Burlison, Eric",Missouri,R,house,2025,0,0,https://www.lcv.org/moc/eric-burlison/
+"Smith, Jason",Missouri,R,house,2025,0,1,https://www.lcv.org/moc/jason-t-smith/
+"Zinke, Ryan",Montana,R,house,2025,3,3,https://www.lcv.org/moc/ryan-zinke/
+"Downing, Troy",Montana,R,house,2025,0,0,https://www.lcv.org/moc/troy-downing/
+"Flood, Mike",Nebraska,R,house,2025,0,2,https://www.lcv.org/moc/mike-flood/
+"Bacon, Don",Nebraska,R,house,2025,9,15,https://www.lcv.org/moc/don-bacon/
+"Smith, Adrian",Nebraska,R,house,2025,0,4,https://www.lcv.org/moc/adrian-m-smith/
+"Titus, Dina",Nevada,D,house,2025,100,97,https://www.lcv.org/moc/dina-titus/
+"Amodei, Mark",Nevada,R,house,2025,0,6,https://www.lcv.org/moc/mark-e-amodei/
+"Lee, Susie",Nevada,D,house,2025,88,94,https://www.lcv.org/moc/susie-lee/
+"Horsford, Steven",Nevada,D,house,2025,88,90,https://www.lcv.org/moc/steven-a-horsford/
+"Pappas, Chris",New Hampshire,D,house,2025,97,97,https://www.lcv.org/moc/chris-pappas/
+"Goodlander, Maggie",New Hampshire,D,house,2025,97,97,https://www.lcv.org/moc/maggie-goodlander/
+"Norcross, Donald",New Jersey,D,house,2025,100,95,https://www.lcv.org/moc/donald-w-norcross/
+"Van Drew, Jefferson",New Jersey,R,house,2025,9,29,https://www.lcv.org/moc/jefferson-van-drew/
+"Conaway, Herbert",New Jersey,D,house,2025,97,97,https://www.lcv.org/moc/herbert-c-conaway/
+"Smith, Christopher",New Jersey,R,house,2025,6,54,https://www.lcv.org/moc/christopher-h-smith/
+"Gottheimer, Josh",New Jersey,D,house,2025,79,92,https://www.lcv.org/moc/josh-gottheimer/
+"Pallone, Frank",New Jersey,D,house,2025,100,97,https://www.lcv.org/moc/frank-j-pallone/
+"Kean, Thomas",New Jersey,R,house,2025,9,18,https://www.lcv.org/moc/thomas-kean/
+"Menendez, Robert",New Jersey,D,house,2025,100,100,https://www.lcv.org/moc/robert-menendez-2/
+"Pou, Nellie",New Jersey,D,house,2025,100,100,https://www.lcv.org/moc/nellie-pou/
+"McIver, LaMonica",New Jersey,D,house,2025,100,100,https://www.lcv.org/moc/lamonica-mciver/
+"Sherrill, Mikie",New Jersey,D,house,2025,77,94,https://www.lcv.org/moc/mikie-sherrill/
+"Watson Coleman, Bonnie",New Jersey,D,house,2025,100,98,https://www.lcv.org/moc/bonnie-watson-coleman/
+"Stansbury, Melanie",New Mexico,D,house,2025,100,97,https://www.lcv.org/moc/melanie-stansbury/
+"Vasquez, Gabe",New Mexico,D,house,2025,79,88,https://www.lcv.org/moc/gabe-vasquez/
+"Leger Fernández, Teresa",New Mexico,D,house,2025,100,99,https://www.lcv.org/moc/teresa-leger-fernandez/
+"LaLota, Nick",New York,R,house,2025,12,13,https://www.lcv.org/moc/nick-lalota/
+"Garbarino, Andrew",New York,R,house,2025,9,15,https://www.lcv.org/moc/andrew-garbarino/
+"Suozzi, Thomas",New York,D,house,2025,84,95,https://www.lcv.org/moc/thomas-suozzi/
+"Gillen, Laura",New York,D,house,2025,84,84,https://www.lcv.org/moc/laura-gillen/
+"Meeks, Gregory",New York,D,house,2025,97,91,https://www.lcv.org/moc/gregory-w-meeks/
+"Meng, Grace",New York,D,house,2025,97,98,https://www.lcv.org/moc/grace-meng/
+"Velázquez , Nydia",New York,D,house,2025,100,95,https://www.lcv.org/moc/nydia-velazquez/
+"Jeffries, Hakeem",New York,D,house,2025,100,97,https://www.lcv.org/moc/hakeem-s-jeffries/
+"Clarke, Yvette",New York,D,house,2025,100,96,https://www.lcv.org/moc/yvette-d-clarke/
+"Goldman, Dan",New York,D,house,2025,100,100,https://www.lcv.org/moc/dan-goldman/
+"Malliotakis, Nicole",New York,R,house,2025,9,7,https://www.lcv.org/moc/nicole-malliotakis/
+"Nadler, Jerrold",New York,D,house,2025,100,98,https://www.lcv.org/moc/jerrold-l-nadler/
+"Espaillat, Adriano",New York,D,house,2025,100,99,https://www.lcv.org/moc/adriano-espaillat/
+"Ocasio-Cortez, Alexandria",New York,D,house,2025,100,98,https://www.lcv.org/moc/alexandria-ocasio-cortez/
+"Torres, Ritchie",New York,D,house,2025,100,98,https://www.lcv.org/moc/ritchie-torres/
+"Latimer, George",New York,D,house,2025,100,100,https://www.lcv.org/moc/george-latimer/
+"Lawler, Michael",New York,R,house,2025,12,17,https://www.lcv.org/moc/michael-lawler/
+"Ryan, Patrick",New York,D,house,2025,97,98,https://www.lcv.org/moc/patrick-ryan-2/
+"Riley, Josh",New York,D,house,2025,97,97,https://www.lcv.org/moc/josh-riley/
+"Tonko, Paul",New York,D,house,2025,100,98,https://www.lcv.org/moc/paul-d-tonko/
+"Stefanik, Elise",New York,R,house,2025,0,23,https://www.lcv.org/moc/elise-stefanik/
+"Mannion, John",New York,D,house,2025,97,97,https://www.lcv.org/moc/john-w-mannion/
+"Langworthy, Nick",New York,R,house,2025,0,2,https://www.lcv.org/moc/nick-langworthy/
+"Tenney, Claudia",New York,R,house,2025,0,3,https://www.lcv.org/moc/claudia-tenney/
+"Morelle, Joe",New York,D,house,2025,91,96,https://www.lcv.org/moc/joe-morelle/
+"Kennedy, Timothy",New York,D,house,2025,97,98,https://www.lcv.org/moc/timothy-kennedy/
+"Davis, Donald",North Carolina,D,house,2025,64,71,https://www.lcv.org/moc/donald-g-davis/
+"Ross, Deborah",North Carolina,D,house,2025,100,99,https://www.lcv.org/moc/deborah-ross/
+"Murphy, Greg",North Carolina,R,house,2025,0,6,https://www.lcv.org/moc/greg-murphy/
+"Foushee, Valerie",North Carolina,D,house,2025,100,100,https://www.lcv.org/moc/valerie-foushee/
+"Foxx, Virginia",North Carolina,R,house,2025,0,4,https://www.lcv.org/moc/virginia-foxx/
+"McDowell, Addison",North Carolina,R,house,2025,0,0,https://www.lcv.org/moc/addison-p-mcdowell/
+"Rouzer, David",North Carolina,R,house,2025,0,3,https://www.lcv.org/moc/david-rouzer/
+"Harris, Mark",North Carolina,R,house,2025,0,0,https://www.lcv.org/moc/mark-harris/
+"Hudson, Richard",North Carolina,R,house,2025,0,3,https://www.lcv.org/moc/richard-hudson/
+"Harrigan, Pat",North Carolina,R,house,2025,0,0,https://www.lcv.org/moc/pat-harrigan/
+"Edwards, Chuck",North Carolina,R,house,2025,3,5,https://www.lcv.org/moc/chuck-edwards/
+"Adams, Alma",North Carolina,D,house,2025,100,99,https://www.lcv.org/moc/alma-adams/
+"Knott, Brad",North Carolina,R,house,2025,0,0,https://www.lcv.org/moc/brad-knott/
+"Moore, Tim",North Carolina,R,house,2025,0,0,https://www.lcv.org/moc/tim-moore/
+"Fedorchak, Julie",North Dakota,R,house,2025,0,0,https://www.lcv.org/moc/julie-fedorchak/
+"King-Hinds, Kimberlyn",Northern Mariana Islands,R,house,2025,33,33,https://www.lcv.org/moc/kimberlyn-king-hinds/
+"Landsman, Greg",Ohio,D,house,2025,97,98,https://www.lcv.org/moc/greg-landsman/
+"Taylor, David",Ohio,R,house,2025,0,0,https://www.lcv.org/moc/david-j-taylor/
+"Beatty, Joyce",Ohio,D,house,2025,88,96,https://www.lcv.org/moc/joyce-beatty/
+"Jordan, Jim",Ohio,R,house,2025,0,2,https://www.lcv.org/moc/jim-jordan/
+"Latta, Bob",Ohio,R,house,2025,0,3,https://www.lcv.org/moc/bob-latta/
+"Rulli, Michael",Ohio,R,house,2025,0,2,https://www.lcv.org/moc/michael-a-rulli/
+"Miller, Max",Ohio,R,house,2025,0,1,https://www.lcv.org/moc/max-miller/
+"Davidson, Warren",Ohio,R,house,2025,0,2,https://www.lcv.org/moc/warren-davidson/
+"Kaptur, Marcy",Ohio,D,house,2025,94,86,https://www.lcv.org/moc/marcy-kaptur/
+"Turner, Michael",Ohio,R,house,2025,6,10,https://www.lcv.org/moc/michael-r-turner/
+"Brown, Shontel",Ohio,D,house,2025,100,98,https://www.lcv.org/moc/shontel-brown/
+"Balderson, Troy",Ohio,R,house,2025,0,6,https://www.lcv.org/moc/troy-balderson/
+"Sykes, Emilia",Ohio,D,house,2025,100,99,https://www.lcv.org/moc/emilia-sykes/
+"Joyce, David",Ohio,R,house,2025,6,12,https://www.lcv.org/moc/david-p-joyce/
+"Carey, Mike",Ohio,R,house,2025,0,4,https://www.lcv.org/moc/mike-carey/
+"Hern, Kevin",Oklahoma,R,house,2025,0,1,https://www.lcv.org/moc/kevin-hern/
+"Brecheen, Josh",Oklahoma,R,house,2025,0,0,https://www.lcv.org/moc/josh-brecheen/
+"Lucas, Frank",Oklahoma,R,house,2025,0,5,https://www.lcv.org/moc/frank-d-lucas/
+"Cole, Tom",Oklahoma,R,house,2025,0,7,https://www.lcv.org/moc/tom-cole/
+"Bice, Stephanie",Oklahoma,R,house,2025,0,6,https://www.lcv.org/moc/stephanie-bice/
+"Bonamici, Suzanne",Oregon,D,house,2025,100,99,https://www.lcv.org/moc/suzanne-bonamici/
+"Bentz, Cliff",Oregon,R,house,2025,3,3,https://www.lcv.org/moc/cliff-bentz/
+"Dexter, Maxine",Oregon,D,house,2025,100,100,https://www.lcv.org/moc/maxine-dexter/
+"Hoyle, Valerie",Oregon,D,house,2025,97,98,https://www.lcv.org/moc/valerie-hoyle/
+"Bynum, Janelle",Oregon,D,house,2025,91,91,https://www.lcv.org/moc/janelle-s-bynum/
+"Salinas, Andrea",Oregon,D,house,2025,100,100,https://www.lcv.org/moc/andrea-salinas/
+"Fitzpatrick, Brian",Pennsylvania,R,house,2025,76,71,https://www.lcv.org/moc/brian-fitzpatrick/
+"Boyle, Brendan",Pennsylvania,D,house,2025,100,98,https://www.lcv.org/moc/brendan-boyle/
+"Evans, Dwight",Pennsylvania,D,house,2025,100,97,https://www.lcv.org/moc/dwight-evans/
+"Dean, Madeleine",Pennsylvania,D,house,2025,100,99,https://www.lcv.org/moc/madeleine-dean/
+"Scanlon, Mary",Pennsylvania,D,house,2025,100,99,https://www.lcv.org/moc/mary-gay-scanlon/
+"Houlahan, Chrissy",Pennsylvania,D,house,2025,97,97,https://www.lcv.org/moc/chrissy-houlahan/
+"Mackenzie, Ryan",Pennsylvania,R,house,2025,9,9,https://www.lcv.org/moc/ryan-mackenzie/
+"Bresnahan, Robert",Pennsylvania,R,house,2025,9,9,https://www.lcv.org/moc/robert-p-bresnahan/
+"Meuser, Daniel",Pennsylvania,R,house,2025,0,4,https://www.lcv.org/moc/daniel-meuser/
+"Perry, Scott",Pennsylvania,R,house,2025,3,2,https://www.lcv.org/moc/scott-perry/
+"Smucker, Lloyd",Pennsylvania,R,house,2025,0,5,https://www.lcv.org/moc/lloyd-smucker/
+"Lee, Summer",Pennsylvania,D,house,2025,100,100,https://www.lcv.org/moc/summer-lee/
+"Joyce, John",Pennsylvania,R,house,2025,0,3,https://www.lcv.org/moc/john-joyce/
+"Reschenthaler, Guy",Pennsylvania,R,house,2025,0,5,https://www.lcv.org/moc/guy-reschenthaler/
+"Thompson, Glenn",Pennsylvania,R,house,2025,0,5,https://www.lcv.org/moc/glenn-w-thompson/
+"Kelly, Mike",Pennsylvania,R,house,2025,0,4,https://www.lcv.org/moc/mike-kelly/
+"Deluzio, Chris",Pennsylvania,D,house,2025,97,97,https://www.lcv.org/moc/chris-deluzio/
+"Hernández, Pablo",Puerto Rico,D,house,2025,100,100,https://www.lcv.org/moc/pablo-jose-hernandez/
+"Amo, Gabe",Rhode Island,D,house,2025,100,100,https://www.lcv.org/moc/gabe-amo/
+"Magaziner, Seth",Rhode Island,D,house,2025,94,98,https://www.lcv.org/moc/seth-magaziner/
+"Mace, Nancy",South Carolina,R,house,2025,6,19,https://www.lcv.org/moc/nancy-mace/
+"Wilson, Joe",South Carolina,R,house,2025,0,3,https://www.lcv.org/moc/joe-wilson/
+"Biggs, Sheri",South Carolina,R,house,2025,0,0,https://www.lcv.org/moc/sheri-biggs/
+"Timmons, William",South Carolina,R,house,2025,0,4,https://www.lcv.org/moc/william-timmons/
+"Norman, Ralph",South Carolina,R,house,2025,0,1,https://www.lcv.org/moc/ralph-norman/
+"Clyburn, James",South Carolina,D,house,2025,94,88,https://www.lcv.org/moc/james-e-clyburn/
+"Fry, Russell",South Carolina,R,house,2025,0,2,https://www.lcv.org/moc/russell-fry/
+"Johnson, Dusty",South Dakota,R,house,2025,0,5,https://www.lcv.org/moc/dusty-johnson/
+"Harshbarger, Diana",Tennessee,R,house,2025,0,0,https://www.lcv.org/moc/diana-harshbarger/
+"Burchett, Tim",Tennessee,R,house,2025,0,4,https://www.lcv.org/moc/tim-burchett/
+"Fleischmann, Chuck",Tennessee,R,house,2025,0,5,https://www.lcv.org/moc/chuck-fleischmann/
+"DesJarlais, Scott",Tennessee,R,house,2025,0,2,https://www.lcv.org/moc/scott-desjarlais/
+"Ogles, William",Tennessee,R,house,2025,0,1,https://www.lcv.org/moc/william-ogles/
+"Rose, John",Tennessee,R,house,2025,0,2,https://www.lcv.org/moc/john-rose/
+"Van Epps, Matt",Tennessee,R,house,2025,0,0,https://www.lcv.org/moc/matt-van-epps/
+"Green, Mark",Tennessee,R,house,2025,0,1,https://www.lcv.org/moc/mark-green/
+"Kustoff, David",Tennessee,R,house,2025,0,4,https://www.lcv.org/moc/david-kustoff/
+"Cohen, Steve",Tennessee,D,house,2025,96,97,https://www.lcv.org/moc/steve-cohen/
+"Moran, Nathaniel",Texas,R,house,2025,0,0,https://www.lcv.org/moc/nathaniel-moran/
+"Crenshaw, Dan",Texas,R,house,2025,0,6,https://www.lcv.org/moc/dan-crenshaw/
+"Self, Keith",Texas,R,house,2025,3,1,https://www.lcv.org/moc/keith-self/
+"Fallon, Pat",Texas,R,house,2025,0,1,https://www.lcv.org/moc/pat-fallon/
+"Gooden, Lance",Texas,R,house,2025,0,2,https://www.lcv.org/moc/lance-gooden/
+"Ellzey, Jake",Texas,R,house,2025,0,5,https://www.lcv.org/moc/jake-ellzey/
+"Fletcher, Lizzie",Texas,D,house,2025,94,94,https://www.lcv.org/moc/lizzie-fletcher/
+"Luttrell, Morgan",Texas,R,house,2025,0,0,https://www.lcv.org/moc/morgan-luttrell/
+"Green, Al",Texas,D,house,2025,100,90,https://www.lcv.org/moc/al-green/
+"McCaul, Michael",Texas,R,house,2025,3,8,https://www.lcv.org/moc/michael-t-mccaul/
+"Pfluger, August",Texas,R,house,2025,0,0,https://www.lcv.org/moc/august-pfluger/
+"Goldman, Craig",Texas,R,house,2025,0,0,https://www.lcv.org/moc/craig-a-goldman/
+"Jackson, Ronny",Texas,R,house,2025,0,0,https://www.lcv.org/moc/ronny-jackson/
+"Weber, Randy",Texas,R,house,2025,0,1,https://www.lcv.org/moc/randy-k-weber/
+"De La Cruz, Mónica",Texas,R,house,2025,0,0,https://www.lcv.org/moc/monica-de-la-cruz/
+"Escobar, Veronica",Texas,D,house,2025,100,98,https://www.lcv.org/moc/veronica-escobar/
+"Sessions, Pete",Texas,R,house,2025,3,3,https://www.lcv.org/moc/pete-sessions/
+"Turner, Sylvester",Texas,D,house,2025,100,100,https://www.lcv.org/moc/sylvester-turner/
+"Arrington, Jodey",Texas,R,house,2025,0,1,https://www.lcv.org/moc/jodey-arrington/
+"Castro, Joaquin",Texas,D,house,2025,100,96,https://www.lcv.org/moc/joaquin-castro/
+"Roy, Chip",Texas,R,house,2025,0,2,https://www.lcv.org/moc/chip-roy/
+"Nehls, Troy",Texas,R,house,2025,0,1,https://www.lcv.org/moc/troy-nehls/
+"Gonzales, Tony",Texas,R,house,2025,0,7,https://www.lcv.org/moc/tony-gonzales/
+"Van Duyne, Beth",Texas,R,house,2025,0,2,https://www.lcv.org/moc/beth-van-duyne/
+"Williams, Roger",Texas,R,house,2025,0,2,https://www.lcv.org/moc/roger-williams/
+"Gill, Brandon",Texas,R,house,2025,0,0,https://www.lcv.org/moc/brandon-gill/
+"Cloud, Michael",Texas,R,house,2025,3,0,https://www.lcv.org/moc/michael-cloud/
+"Cuellar, Henry",Texas,D,house,2025,42,51,https://www.lcv.org/moc/henry-cuellar/
+"Garcia, Sylvia",Texas,D,house,2025,100,97,https://www.lcv.org/moc/sylvia-garcia/
+"Crockett, Jasmine",Texas,D,house,2025,100,99,https://www.lcv.org/moc/jasmine-crockett/
+"Carter, John",Texas,R,house,2025,0,4,https://www.lcv.org/moc/john-r-carter/
+"Johnson, Julie",Texas,D,house,2025,91,91,https://www.lcv.org/moc/julie-johnson/
+"Veasey, Marc",Texas,D,house,2025,79,91,https://www.lcv.org/moc/marc-a-veasey/
+"Gonzalez, Vicente",Texas,D,house,2025,55,75,https://www.lcv.org/moc/vicente-gonzalez/
+"Casar, Greg",Texas,D,house,2025,100,98,https://www.lcv.org/moc/greg-casar/
+"Babin, Brian",Texas,R,house,2025,0,1,https://www.lcv.org/moc/brian-babin/
+"Doggett, Lloyd",Texas,D,house,2025,100,98,https://www.lcv.org/moc/lloyd-a-doggett/
+"Hunt, Wesley",Texas,R,house,2025,0,0,https://www.lcv.org/moc/wesley-hunt/
+"Moore, Blake",Utah,R,house,2025,0,7,https://www.lcv.org/moc/blake-moore/
+"Maloy, Celeste",Utah,R,house,2025,3,5,https://www.lcv.org/moc/celeste-maloy/
+"Kennedy, Mike",Utah,R,house,2025,0,0,https://www.lcv.org/moc/mike-kennedy/
+"Owens, Burgess",Utah,R,house,2025,0,4,https://www.lcv.org/moc/burgess-owens/
+"Balint, Becca",Vermont,D,house,2025,100,99,https://www.lcv.org/moc/becca-balint/
+"Plaskett, Stacey",Virgin Islands,D,house,2025,67,66,https://www.lcv.org/moc/stacey-plaskett/
+"Wittman, Rob",Virginia,R,house,2025,3,9,https://www.lcv.org/moc/rob-wittman/
+"Kiggans, Jennifer",Virginia,R,house,2025,6,11,https://www.lcv.org/moc/jennifer-kiggans/
+"Scott, Robert",Virginia,D,house,2025,100,93,https://www.lcv.org/moc/robert-c-scott/
+"McClellan, Jennifer",Virginia,D,house,2025,100,100,https://www.lcv.org/moc/jennifer-mcclellan/
+"McGuire, John",Virginia,R,house,2025,0,0,https://www.lcv.org/moc/john-j-mcguire/
+"Cline, Ben",Virginia,R,house,2025,0,1,https://www.lcv.org/moc/ben-cline/
+"Vindman, Eugene",Virginia,D,house,2025,88,88,https://www.lcv.org/moc/eugene-simon-vindman/
+"Beyer, Donald",Virginia,D,house,2025,100,97,https://www.lcv.org/moc/donald-beyer/
+"Griffith, Morgan",Virginia,R,house,2025,3,6,https://www.lcv.org/moc/morgan-griffith/
+"Subramanyam, Suhas",Virginia,D,house,2025,100,100,https://www.lcv.org/moc/suhas-subramanyam/
+"Walkinshaw, James",Virginia,D,house,2025,100,100,https://www.lcv.org/moc/james-walkinshaw/
+"Connolly, Gerald",Virginia,D,house,2025,100,97,https://www.lcv.org/moc/gerald-e-connolly/
+"DelBene, Suzan",Washington,D,house,2025,100,96,https://www.lcv.org/moc/suzan-k-delbene/
+"Larsen, Rick",Washington,D,house,2025,97,93,https://www.lcv.org/moc/rick-larsen/
+"Gluesenkamp Perez, Marie",Washington,D,house,2025,48,57,https://www.lcv.org/moc/marie-gluesenkamp-perez/
+"Newhouse, Dan",Washington,R,house,2025,6,7,https://www.lcv.org/moc/dan-newhouse/
+"Baumgartner, Michael",Washington,R,house,2025,0,0,https://www.lcv.org/moc/michael-baumgartner/
+"Randall, Emily",Washington,D,house,2025,100,100,https://www.lcv.org/moc/emily-randall/
+"Jayapal, Pramila",Washington,D,house,2025,100,98,https://www.lcv.org/moc/pramila-jayapal/
+"Schrier, Kim",Washington,D,house,2025,97,97,https://www.lcv.org/moc/kim-schrier/
+"Smith, Adam",Washington,D,house,2025,100,93,https://www.lcv.org/moc/adam-smith/
+"Strickland, Marilyn",Washington,D,house,2025,97,97,https://www.lcv.org/moc/marilyn-strickland/
+"Miller, Carol",West Virginia,R,house,2025,0,5,https://www.lcv.org/moc/carol-miller/
+"Moore, Riley",West Virginia,R,house,2025,0,0,https://www.lcv.org/moc/riley-m-moore/
+"Steil, Bryan",Wisconsin,R,house,2025,0,10,https://www.lcv.org/moc/bryan-steil/
+"Pocan, Mark",Wisconsin,D,house,2025,100,98,https://www.lcv.org/moc/mark-pocan/
+"Van Orden, Derrick",Wisconsin,R,house,2025,6,9,https://www.lcv.org/moc/derrick-van-orden/
+"Moore, Gwen",Wisconsin,D,house,2025,94,95,https://www.lcv.org/moc/gwen-moore/
+"Fitzgerald, Scott",Wisconsin,R,house,2025,0,1,https://www.lcv.org/moc/scott-fitzgerald/
+"Grothman, Glenn",Wisconsin,R,house,2025,0,3,https://www.lcv.org/moc/glenn-grothman/
+"Tiffany, Tom",Wisconsin,R,house,2025,0,1,https://www.lcv.org/moc/tom-tiffany/
+"Wied, Tony",Wisconsin,R,house,2025,0,0,https://www.lcv.org/moc/tony-wied/
+"Hageman, Harriet",Wyoming,R,house,2025,0,1,https://www.lcv.org/moc/harriet-hageman/

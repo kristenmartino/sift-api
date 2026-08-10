@@ -529,6 +529,25 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON threading_shadow (run_at DESC)"
         )
 
+        # Interest-group rating provenance (migrations/019).
+        # The column shipped as a bare {rater: score} dict — a claim about a
+        # living person's voting record with no year and no citation, the same
+        # defect 013 and 015 each had to remove. Never populated, so this is a
+        # shape fix ahead of data, not a data migration. New shape is an array
+        # of {rater, rater_name, score, unit, year, lifetime_score?,
+        # source_url}; lib/politician.ts drops any entry missing score, year
+        # or source_url.
+        await conn.execute(
+            "ALTER TABLE politician_profiles "
+            "ALTER COLUMN interest_group_ratings SET DEFAULT '[]'::jsonb"
+        )
+        await conn.execute(
+            "UPDATE politician_profiles "
+            "SET interest_group_ratings = '[]'::jsonb "
+            "WHERE interest_group_ratings IS NULL "
+            "OR jsonb_typeof(interest_group_ratings) <> 'array'"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

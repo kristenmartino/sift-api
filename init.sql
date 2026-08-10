@@ -321,7 +321,9 @@ CREATE TABLE IF NOT EXISTS politician_profiles (
     chamber                         TEXT,             -- 'senate'|'house'|'former'|'executive'|'foreign-executive'|'scotus'
     committees                      JSONB DEFAULT '[]'::jsonb,
     top_industries_current_cycle    JSONB DEFAULT '[]'::jsonb,
-    interest_group_ratings          JSONB DEFAULT '{}'::jsonb,
+    -- Array of third-party scorecard entries, each carrying its own
+    -- year and source_url. See migrations/019.
+    interest_group_ratings          JSONB DEFAULT '[]'::jsonb,
     external_links                  JSONB DEFAULT '{}'::jsonb,
     notes                           TEXT,             -- reviewer prose; NULL on executive rows (015)
     id_source                       TEXT,             -- 'bioguide'|'executive'|'foreign-executive'|'scotus'
