@@ -223,3 +223,81 @@ async def test_one_failing_article_does_not_stall_the_queue():
 
 def test_min_unique_outlets_matches_the_legacy_gate():
     assert MIN_UNIQUE_OUTLETS == 2
+
+
+# ── member stealing within a run ────────────────────────────
+#
+# find_candidates snapshots the whole queue before any decision is applied, so
+# one loose article is routinely offered to several candidates in the same run.
+# Measured on the first live run 2026-08-10: 7 of 54 new stories lost members
+# to a later create, three of them down to zero — the orphan mechanism this
+# design exists to remove, via a different door.
+
+
+@pytest.mark.asyncio
+async def test_a_second_cluster_cannot_steal_the_first_ones_member():
+    pool = _pool({
+        "id = ANY($1::text[])": [_article("a1", "Reuters"), _article("shared", "AP")],
+    })
+    synth = AsyncMock(return_value={"headline": "H", "summary": "S", "framings": []})
+    # Both candidates were offered the same loose neighbour, "shared".
+    cands = [
+        {"article": _article("a1", "Reuters"), "existing_stories": {},
+         "loose_neighbours": [{"id": "shared"}]},
+        {"article": _article("a2", "BBC"), "existing_stories": {},
+         "loose_neighbours": [{"id": "shared"}]},
+    ]
+    r = await run_incremental_threading(
+        pool, candidates=cands, synthesize=synth,
+        confirm=AsyncMock(return_value={
+            "a1": {"action": "new", "members": ["shared"]},
+            "a2": {"action": "new", "members": ["shared"]},
+        }),
+    )
+    # First create wins; the second has nothing left and is not attempted.
+    assert r["created"] == 1
+    assert r["already_claimed"] == 1
+    assert synth.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_an_article_already_claimed_as_a_member_is_not_processed_again():
+    """a2 is pulled into a1's story as a member, and also has its own decision
+    later in the same run. Acting on it would move it out again."""
+    pool = _pool({
+        "id = ANY($1::text[])": [_article("a1", "Reuters"), _article("a2", "AP")],
+    })
+    cands = [
+        {"article": _article("a1", "Reuters"), "existing_stories": {},
+         "loose_neighbours": [{"id": "a2"}]},
+        {"article": _article("a2", "AP"), "existing_stories": {"s9": [{}]},
+         "loose_neighbours": []},
+    ]
+    r = await run_incremental_threading(
+        pool, candidates=cands,
+        synthesize=AsyncMock(return_value={"headline": "H", "summary": "S", "framings": []}),
+        confirm=AsyncMock(return_value={
+            "a1": {"action": "new", "members": ["a2"]},
+            "a2": {"action": "attach", "story_id": "s9"},
+        }),
+    )
+    assert r["created"] == 1
+    assert r["attached"] == 0          # a2 was already claimed by a1's story
+    assert r["already_claimed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_create_only_claims_members_still_unattached_in_the_database():
+    """The authoritative guard. The in-memory set covers this run; the SQL
+    covers anything that attached between snapshot and write."""
+    pool = _pool({"id = ANY($1::text[])": [_article("a1", "Reuters"), _article("n1", "AP")]})
+    await run_incremental_threading(
+        pool,
+        candidates=[{"article": _article("a1", "Reuters"), "existing_stories": {},
+                     "loose_neighbours": [{"id": "n1"}]}],
+        synthesize=AsyncMock(return_value={"headline": "H", "summary": "S", "framings": []}),
+        confirm=AsyncMock(return_value={"a1": {"action": "new", "members": ["n1"]}}),
+    )
+    fetched = [str(c.args[0]) for c in pool.fetch.call_args_list if c.args]
+    member_query = next(q for q in fetched if "id = ANY($1::text[])" in q)
+    assert "story_id IS NULL" in member_query
