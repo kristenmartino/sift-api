@@ -93,7 +93,80 @@ def _validate_chamber(value: str | None, bioguide_id: str) -> str | None:
     return v.lower()
 
 
-async def main(dry_run: bool) -> None:
+
+async def _retire_departed(
+    pool: asyncpg.Pool,
+    csv_ids: set[str],
+    dry_run: bool,
+    prune: bool,
+) -> None:
+    """Mark sitting members absent from the CSV as `chamber = 'former'`.
+
+    **Retires, it does not delete** — and that is the whole design.
+    `seed_entity_aliases.py --prune` DELETEs, which is right for an alias
+    (a string with no dependents). A politician row is not that:
+
+      * `articles.entity_links` stores `bioguide_id`. Deleting the row turns
+        every stored chip pointing at it into a link to a 404. There are
+        26,706 chips on one politician alone.
+      * The row carries data this script does not own and cannot rebuild —
+        LCV scores from `seed_lcv_scores.py`, hand-curated committees and
+        notes preserved by `scrape_govtrack.py`.
+      * Someone leaving Congress is a fact about them, not a reason to erase
+        that they were ever there. Their dossier stays true; it stops
+        claiming they currently hold the seat.
+
+    `former` is already a legal chamber value and `lib/publishFloor.ts`
+    withholds it from the sitemap, so a retired member keeps a working page
+    and drops out of the indexed set — the "don't advertise" semantics that
+    already exist, reused rather than reinvented.
+
+    **Scoped to house/senate on purpose.** The CSV is the current-Congress
+    roster only; the 112 executive, foreign-executive and scotus rows come
+    from other seeders and are absent from it by design. An unscoped prune
+    would retire all of them.
+    """
+    rows = await pool.fetch(
+        "SELECT bioguide_id, name, state, chamber FROM politician_profiles "
+        "WHERE chamber IN ('house', 'senate') ORDER BY name"
+    )
+    departed = [r for r in rows if r["bioguide_id"] not in csv_ids]
+    if not departed:
+        print("No departed members: every sitting row is in the CSV.")
+        return
+
+    # Show the blast radius before touching anything. A member with stored
+    # chips is one whose dossier readers can currently reach from an article.
+    print(f"\nDeparted — in the DB as sitting, absent from the CSV ({len(departed)}):")
+    for r in departed:
+        chips = await pool.fetchval(
+            "SELECT COUNT(*) FROM articles WHERE from_search = false "
+            "AND entity_links @> $1::jsonb",
+            f'[{{"canonical_id":"{r["bioguide_id"]}"}}]',
+        )
+        print(f"  {r['bioguide_id']:<10} {r['name']:<28} "
+              f"{r['state']}/{r['chamber']:<7} {chips:>6,} article chips")
+
+    if not prune:
+        print("\n  Not retired — pass --prune to set these to chamber='former'.")
+        print("  Left as-is they keep claiming a seat they no longer hold.")
+        return
+    if dry_run:
+        print("\n  --dry-run set; nothing retired.")
+        return
+
+    ids = [r["bioguide_id"] for r in departed]
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute(
+            "UPDATE politician_profiles SET chamber = 'former', updated_at = NOW() "
+            "WHERE bioguide_id = ANY($1::text[])",
+            ids,
+        )
+    print(f"\n  Retired {len(ids)} to chamber='former'. Their dossiers still "
+          f"render; the publish floor drops them from the sitemap.")
+
+
+async def main(dry_run: bool, prune: bool) -> None:
     db_url = os.environ.get("DATABASE_URL", settings.database_url)
     ssl_mode = "require" if "neon.tech" in db_url else False
 
@@ -121,11 +194,22 @@ async def main(dry_run: bool) -> None:
     print(f"  By party:   {dict(sorted(by_party.items()))}")
     print(f"  By chamber: {dict(sorted(by_chamber.items()))}")
 
+    # A dry run still opens the pool. --prune's whole value is seeing which
+    # members would be retired *before* retiring them, and returning here
+    # made `--prune --dry-run` print nothing at all — the one combination an
+    # operator is most likely to reach for first.
+    pool = await asyncpg.create_pool(db_url, min_size=1, max_size=5, ssl=ssl_mode)
     if dry_run:
-        print("--dry-run set; no DB writes.")
+        try:
+            print("--dry-run set; no DB writes.")
+            await _retire_departed(
+                pool, {r["bioguide_id"] for r in rows}, dry_run, prune,
+            )
+        finally:
+            await pool.close()
         return
 
-    pool = await asyncpg.create_pool(db_url, min_size=1, max_size=5, ssl=ssl_mode)
+
     inserted = 0
     updated = 0
 
@@ -218,6 +302,8 @@ async def main(dry_run: bool) -> None:
 
         print(f"\nDone! Inserted {inserted} new politicians; updated {updated} existing.")
 
+        await _retire_departed(pool, {r["bioguide_id"] for r in rows}, dry_run, prune)
+
     finally:
         await pool.close()
 
@@ -228,5 +314,11 @@ if __name__ == "__main__":
         "--dry-run", action="store_true",
         help="Parse + validate the CSV without writing to DB.",
     )
+    parser.add_argument(
+        "--prune", action="store_true",
+        help="Retire sitting members absent from the CSV: set chamber='former'. "
+             "Never deletes — a politician row is referenced by "
+             "articles.entity_links and carries data this script does not own.",
+    )
     args = parser.parse_args()
-    asyncio.run(main(dry_run=args.dry_run))
+    asyncio.run(main(dry_run=args.dry_run, prune=args.prune))
