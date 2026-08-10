@@ -91,7 +91,18 @@ Check before running: nothing outside the feed path reads older rows. `scripts/e
 
 Reclaims ~40 MB of dead tuples. Takes an `ACCESS EXCLUSIVE` lock — run off-peak, and note the batch poller writes this table every 60s (`services/batch_poller.py:28`).
 
-### 4. Prune orphan stories
+### 4. Prune orphan stories — DONE 2026-08-10
+
+`scripts/prune_orphan_stories.py --apply`. **60,020 rows deleted of 61,143**, archived first to a 139 MB JSONL. The 624 orphans inside the 48h window were left alone; they are recent enough that an article could still be on its way.
+
+    stories table   132 MB -> 2.2 MB
+    database      2,102 MB -> 1,973 MB
+
+**Deleting 98% of the rows returned 10 MB.** `VACUUM` reclaimed nothing and `REINDEX` gave back only the index; the heap stayed full of dead tuples until `VACUUM FULL` rewrote it — 0.1s, because only 1,123 live rows remained. That is the second time in this document that VACUUM did nothing and a rewrite did all of it. Reclaiming space in Postgres needs a rewrite, not a vacuum.
+
+Order mattered and was respected: incremental threading went live 17:39Z and the marginal orphan rate fell to 0% before this ran. Pruning first would have refilled within hours.
+
+### 4a. Original note
 
 58,259 rows with no member articles. Same script shape, dry-run default. Independent of the article prune, and **[INCREMENTAL_THREADING.md](./INCREMENTAL_THREADING.md) stops new ones forming** — do that first or this refills.
 
