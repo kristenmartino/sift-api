@@ -61,15 +61,32 @@ CSV_FIELDS = [
 AUTO_LINK_KEYS = {"govtrack", "opensecrets"}
 
 
+# GovTrack's /role endpoint is slow on the later pages — measured 2026-08-07
+# at 0.5s, 20.5s and 14.7s for offsets 0/200/400. The original 30s timeout sat
+# close enough to that to fail most runs on page two or three, which read as a
+# flaky network rather than a too-tight bound. Generous timeout plus two
+# retries; the request is idempotent so retrying is free.
+_HTTP_TIMEOUT_SECONDS = 120
+_HTTP_ATTEMPTS = 3
+
+
 def _http_get_json(url: str) -> dict[str, Any]:
-    """GET + JSON parse, with a polite User-Agent."""
+    """GET + JSON parse, with a polite User-Agent and retry on timeout."""
     req = urllib.request.Request(
         url,
         headers={"User-Agent": "sift-civic-literacy/1.0 (contact: kristenmartino on GitHub)"},
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        body = resp.read()
-    return json.loads(body)
+    last: Exception | None = None
+    for attempt in range(1, _HTTP_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
+                return json.loads(resp.read())
+        except (TimeoutError, urllib.error.URLError, OSError) as e:
+            last = e
+            if attempt < _HTTP_ATTEMPTS:
+                print(f"    retry {attempt}/{_HTTP_ATTEMPTS - 1} after {type(e).__name__}")
+                time.sleep(3 * attempt)
+    raise last if last else RuntimeError("unreachable")
 
 
 def fetch_all_current_roles() -> list[dict[str, Any]]:

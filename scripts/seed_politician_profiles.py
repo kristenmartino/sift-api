@@ -53,6 +53,21 @@ def _empty_to_none(value: str | None) -> str | None:
     return stripped if stripped else None
 
 
+
+def _as_json_array(value: str) -> str:
+    """Force a JSONB string to an array literal.
+
+    Migration 019 made interest_group_ratings an array; anything else in the
+    CSV is pre-019 residue and carries no provenance, so there is nothing in
+    it worth keeping.
+    """
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return "[]"
+    return value if isinstance(parsed, list) else "[]"
+
+
 def _parse_jsonb(value: str | None, default: str) -> str:
     """Returns a JSON string ready for ::jsonb cast. Empty → default."""
     v = _empty_to_none(value)
@@ -128,9 +143,15 @@ async def main(dry_run: bool) -> None:
                 "top_industries_current_cycle": _parse_jsonb(
                     raw.get("top_industries_current_cycle"), "[]",
                 ),
-                "interest_group_ratings": _parse_jsonb(
-                    raw.get("interest_group_ratings"), "{}",
-                ),
+                # Coerced to an array on the way in, not just defaulted.
+                # The CSV still carries the pre-019 '{}' for every row, and an
+                # INSERT takes that value verbatim — the ON CONFLICT guard
+                # below only protects existing rows. Two new members seeded on
+                # 2026-08-07 landed as objects and broke every
+                # jsonb_array_length() read until this was added.
+                "interest_group_ratings": _as_json_array(_parse_jsonb(
+                    raw.get("interest_group_ratings"), "[]",
+                )),
                 "external_links": _parse_jsonb(raw.get("external_links"), "{}"),
                 "notes": _empty_to_none(raw.get("notes")),
             }
@@ -161,7 +182,27 @@ async def main(dry_run: bool) -> None:
                     chamber                       = EXCLUDED.chamber,
                     committees                    = EXCLUDED.committees,
                     top_industries_current_cycle  = EXCLUDED.top_industries_current_cycle,
-                    interest_group_ratings        = EXCLUDED.interest_group_ratings,
+                    -- NOT overwritten from the CSV. This column is owned by
+                    -- scripts/seed_lcv_scores.py, which sources it from a
+                    -- scorecard the roster CSV knows nothing about; the CSV
+                    -- carries '{}' for every row, so a plain assignment here
+                    -- silently wipes it. A roster refresh on 2026-08-07 would
+                    -- have destroyed 532 LCV entries seeded minutes earlier.
+                    -- Same principle as scrape_govtrack.py preserving
+                    -- hand-curated committees and notes: a writer only
+                    -- overwrites what it is actually the source of truth for.
+                    -- Keep a real stored value; otherwise take the incoming
+                    -- one, which _as_json_array has already coerced to '[]'.
+                    -- Written this way round on purpose: guarding on the
+                    -- *incoming* value instead would preserve whatever is
+                    -- already there, including the pre-019 '{}' two rows were
+                    -- inserted with — the bad value would then be immortal.
+                    interest_group_ratings        = CASE
+                        WHEN jsonb_typeof(politician_profiles.interest_group_ratings) = 'array'
+                             AND jsonb_array_length(politician_profiles.interest_group_ratings) > 0
+                        THEN politician_profiles.interest_group_ratings
+                        ELSE EXCLUDED.interest_group_ratings
+                    END,
                     external_links                = EXCLUDED.external_links,
                     notes                         = EXCLUDED.notes,
                     updated_at                    = NOW()
