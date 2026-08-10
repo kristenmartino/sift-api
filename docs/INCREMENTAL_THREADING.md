@@ -67,6 +67,38 @@ call exists to make.
 a measured accuracy figure. `STATUS.md` Next-3 #1's labelled corpus is still
 what would.
 
+### What the first live run actually found (2026-08-10)
+
+The run itself worked — 200 articles analysed, 37 stories created, 6 attached,
+and grouping over 48h went **4.8% → 8.9% in a single cycle**. But it also
+exposed a defect the whole shadow programme could not have caught, because
+shadow never writes.
+
+**7 of 54 new stories lost members immediately after creation**, three down to
+zero and one down to a single outlet. One was created with five members and
+kept none.
+
+`find_candidates` snapshots the whole queue before any decision is applied, so
+the same loose article is offered to several candidates in one run. Each
+confirmed create ran `UPDATE articles SET story_id`, re-pointing it and
+stripping whichever story claimed it first. **The old scheme orphaned stories
+by re-deriving their ids; this orphaned them by moving their contents.** Same
+outcome, different door — and the marginal-orphan metric would have read 5.6%
+and looked like a success.
+
+It also explains what first appeared to be a hole in the outlet gate. The gate
+ran correctly and dropped 4 clusters; the single-outlet story was created
+legitimately with six members and hollowed out afterwards.
+
+Fixed in #180: `_create` claims only members still unattached **at write
+time**, and the ≥2-outlet gate re-runs on whatever survives. A caller-side
+`claimed` set skips doomed decisions before they cost a synthesis call.
+
+The lesson worth carrying: **a shadow that cannot write cannot find write
+bugs.** Ninety runs of evidence cleared three verdicts and said nothing about
+the most damaging defect in the change, which surfaced in the first sixty
+seconds of live traffic.
+
 ### Watch after cutover
 
 - `stories` rows with zero members should approach 0 (was 99.5%).
