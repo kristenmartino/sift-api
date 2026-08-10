@@ -102,11 +102,26 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
 
 
 async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str | None:
-    """Create a story from a confirmed new cluster. Returns its id, or None."""
+    """Create a story from a confirmed new cluster. Returns its id, or None.
+
+    Only claims members that are still unattached AT WRITE TIME. `find_candidates`
+    snapshots the whole queue before any decision is applied, so one article can
+    be offered as a loose neighbour to several candidates in the same run. Without
+    this filter the later create re-points it with
+    `UPDATE articles SET story_id`, silently stripping the earlier story.
+
+    Measured on the first live run, 2026-08-10: **7 of 54 new stories lost
+    members that way**, three of them down to zero. One was created with five
+    members and kept none. That is the orphan mechanism this design exists to
+    remove, reappearing through a different door — so the guard is here, against
+    the database, rather than only in the caller's bookkeeping.
+    """
     members = [dict(r) for r in await pool.fetch(
         """SELECT id, title, summary, source_name, source_url, image_url, published_date
-           FROM articles WHERE id = ANY($1::text[])""",
-        [article["id"], *member_ids],
+           FROM articles
+           WHERE id = ANY($1::text[])
+             AND (story_id IS NULL OR id = $2)""",
+        [article["id"], *member_ids], article["id"],
     )]
     outlets = {m["source_name"] for m in members if m.get("source_name")}
     if len(outlets) < MIN_UNIQUE_OUTLETS:
@@ -200,19 +215,42 @@ async def run_incremental_threading(
     decisions = await confirm(relevant) if relevant else {}
 
     applied = {"attached": 0, "resynthesized": 0, "created": 0,
-               "dropped_single_outlet": 0, "none": 0}
+               "dropped_single_outlet": 0, "none": 0, "already_claimed": 0}
+
+    # Articles this run has already put into a story. Candidates were all
+    # generated against one snapshot, so the same loose neighbour is routinely
+    # offered to several of them; the first claim wins and the rest must not
+    # re-point it. `_create` enforces this against the database too — this set
+    # exists so a doomed decision is skipped before it costs a synthesis call.
+    claimed: set[str] = set()
+
     for c in relevant:
         article = c["article"]
         d = decisions.get(article["id"]) or {"action": "none"}
         try:
+            if article["id"] in claimed:
+                # An earlier candidate already pulled this article into a
+                # story. Acting again would move it and strip that story.
+                applied["already_claimed"] += 1
+                continue
+
             if d["action"] == "attach":
                 what = await _attach(pool, article, d["story_id"], synthesize)
+                claimed.add(article["id"])
                 applied["attached"] += 1
                 if what == "attached_new_outlet_resynthesized":
                     applied["resynthesized"] += 1
             elif d["action"] == "new":
-                sid = await _create(pool, article, d["members"], synthesize)
+                members = [m for m in d["members"] if m not in claimed]
+                if not members:
+                    # Every proposed member is spoken for; what remains is a
+                    # single article, which is not a story.
+                    applied["already_claimed"] += 1
+                    continue
+                sid = await _create(pool, article, members, synthesize)
                 if sid:
+                    claimed.add(article["id"])
+                    claimed.update(members)
                     applied["created"] += 1
                 else:
                     applied["dropped_single_outlet"] += 1
