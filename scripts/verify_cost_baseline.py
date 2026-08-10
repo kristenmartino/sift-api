@@ -16,12 +16,18 @@ bullet is about to be quoted.
 WHAT IT CHECKS
 --------------
 Per-operation $/day and calls/day, current window vs. the frozen baseline
-below, plus a **deploy check**: the two 2026-08-05 changes are visible in call
-*ratios*, not just dollars, so the script can tell "not deployed yet" apart
-from "deployed and saved nothing" — which a dollars-only diff cannot.
+below, plus a **deploy check**: the changes are visible in call *ratios*, not
+just dollars, so the script can tell "not deployed yet" apart from "deployed
+and saved nothing" — which a dollars-only diff cannot.
 
   entity_linker_llm.link_text   ~1 call/article  -> ~0.26 (PR #130 regex gate)
   story_synthesizer.synthesize  ~4.4 per cluster -> ~2.0 (PR #129 reuse skip)
+
+The threading half of that check is **path-aware** as of 2026-08-10, because
+incremental threading (#161) retired `story_clusterer.cluster` and a check
+divided by a dead operation reports failure at the moment of success. See
+`deploy_check`. Exit 3 means the window spans the cutover and no threading
+verdict was issued at all.
 
 THREE WAYS TO READ THE DOLLARS, AND ONLY ONE IS HONEST
 ------------------------------------------------------
@@ -128,6 +134,125 @@ async def _rows(conn, start: date):
     """, start)
 
 
+# PR #129 measured ~4.4 synthesize calls per clusterer call before the reuse
+# skip and ~2.0 after, so 3.0 separates them on the legacy path.
+LEGACY_SYN_PER_CLUSTER_MAX = 3.0
+
+# On the incremental path the denominator is stories *touched*, and synthesis
+# fires only on create or on an attach that brings a new outlet
+# (`workflows/incremental_threading.py:_attach`). Every touched story costs at
+# most one synthesis, so >1.0 sustained means the reuse rule is not holding;
+# 2.0 leaves room for a window whose stories were created and then gained a
+# new outlet before it closed. Deliberately loose — it exists to catch the
+# rule being broken, not to score it.
+INCREMENTAL_SYN_PER_STORY_MAX = 2.0
+
+
+def deploy_check(
+    calls: dict[str, float], arts: float, stories_touched: float, threaded: float,
+) -> tuple[list[tuple[str, str]], dict[str, bool], str]:
+    """Are the cost changes actually running? Returns (lines, verdicts, path).
+
+    Ratios rather than dollars, so a quiet news day cannot fake a pass.
+
+    THE THREADING CHECK HAS TO KNOW WHICH PATH IS LIVE
+    --------------------------------------------------
+    This check read `synthesize / story_clusterer.cluster` unconditionally. On
+    2026-08-10 incremental threading (#161) retired the clusterer, which sends
+    that denominator to zero — and `0 < 0 < 3.0` is false, so it would have
+    printed **NOT DEPLOYED at the exact moment the cutover fully succeeded**,
+    and returned exit 2 with it. It had already started drifting: it read 3.10
+    that morning because the clusterer was winding down, not because synthesis
+    had regressed.
+
+    WHICH PATH IS LIVE IS NOT A LEDGER QUESTION
+    -------------------------------------------
+    The obvious repair — treat `story_confirmer.confirm` calls as "incremental
+    is live" — is wrong, and prod said so: the 2026-08-08 window reported both
+    paths running when only the legacy one was. **Shadow mode bills the
+    confirmer too** (20/45/45 calls on 08-07/08/09), and the ledger cannot
+    tell a shadow call from a live one, because it is the same operation.
+
+    `articles.threaded_at` can. `story_matcher.mark_threaded` is reached only
+    from `run_incremental_threading`, never from the shadow path, so rows
+    marked in the window are proof the live path ran. That is the signal used
+    here; the confirmer's dollars are reported as shadow spend when they
+    appear without it.
+
+    A window with both signals gets **no threading verdict at all** rather
+    than a number blended from two systems.
+    """
+    lines: list[tuple[str, str]] = []
+    verdicts: dict[str, bool] = {}
+
+    link_ratio = calls.get("entity_linker_llm.link_text", 0) / arts if arts else 0
+    ok_gate = link_ratio < 0.6
+    verdicts["regex_gate_live"] = ok_gate
+    lines.append((
+        f"linker calls per article     {link_ratio:5.2f}",
+        "PASS — gate live" if ok_gate else "NOT DEPLOYED (expect ~0.26, ungated ~1.0)",
+    ))
+
+    cl = calls.get("story_clusterer.cluster", 0)
+    cf = calls.get("story_confirmer.confirm", 0)
+    syn = calls.get("story_synthesizer.synthesize", 0)
+
+    if cl and threaded:
+        # Daily aggregates cannot separate a window spanning the cutover from
+        # a window where both paths ran every cycle. Rather than pick, say
+        # both and hand over the one fact that decides it.
+        path = "mixed"
+        lines.append((
+            "threading path                both",
+            f"INDETERMINATE — {cl:,.0f} clusterer calls/day alongside "
+            f"{threaded:,.0f} articles/day marked by the incremental path. "
+            "Either the window spans the cutover, or both paths are billing. "
+            "If --since starts after 2026-08-10, it is the latter: two threading "
+            "paths running at once, which double-spends and double-assigns.",
+        ))
+        return lines, verdicts, path
+
+    if threaded:
+        path = "incremental"
+        ok_retired = cl == 0
+        verdicts["legacy_threading_retired"] = ok_retired
+        lines.append((
+            f"clusterer calls per day      {cl:5.2f}",
+            "PASS — legacy path retired" if ok_retired
+            else "STILL RUNNING — both paths billing",
+        ))
+        ratio = syn / stories_touched if stories_touched else 0.0
+        ok_reuse = 0 < ratio < INCREMENTAL_SYN_PER_STORY_MAX
+        verdicts["synthesis_reuse_live"] = ok_reuse
+        lines.append((
+            f"synthesize per story touched {ratio:5.2f}",
+            "PASS — synthesize-on-change live" if ok_reuse
+            else f"CHECK (expect <{INCREMENTAL_SYN_PER_STORY_MAX}; "
+                 f"{'no stories touched' if not stories_touched else 'every touch re-synthesizing'})",
+        ))
+        return lines, verdicts, path
+
+    path = "legacy"
+    ratio = syn / cl if cl else 0.0
+    ok_reuse = 0 < ratio < LEGACY_SYN_PER_CLUSTER_MAX
+    verdicts["synthesis_reuse_live"] = ok_reuse
+    lines.append((
+        f"synthesize per cluster call  {ratio:5.2f}",
+        "PASS — reuse skip live" if ok_reuse
+        else "NOT DEPLOYED (expect ~2.0, before ~4.4)",
+    ))
+    if cf:
+        # Confirmer billing with nothing marked threaded: shadow mode. Real
+        # money, no product effect — worth naming so it is not mistaken for
+        # the cutover having happened.
+        lines.append((
+            f"confirmer calls per day      {cf:5.2f}",
+            "SHADOW — billing while the legacy path is live "
+            "(no articles marked threaded in this window)",
+        ))
+    return lines, verdicts, path
+
+
 def _arrow(cur: float, base: float) -> str:
     if base == 0:
         return "     —"
@@ -148,6 +273,23 @@ async def main(since: date | None, days: int, out_json: str | None) -> int:
             SELECT count(*)::float / GREATEST(count(DISTINCT created_at::date), 1)
             FROM articles
             WHERE created_at::date >= $1
+        """, start)
+        # Denominator for the incremental path's reuse check. Every write in
+        # `incremental_threading` bumps `updated_at`, including the attaches
+        # that deliberately skip synthesis — which is the point: it counts
+        # chances to synthesize, so the ratio falls as reuse works.
+        stories_touched = await conn.fetchval("""
+            SELECT count(*)::float / GREATEST(count(DISTINCT updated_at::date), 1)
+            FROM stories
+            WHERE updated_at::date >= $1
+        """, start)
+        # Proof the LIVE incremental path ran, which the ledger cannot give:
+        # `mark_threaded` is reached only from `run_incremental_threading`,
+        # so shadow-mode confirmer calls leave no mark here.
+        threaded = await conn.fetchval("""
+            SELECT count(*)::float / GREATEST(count(DISTINCT threaded_at::date), 1)
+            FROM articles
+            WHERE threaded_at::date >= $1
         """, start)
     finally:
         await conn.close()
@@ -202,19 +344,9 @@ async def main(since: date | None, days: int, out_json: str | None) -> int:
 
     # Deploy check. Ratios, not dollars — a quiet news day also lowers dollars.
     print("\ndeploy check (ratios, so article volume cannot fake a pass):")
-    verdicts = {}
-    link_ratio = calls.get("entity_linker_llm.link_text", 0) / arts if arts else 0
-    ok_gate = link_ratio < 0.6
-    verdicts["regex_gate_live"] = ok_gate
-    print(f"  linker calls per article    {link_ratio:5.2f}   "
-          f"{'PASS — gate live' if ok_gate else 'NOT DEPLOYED (expect ~0.26, ungated ~1.0)'}")
-
-    cl = calls.get("story_clusterer.cluster", 0)
-    syn_ratio = calls.get("story_synthesizer.synthesize", 0) / cl if cl else 0
-    ok_reuse = 0 < syn_ratio < 3.0
-    verdicts["synthesis_reuse_live"] = ok_reuse
-    print(f"  synthesize per cluster call {syn_ratio:5.2f}   "
-          f"{'PASS — reuse skip live' if ok_reuse else 'NOT DEPLOYED (expect ~2.0, before ~4.4)'}")
+    lines, verdicts, path = deploy_check(calls, arts, stories_touched, threaded)
+    for label, note in lines:
+        print(f"  {label}   {note}")
 
     print("\ntargets (baseline x retained-fraction x volume — NOT fixed dollars):")
     for op, (retained, why) in EXPECTED_RETAINED.items():
@@ -228,11 +360,17 @@ async def main(since: date | None, days: int, out_json: str | None) -> int:
         with open(out_json, "w") as fh:
             json.dump({"baseline": BASELINE, "current": cur, "calls_per_day": calls,
                        "volume_ratio": vol, "comparable_total": comparable,
-                       "articles_per_day": arts, "total": total, "verdicts": verdicts}, fh, indent=2)
+                       "articles_per_day": arts, "stories_touched_per_day": stories_touched,
+                       "threaded_per_day": threaded,
+                       "total": total, "threading_path": path,
+                       "verdicts": verdicts}, fh, indent=2)
         print(f"\nwrote {out_json}")
 
     # Non-zero when something that should be live is not, so a scheduled run
-    # is noisy exactly when it should be.
+    # is noisy exactly when it should be. A cutover-spanning window is its own
+    # code: "I cannot tell" must not be reported as either "fine" or "broken".
+    if path == "mixed":
+        return 3
     return 0 if all(verdicts.values()) else 2
 
 
