@@ -9,7 +9,103 @@
 | P3 ship dark | **done** — flag off by default, shadow runs free every cycle |
 | Candidate engine | **done** — `services/story_matcher.py`, 10 tests, validated against prod |
 | Write path (LLM confirm → attach / synthesize) | **done** — `services/story_confirmer.py`, `workflows/incremental_threading.py`, 11 tests |
-| Cutover | **not done** — flag still off, awaiting shadow data |
+| Cutover | **done 2026-08-10** — bar met over 90 shadow runs, see below |
+
+## Cutover evidence (2026-08-10)
+
+`scripts/shadow_summary.py`, 90 runs with the confirm dry run over 48h:
+
+```
+                        articles  grouped    rate
+live rescan path           2,668      129   4.8%
+incremental (shadow)       3,600    1,024  28.4%
+
+confirmer: 1024/1523 confirmed, 33% rejected   (attach 481, new 543, none 499)
+outlet gate: 55% of new-cluster candidates carry >=2 outlets
+near misses: 32% of parked, baseline 36% by chance, excess -3%
+
+verdicts:
+  grouping parity          PASS   28.4% vs 4.8% live
+  confirmer discriminates  PASS   33% rejected
+  threshold not too strict PASS   32% vs 36% expected by chance
+```
+
+### The one objection the bar does not test
+
+Attach candidates were confirmed at **93%** (713/763) against **53%** for new
+clusters (895/1697), and that gap held from the first sample through 140 runs.
+A 93% acceptance rate looks like rubber-stamping on the path that mutates
+existing stories, and the three cutover verdicts would have passed regardless.
+It was investigated separately.
+
+**Not similarity.** Attach candidates average 0.754 cosine against 0.714 for
+loose neighbours — a +0.040 difference, far too small to move acceptance forty
+points.
+
+**Not position bias.** The prompt always lists attach options first. Re-running
+identical candidates with the order reversed changed nothing: 6/6 attached
+either way, zero decisions flipped.
+
+**It is a selection effect, and the rate is correct.** An attach candidate only
+exists when a neighbour is *already in a story* — and a story only exists
+because the confirmer previously agreed that two or more outlets covered one
+event. So an attach candidate is a new article matching, at >=0.60, something
+the system has already validated as a coherent multi-outlet event. That is a
+far stronger prior than "two loose articles look similar", which is what a
+new-cluster candidate is, and where same-topic-different-event is common.
+
+Hand-read of 14 attach decisions: 13 attach, 1 none. The attaches were four
+separate Colombian earthquake reports joining the earthquake story, two
+Zuckerberg-manifesto pieces joining the manifesto story, and a Trump
+White-House-counsel announcement joining the appointment story. The single
+rejection was *"A Higher Nominal Growth World Brings Higher Volatility, Says
+Jim Caron"* against *"A Hot CPI Report Causes Problems for Fed, Caron Says"* —
+same topic, same commentator, different segments. Exactly the distinction the
+call exists to make.
+
+**Caveat:** 14 hand-read decisions retire the objection; they do not establish
+a measured accuracy figure. `STATUS.md` Next-3 #1's labelled corpus is still
+what would.
+
+### What the first live run actually found (2026-08-10)
+
+The run itself worked — 200 articles analysed, 37 stories created, 6 attached,
+and grouping over 48h went **4.8% → 8.9% in a single cycle**. But it also
+exposed a defect the whole shadow programme could not have caught, because
+shadow never writes.
+
+**7 of 54 new stories lost members immediately after creation**, three down to
+zero and one down to a single outlet. One was created with five members and
+kept none.
+
+`find_candidates` snapshots the whole queue before any decision is applied, so
+the same loose article is offered to several candidates in one run. Each
+confirmed create ran `UPDATE articles SET story_id`, re-pointing it and
+stripping whichever story claimed it first. **The old scheme orphaned stories
+by re-deriving their ids; this orphaned them by moving their contents.** Same
+outcome, different door — and the marginal-orphan metric would have read 5.6%
+and looked like a success.
+
+It also explains what first appeared to be a hole in the outlet gate. The gate
+ran correctly and dropped 4 clusters; the single-outlet story was created
+legitimately with six members and hollowed out afterwards.
+
+Fixed in #180: `_create` claims only members still unattached **at write
+time**, and the ≥2-outlet gate re-runs on whatever survives. A caller-side
+`claimed` set skips doomed decisions before they cost a synthesis call.
+
+The lesson worth carrying: **a shadow that cannot write cannot find write
+bugs.** Ninety runs of evidence cleared three verdicts and said nothing about
+the most damaging defect in the change, which surfaced in the first sixty
+seconds of live traffic.
+
+### Watch after cutover
+
+- `stories` rows with zero members should approach 0 (was 99.5%).
+- Grouped-article count per category should rise, sports and politics most.
+- Ingest → story-attachment latency should stay <= 35 min.
+- `threading_shadow` keeps recording; the shadow and live paths now agree by
+  construction, so a divergence means something regressed.
 
 **Story identity is the substantive change.** `story_workflow` derives `story_id` from a sha256 of its member ids, so gaining an article makes a story a *different story* — a new row, and the old one orphaned. That plus the blanket `UPDATE articles SET story_id = NULL` is the whole mechanism behind 99.5% orphans.
 
