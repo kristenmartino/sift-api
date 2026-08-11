@@ -55,11 +55,13 @@ This was live-broken from #161 until 2026-08-11: both wrote `'complete'`
 unconditionally, so **4 prod stories** (13–18 outlets each) were serving a
 single member's headline with an empty `framings` array.
 
-**Nothing currently retries a `'failed'` row.** The only reader of that status
-is `story_workflow.py:226`, and `pipeline_workflow.py:459` makes the two
-threading paths mutually exclusive — with incremental enabled, that code never
-runs. A story created `'failed'` here is re-synthesized only if `_attach` later
-brings it a new outlet. See STATUS.md.
+`_sweep_failed` retries those rows at the end of every run (#211). Before it,
+nothing did: the only reader of `'failed'` was `story_workflow.py:226`, and
+`pipeline_workflow.py:459` makes the two threading paths mutually exclusive, so
+with incremental enabled that code never ran. A `'failed'` story was invisible
+to the feed and revisited only if `_attach` happened to bring it a new outlet —
+which meant #210's `_create` branch was writing rows that could go dark
+permanently.
 """
 from __future__ import annotations
 
@@ -93,6 +95,16 @@ _CONFIRM_BATCH_SIZE = 40
 
 def _confirm_batches(relevant: list) -> int:
     return -(-len(relevant) // _CONFIRM_BATCH_SIZE)
+
+
+# Sweeper bounds (#211). Three retries because the failure modes worth retrying
+# are transient (API error, timeout, an overloaded model) and clear well inside
+# three 30-minute runs; anything still failing after that is structural and
+# re-paying for it every run forever is waste. Five per run keeps the sweep a
+# rounding error against the main pass — the standing population is single
+# digits, so this drains it in one or two runs and then idles.
+MAX_SYNTHESIS_ATTEMPTS = 3
+SWEEP_LIMIT = 5
 
 
 def seed_story_id(category: str, member_ids: list[str]) -> str:
@@ -264,8 +276,115 @@ async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str
     return "created_synthesis_failed" if status == "failed" else "created"
 
 
+async def _sweep_failed(pool, synthesize) -> dict:
+    """Retry stories left in `synthesis_status='failed'`. Returns counters.
+
+    WHY THIS EXISTS (#211)
+    ----------------------
+    `'failed'` means a story holds a degraded placeholder and still owes a real
+    synthesis. Nothing acted on it: the only reader was
+    `story_workflow.py:226`, and `pipeline_workflow.py:459` makes the two
+    threading paths mutually exclusive, so with incremental threading enabled
+    that code never runs. A `'failed'` row was invisible to the feed
+    (`idx_stories_feed`) and never revisited — and #210 made `_create` write
+    exactly such rows, so the gap became load-bearing rather than theoretical.
+
+    WHAT IT WILL NOT DO
+    -------------------
+    It never deletes. Two populations here cannot be repaired by re-asking —
+    stories with no members at all (orphans of the pre-cutover identity scheme
+    #184 pruned) and stories below `MIN_UNIQUE_OUTLETS` — and for both,
+    `synthesize_story` would return `_fallback()` without even making a call.
+    They are counted and reported, not acted on: deletion is destructive, it
+    already has an audited tool in `scripts/prune_orphan_stories.py` with
+    archive-before-delete and a 48h floor, and an automatic pipeline path is
+    the wrong place for it.
+    """
+    counts = {"swept": 0, "repaired": 0, "still_failed": 0, "unrepairable": 0}
+
+    # Unrepairable by re-asking: reported so the population stays visible
+    # rather than looking like the sweeper is ignoring rows.
+    counts["unrepairable"] = await pool.fetchval(
+        """SELECT count(*) FROM stories s
+            WHERE s.synthesis_status = 'failed'
+              AND (SELECT count(DISTINCT a.source_name)
+                     FROM articles a WHERE a.story_id = s.id) < $1""",
+        MIN_UNIQUE_OUTLETS,
+    ) or 0
+
+    # Fewest attempts first so a fresh failure is not starved by one already
+    # burning through its budget; newest first within that, since an older
+    # story is likely past the feed's recency floor and repairing it shows
+    # nobody anything.
+    targets = await pool.fetch(
+        """SELECT s.id FROM stories s
+            WHERE s.synthesis_status = 'failed'
+              AND s.synthesis_attempts < $1
+              AND (SELECT count(DISTINCT a.source_name)
+                     FROM articles a WHERE a.story_id = s.id) >= $2
+            ORDER BY s.synthesis_attempts, s.created_at DESC
+            LIMIT $3""",
+        MAX_SYNTHESIS_ATTEMPTS, MIN_UNIQUE_OUTLETS, SWEEP_LIMIT,
+    )
+    if not targets:
+        return counts
+
+    budget = await check_budget(SYNTHESIS_COST_PER_CALL_USD * len(targets))
+    if not budget.allowed:
+        # Nothing is written, so every row stays eligible next run. Repair is
+        # deliberately lower priority than the main pass: it has already been
+        # skipped if the run got this far without budget.
+        logger.warning(json.dumps({
+            "event": "failed_story_sweep_skipped",
+            "reason": budget.reason,
+            "eligible": len(targets),
+        }))
+        return counts
+
+    for row in targets:
+        story_id = row["id"]
+        try:
+            members = [dict(r) for r in await pool.fetch(
+                """SELECT id, title, summary, source_name, source_url,
+                          image_url, published_date
+                     FROM articles WHERE story_id = $1""", story_id,
+            )]
+            counts["swept"] += 1
+            synthesis = await synthesize(members)
+
+            if synthesis.get("_failed"):
+                # Burn one attempt and leave the row alone. `updated_at` is
+                # deliberately untouched: a failed retry is not activity, and
+                # bumping it would make a dark story look fresh to every
+                # recency query.
+                await pool.execute(
+                    "UPDATE stories SET synthesis_attempts = synthesis_attempts + 1 "
+                    "WHERE id = $1", story_id,
+                )
+                counts["still_failed"] += 1
+                continue
+
+            await pool.execute(
+                """UPDATE stories
+                      SET headline = $2, summary = $3, framings = $4::jsonb,
+                          article_count = $5, synthesis_status = 'complete',
+                          synthesis_attempts = synthesis_attempts + 1,
+                          updated_at = NOW()
+                    WHERE id = $1""",
+                story_id, synthesis["headline"], synthesis["summary"],
+                json.dumps(synthesis.get("framings", [])), len(members),
+            )
+            counts["repaired"] += 1
+        except Exception as e:  # noqa: BLE001 — one bad story must not stall the sweep
+            logger.error("sweep of story %s failed: %s", story_id, e)
+            counts["still_failed"] += 1
+
+    logger.info(json.dumps({"event": "failed_story_sweep", **counts}))
+    return counts
+
+
 async def run_incremental_threading(
-    pool, *, candidates=None, confirm=None, synthesize=None,
+    pool, *, candidates=None, confirm=None, synthesize=None, sweep=True,
 ) -> dict:
     """One incremental threading pass over the whole queue, all categories.
 
@@ -273,6 +392,12 @@ async def run_incremental_threading(
     including ones that matched nothing. A parked singleton stays searchable
     as a kNN neighbour, so a later arrival can still pull it into a story —
     it just stops being re-queued, which is what keeps the work O(new).
+
+    Ends with `_sweep_failed`, which retries stories the synthesizer left in
+    `'failed'` (#211). It runs on the empty-queue paths too — a story owing a
+    synthesis has nothing to do with whether new articles arrived — but not
+    when the run was skipped for budget, since that is the one case where the
+    money is already gone. Pass `sweep=False` to exercise the main pass alone.
 
     `candidates`, `confirm` and `synthesize` are injectable so the decision
     and write logic can be exercised without a database or an API key, the
@@ -291,14 +416,17 @@ async def run_incremental_threading(
     confirm = confirm or _confirm
     synthesize = synthesize or synthesize_story
 
+    async def _swept() -> dict:
+        return await _sweep_failed(pool, synthesize) if sweep else {}
+
     if candidates is None:
         queue = await fetch_queue(pool)
         if not queue:
-            return {"queued": 0}
+            return {"queued": 0, **await _swept()}
         candidates = await find_candidates(pool, queue)
 
     if not candidates:
-        return {"queued": 0}
+        return {"queued": 0, **await _swept()}
 
     stats = summarize(candidates)
     relevant = [c for c in candidates if c["existing_stories"] or c["loose_neighbours"]]
@@ -401,6 +529,9 @@ async def run_incremental_threading(
         logger.error("mark_threaded failed; queue will be reconsidered next run: %s", e)
         applied["mark_failed"] = True
 
-    report = {"event": "incremental_threading", **stats, **applied}
+    # After the writes and after mark_threaded: repair is strictly lower
+    # priority than getting new articles threaded, and a sweep failure must not
+    # cost the run its bookkeeping.
+    report = {"event": "incremental_threading", **stats, **applied, **await _swept()}
     logger.info(json.dumps(report))
     return report

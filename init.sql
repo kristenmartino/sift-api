@@ -99,9 +99,16 @@ CREATE TABLE IF NOT EXISTS stories (
     representative_image_url TEXT,
     published_date TIMESTAMPTZ,
     synthesis_status TEXT DEFAULT 'pending',
+    -- Retries spent by the failed-story sweeper (migrations/026, #211).
+    synthesis_attempts INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- The sweeper's population: 'failed' rows still under the retry bound.
+CREATE INDEX IF NOT EXISTS idx_stories_failed_sweep
+    ON stories (synthesis_attempts, created_at DESC)
+    WHERE synthesis_status = 'failed';
 
 CREATE INDEX IF NOT EXISTS idx_stories_category_date
     ON stories(category, published_date DESC);
