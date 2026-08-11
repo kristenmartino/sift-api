@@ -56,7 +56,7 @@ WHERE s.category = $1 AND s.synthesis_status = 'complete'
 GROUP BY s.id
 HAVING COUNT(a.id) >= 2
 ORDER BY
-  (3 + 0.8 * LN(1 + COUNT(DISTINCT a.source_name)))::float *
+  (1 + 2.0 * LN(1 + COUNT(DISTINCT a.source_name)))::float *
   EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_date, s.created_at))), 0) / 86400.0, 700))
 DESC NULLS LAST
 LIMIT 20
@@ -66,6 +66,13 @@ LIMIT 20
 # Measured against prod 2026-08-11, old vs new over all eight categories: no
 # category moved more than ~1.5 ms, and the plan still resolves to a top-N
 # heapsort at ~13 ms execution. Well inside the WARN/FAIL bars below.
+#
+# The `1 +` and `2.0 *` are STORY_BASE and STORY_BOOST from sift/lib/db.ts,
+# raised from (3, 0.8) on 2026-08-11 so corroboration actually orders the feed
+# — at the old constants the whole 2-to-18-outlet range was worth 7.7 hours of
+# freshness. They are literals here because this file mirrors the deployed SQL
+# byte for byte; if they change there and not here, this diagnostic silently
+# starts measuring a query nobody runs.
 
 # The scored/capped CTEs mirror the per-source cap in db.ts
 # (MAX_ARTICLES_PER_SOURCE = 6): one outlet can hold at most 6 of the
