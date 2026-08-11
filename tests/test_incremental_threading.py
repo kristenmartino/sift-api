@@ -116,6 +116,92 @@ async def test_attach_from_an_outlet_already_present_does_not_resynthesize():
     assert r["attached"] == 1 and r["resynthesized"] == 0
 
 
+# ── synthesis failure ───────────────────────────────────────
+#
+# `synthesize_story` degrades instead of raising: `_fallback()` returns the
+# first member's own title and summary with no framings, flagged `_failed`.
+# Storing that as 'complete' produced 4 prod stories (13-18 outlets each)
+# serving one outlet's headline under "how N outlets covered this", with
+# nothing to revisit them.
+
+
+@pytest.mark.asyncio
+async def test_a_failed_resynthesis_does_not_overwrite_the_stored_story():
+    """The story already has a real synthesis. A failed refresh must take the
+    new article's count and nothing else — one outlet's copy is worse than
+    slightly stale framings, and 'complete' would make it permanent."""
+    pool = _pool({
+        "DISTINCT source_name": [{"source_name": "AP"}],
+        "WHERE story_id = $1": [_article("a1", "AP"), _article("a2", "Reuters")],
+    })
+    synth = AsyncMock(return_value={
+        "headline": "t a1", "summary": "s", "framings": [], "_failed": True,
+    })
+    cands = [{"article": _article("a2", "Reuters"),
+              "existing_stories": {"s1": [{}]}, "loose_neighbours": []}]
+
+    r = await run_incremental_threading(
+        pool,
+        candidates=cands,
+        confirm=AsyncMock(return_value={"a2": {"action": "attach", "story_id": "s1"}}),
+        synthesize=synth,
+    )
+
+    sql = _sql(pool)
+    assert "SET headline" not in sql          # existing text preserved
+    assert "synthesis_status" not in sql      # and its status left alone
+    assert "article_count" in sql
+    assert r["attached"] == 1
+    assert r["resynthesized"] == 0
+    assert r["synthesis_failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_new_story_whose_synthesis_failed_is_stored_as_failed():
+    """Mirrors story_workflow.py:246. 'failed' keeps the row out of the feed
+    (idx_stories_feed) instead of publishing a fallback as a finished story."""
+    pool = _pool({
+        "id = ANY($1::text[])": [_article("a1", "Reuters"), _article("n1", "AP")],
+    })
+    synth = AsyncMock(return_value={
+        "headline": "t a1", "summary": "s", "framings": [], "_failed": True,
+    })
+
+    cands = [{"article": _article("a1", "Reuters"),
+              "existing_stories": {}, "loose_neighbours": [{"id": "n1"}]}]
+    r = await run_incremental_threading(
+        pool,
+        candidates=cands,
+        confirm=AsyncMock(return_value={"a1": {"action": "new", "members": ["n1"]}}),
+        synthesize=synth,
+    )
+
+    assert r["created"] == 1
+    assert r["synthesis_failed"] == 1
+    insert = next(c for c in pool.execute.call_args_list
+                  if c.args and "INSERT INTO stories" in str(c.args[0]))
+    assert insert.args[-1] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_a_successful_synthesis_is_still_stored_as_complete():
+    pool = _pool({
+        "id = ANY($1::text[])": [_article("a1", "Reuters"), _article("n1", "AP")],
+    })
+    r = await run_incremental_threading(
+        pool,
+        candidates=[{"article": _article("a1", "Reuters"),
+                     "existing_stories": {}, "loose_neighbours": [{"id": "n1"}]}],
+        confirm=AsyncMock(return_value={"a1": {"action": "new", "members": ["n1"]}}),
+        synthesize=AsyncMock(return_value={"headline": "H", "summary": "S", "framings": []}),
+    )
+
+    assert r["created"] == 1 and r["synthesis_failed"] == 0
+    insert = next(c for c in pool.execute.call_args_list
+                  if c.args and "INSERT INTO stories" in str(c.args[0]))
+    assert insert.args[-1] == "complete"
+
+
 # ── create ──────────────────────────────────────────────────
 
 

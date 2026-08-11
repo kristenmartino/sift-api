@@ -130,10 +130,13 @@ async def test_linker_makes_no_paid_call_when_blocked(monkeypatch):
 async def test_incremental_threading_leaves_the_queue_unmarked(monkeypatch):
     """Threading must skip WHOLE, leaving nothing marked threaded.
 
-    `_attach` and `_create` write synthesis_status='complete' unconditionally,
-    so a story synthesized from `story_synthesizer._fallback()` would be stored
-    as finished and never revisited. Skipping before `confirm` means the
-    articles stay queued and the next run redoes the work properly.
+    Skipping before `confirm` covers this run's *other* paid call, and stops
+    before any write — `mark_threaded` is never reached, so the queue is
+    retried intact rather than left half-applied.
+
+    (This originally also guarded against `_attach`/`_create` storing a
+    `_fallback()` as `synthesis_status='complete'`; #210 fixed that at the
+    source, and the two reasons above are what keep the guard here.)
     """
     from workflows import incremental_threading as it
 
