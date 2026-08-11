@@ -14,7 +14,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from workflows.incremental_threading import (
+    MAX_SYNTHESIS_ATTEMPTS,
     MIN_UNIQUE_OUTLETS,
+    SWEEP_LIMIT,
+    _sweep_failed,
     run_incremental_threading,
     seed_story_id,
 )
@@ -45,6 +48,31 @@ def _pool(fetch_map=None, fetchval=None):
 
 def _sql(pool):
     return "\n".join(str(c.args[0]) for c in pool.execute.call_args_list if c.args)
+
+
+def _sweep_pool(targets, members=None, attempts_seen=None):
+    """A pool that answers the sweeper's two queries and records writes.
+
+    `targets` are the story ids `_sweep_failed` should be handed; `members` the
+    articles each one currently holds.
+    """
+    members = members if members is not None else [_article("m1", "AP"),
+                                                   _article("m2", "Reuters")]
+
+    async def fetch(sql, *a):
+        if "synthesis_attempts < $1" in sql:
+            if attempts_seen is not None:
+                attempts_seen.append(a)
+            return [{"id": t} for t in targets]
+        if "WHERE story_id = $1" in sql:
+            return members
+        return []
+
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(side_effect=fetch)
+    pool.fetchval = AsyncMock(return_value=0)  # unrepairable count
+    pool.execute = AsyncMock()
+    return pool
 
 
 # ── story identity ──────────────────────────────────────────
@@ -282,9 +310,22 @@ async def test_parked_articles_are_marked_threaded_too():
     searchable as a neighbour either way."""
     pool = _pool()
     r = await run_incremental_threading(
-        pool, confirm=AsyncMock(return_value={}), synthesize=AsyncMock(),
+        pool, confirm=AsyncMock(return_value={}), synthesize=AsyncMock(), sweep=False,
     )
     assert r == {"queued": 0}
+
+
+@pytest.mark.asyncio
+async def test_an_empty_queue_still_sweeps_failed_stories():
+    """A story owing a synthesis has nothing to do with whether new articles
+    arrived, and the empty-queue path returns before the main pass — so the
+    sweep has to be on it explicitly or the quietest runs never repair."""
+    pool = _pool()
+    r = await run_incremental_threading(
+        pool, confirm=AsyncMock(return_value={}), synthesize=AsyncMock(),
+    )
+    assert r["queued"] == 0
+    assert r["swept"] == 0  # nothing eligible, but the sweep ran
 
 
 @pytest.mark.asyncio
@@ -387,3 +428,113 @@ async def test_create_only_claims_members_still_unattached_in_the_database():
     fetched = [str(c.args[0]) for c in pool.fetch.call_args_list if c.args]
     member_query = next(q for q in fetched if "id = ANY($1::text[])" in q)
     assert "story_id IS NULL" in member_query
+
+
+# ── the failed-story sweeper ────────────────────────────────
+#
+# `synthesis_status='failed'` means a story holds a degraded placeholder and
+# still owes a real synthesis. Nothing acted on it: the only reader was
+# story_workflow.py:226, which never runs while incremental threading is
+# enabled (pipeline_workflow.py:459). #210 then made `_create` write exactly
+# such rows, so the gap stopped being theoretical — a two-outlet story whose
+# synthesis failed and which never gained a third outlet stayed dark forever.
+
+
+@pytest.mark.asyncio
+async def test_a_repaired_story_is_written_complete_and_leaves_the_population():
+    pool = _sweep_pool(["s1"])
+    synth = AsyncMock(return_value={
+        "headline": "Real headline", "summary": "S",
+        "framings": [{"source_name": "AP", "framing": "f", "tone": "neutral"}],
+    })
+
+    counts = await _sweep_failed(pool, synth)
+
+    assert counts == {"swept": 1, "repaired": 1, "still_failed": 0, "unrepairable": 0}
+    sql = _sql(pool)
+    assert "synthesis_status = 'complete'" in sql
+    assert "synthesis_attempts = synthesis_attempts + 1" in sql
+
+
+@pytest.mark.asyncio
+async def test_a_retry_that_fails_again_burns_an_attempt_and_writes_nothing_else():
+    """The fallback must not be stored — same rule as `_attach`. And
+    `updated_at` stays put: a failed retry is not activity, and bumping it
+    would make a story nobody can see look fresh to every recency query."""
+    pool = _sweep_pool(["s1"])
+    synth = AsyncMock(return_value={
+        "headline": "t m1", "summary": "s", "framings": [], "_failed": True,
+    })
+
+    counts = await _sweep_failed(pool, synth)
+
+    assert counts["still_failed"] == 1 and counts["repaired"] == 0
+    sql = _sql(pool)
+    assert "synthesis_attempts = synthesis_attempts + 1" in sql
+    assert "SET headline" not in sql
+    assert "synthesis_status" not in sql
+    assert "updated_at" not in sql
+
+
+@pytest.mark.asyncio
+async def test_retries_are_bounded_so_a_structural_failure_is_not_paid_for_forever():
+    """A story failing for a structural reason would otherwise be re-synthesized
+    every 30 minutes indefinitely."""
+    seen = []
+    await _sweep_failed(_sweep_pool([], attempts_seen=seen), AsyncMock())
+    assert seen, "the sweeper did not bound its selection"
+    assert seen[0][0] == MAX_SYNTHESIS_ATTEMPTS
+    assert seen[0][2] == SWEEP_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_only_multi_outlet_stories_are_retried():
+    """Below MIN_UNIQUE_OUTLETS there is nothing to synthesize across, and
+    `synthesize_story` would return `_fallback()` without even calling out."""
+    seen = []
+    await _sweep_failed(_sweep_pool([], attempts_seen=seen), AsyncMock())
+    assert seen[0][1] == MIN_UNIQUE_OUTLETS
+
+
+@pytest.mark.asyncio
+async def test_unrepairable_rows_are_counted_but_never_deleted():
+    """Orphans and single-outlet rows cannot be fixed by re-asking. Deletion is
+    destructive and already has an audited tool with archive-before-delete
+    (`scripts/prune_orphan_stories.py`); an automatic pipeline path is the
+    wrong place for it."""
+    pool = _sweep_pool([])
+    pool.fetchval = AsyncMock(return_value=7)
+
+    counts = await _sweep_failed(pool, AsyncMock())
+
+    assert counts["unrepairable"] == 7
+    assert "DELETE" not in _sql(pool).upper()
+
+
+@pytest.mark.asyncio
+async def test_one_bad_story_does_not_stall_the_sweep():
+    pool = _sweep_pool(["s1", "s2"])
+    synth = AsyncMock(side_effect=[
+        RuntimeError("api blip"),
+        {"headline": "H", "summary": "S", "framings": []},
+    ])
+
+    counts = await _sweep_failed(pool, synth)
+
+    assert counts["repaired"] == 1 and counts["still_failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_runs_after_the_main_pass_and_lands_in_the_report():
+    """Repair is strictly lower priority than getting new articles threaded."""
+    pool = _pool({"DISTINCT source_name": [{"source_name": "AP"}],
+                  "WHERE story_id = $1": [_article("a1", "AP"), _article("a2", "Reuters")]})
+    r = await run_incremental_threading(
+        pool,
+        candidates=[{"article": _article("a2", "Reuters"),
+                     "existing_stories": {"s1": [{}]}, "loose_neighbours": []}],
+        confirm=AsyncMock(return_value={"a2": {"action": "attach", "story_id": "s1"}}),
+        synthesize=AsyncMock(return_value={"headline": "H", "summary": "S", "framings": []}),
+    )
+    assert r["attached"] == 1
+    assert "swept" in r and "unrepairable" in r

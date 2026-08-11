@@ -642,6 +642,23 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "CHECK (genre IN ('news', 'feature', 'soft'))"
         )
 
+        # Failed-story retry counter (migrations/026, #211). Bounds the
+        # sweeper in run_incremental_threading so a story that fails for a
+        # structural reason is not re-paid for on every 30-minute run forever.
+        await conn.execute(
+            "ALTER TABLE stories ADD COLUMN IF NOT EXISTS "
+            "synthesis_attempts INTEGER DEFAULT 0"
+        )
+        # Partial index over exactly the sweeper's predicate — a per-run query
+        # selecting a handful of rows out of the whole table. Non-CONCURRENTLY
+        # here (this runs inside startup); the .sql file carries the
+        # CONCURRENTLY form for manual application against a live DB.
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_stories_failed_sweep
+                ON stories (synthesis_attempts, created_at DESC)
+                WHERE synthesis_status = 'failed'
+        """)
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
