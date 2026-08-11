@@ -169,21 +169,53 @@ The feed's story pool (`sift/lib/db.ts:197`) ranks on:
 ORDER BY (3 + 0.8 * LN(1 + COUNT(a.id)))::float * EXP(-age_days)
 ```
 
-`COUNT(a.id)` is **raw article count, not distinct outlets**. Measured over 7 days of
-complete stories:
+`COUNT(a.id)` is **raw article count, not distinct outlets**. Over 7 days of complete
+stories, **29%** have more articles than outlets and **18%** are at ≥1.5× — one
+high-volume outlet filing several pieces on one event. So a single outlet can manufacture
+the corroboration the curve exists to measure.
 
-- **29%** have more articles than outlets; **18%** at ≥1.5×
-- re-ranking on `COUNT(DISTINCT a.source_name)` moves **sports by 11.7 places on average**
-  (73 of 86 stories shift ≥5) and **entertainment by 8.1** (99 of 107 shift ≥5)
-- politics 2.7, business 3.5, world 0.9, health and science ~0.4
+That is worth fixing, and it has been (`outlet_count` end to end). **But it is not what
+surfaces top-covered stories, and the first version of this section overstated it.**
 
-The distortion is concentrated exactly where the high-volume outlets live — SI, NY Post,
-Fox — and **adding sources makes it worse**, because more sources means more articles per
-story without necessarily more outlets per story.
+**Correction.** An earlier draft said switching to distinct outlets moves "sports by 11.7
+places on average, entertainment by 8.1". That was measured on the corroboration term
+*alone*, with the decay factor dropped. The live query multiplies by
+`EXP(-age_days)`, and replaying both orderings against prod with decay included moves
+**0 of 20 in every category except politics, which moves one story**.
 
-The `ln` saturation itself is deliberate and documented (`sift/lib/db.ts:78-88`): it exists
-to stop an 18-member wire pile-up lapping a 6-outlet story 3×. That reasoning is right.
-It is saturating the correct way on the wrong variable.
+The reason is the real finding:
+
+| sources | corroboration score |
+|---:|---:|
+| 2 | 3.879 |
+| 5 | 4.433 |
+| 18 | 5.356 |
+
+The whole 2 → 18 range is a **1.38× spread**, while decay is exponential in days. So
+**going from 2 outlets to 18 is worth 7.7 hours of freshness** — and the base constant `3`
+is 77% of the score at n=2. Corroboration is very nearly not a ranking signal today;
+recency is.
+
+**So the lever is weighting, not the variable.** How many hours older an 18-outlet story
+can be and still outrank a 2-outlet one:
+
+| base | boost | hours |
+|---:|---:|---:|
+| 3 | 0.8 | **7.7** *(today)* |
+| 3 | 1.6 | 11.6 |
+| 3 | 3.0 | 15.1 |
+| 1 | 0.8 | 13.9 |
+| 1 | 1.6 | 17.5 |
+| 0 | 1.0 | 23.7 |
+
+Decay halves a score every 16.6 hours, for scale. Which row is right is a product call
+about how much corroboration should outweigh freshness — not a mechanical fix, and
+deliberately not made here.
+
+The `ln` saturation itself is deliberate and documented (`sift/lib/db.ts:78-88`): it stops
+an 18-member wire pile-up lapping a 6-outlet story 3×. That reasoning is right, and none
+of the above changes it — the shape is correct, the variable was wrong, and the *scale*
+against decay is the open question.
 
 ---
 

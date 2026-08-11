@@ -44,6 +44,7 @@ FAIL_MS = 8_000
 STORIES_SQL = """
 SELECT s.id, s.headline, s.summary, s.category, s.framings, s.entities,
        COUNT(a.id)::int AS article_count,
+       COUNT(DISTINCT a.source_name)::int AS outlet_count,
        s.representative_image_url, s.published_date, s.synthesis_status
 FROM stories s
 LEFT JOIN articles a
@@ -55,11 +56,16 @@ WHERE s.category = $1 AND s.synthesis_status = 'complete'
 GROUP BY s.id
 HAVING COUNT(a.id) >= 2
 ORDER BY
-  (3 + 0.8 * LN(1 + COUNT(a.id)))::float *
+  (3 + 0.8 * LN(1 + COUNT(DISTINCT a.source_name)))::float *
   EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_date, s.created_at))), 0) / 86400.0, 700))
 DESC NULLS LAST
 LIMIT 20
 """
+# COUNT(DISTINCT a.source_name) is the point of mirroring this shape: it is a
+# different aggregate from COUNT(a.id) and could have cost a sort per group.
+# Measured against prod 2026-08-11, old vs new over all eight categories: no
+# category moved more than ~1.5 ms, and the plan still resolves to a top-N
+# heapsort at ~13 ms execution. Well inside the WARN/FAIL bars below.
 
 # The scored/capped CTEs mirror the per-source cap in db.ts
 # (MAX_ARTICLES_PER_SOURCE = 6): one outlet can hold at most 6 of the
