@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS articles (
     context_primer JSONB,                    -- "What you should know first" panel (migrations/005)
     reading_levels JSONB,                    -- simpler/detailed rewrites, long-form only (migrations/005)
     importance_score INTEGER,
+    tone TEXT CHECK (tone IN ('grim', 'neutral', 'light')),  -- D48 dampener input (migrations/020); NULL = unclassified = neutral
     content_hash TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()

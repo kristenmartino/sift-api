@@ -28,6 +28,18 @@ BATCH_SIZE = 10
 
 BATCH_KIND = "context"  # identifier persisted to api_batches.kind
 
+# Article tone (migrations/020): the third output of the same call. Enum, not
+# a score — Haiku is consistent on set membership and the D48 dampener only
+# ever asks "grim or not". Anything unexpected clamps to "neutral", the
+# no-penalty value, mirroring the score clamp below.
+VALID_TONES = {"grim", "neutral", "light"}
+
+
+def _clamp_tone(raw: object) -> str:
+    if isinstance(raw, str) and raw.strip().lower() in VALID_TONES:
+        return raw.strip().lower()
+    return "neutral"
+
 # Rough Sonnet judge cost per line (input title+summary+line + short output),
 # used only to pre-check the cost guard before the optional runtime judge.
 JUDGE_COST_PER_LINE_USD = 0.003
@@ -84,6 +96,18 @@ always provide it, even when the line is empty:
    4 = significant (wide impact, affects many people)
    5 = breaking/major (historic, urgent, massive consequence)
 
+3. A tone tag (key "t") — independent of both above, always provide it. \
+Exactly one of:
+   "grim" = the event itself is death, killing, violent crime, serious \
+injury, a fatal disaster or accident, abuse, or war casualties
+   "light" = feel-good, humor, entertainment, culture, scientific wonder, \
+sports achievement, positive milestone
+   "neutral" = everything else — including serious-but-not-deadly news \
+(economic trouble, political conflict, lawsuits, layoffs, fraud, policy fights)
+   Judge the event, not the writing style: a dry report of a murder is \
+"grim"; an alarmed report about interest rates is "neutral". When unsure \
+between "grim" and "neutral", choose "neutral".
+
 Rules about people and legal matters — these override everything above, \
 including the instruction to find a concrete stake. When a stake can only be \
 stated by breaking one of these, return "" instead:
@@ -103,8 +127,8 @@ Articles:
 {_build_articles_text(batch)}
 
 Return a JSON array with one object per article, in the same order.
-Use short keys: i=index, c=why-it-matters line (string; "" when there is no real stake), s=score.
-[{{"i":1,"c":"Concrete verifiable stake here, or an empty string.","s":3}}, ...]
+Use short keys: i=index, c=why-it-matters line (string; "" when there is no real stake), s=score, t=tone.
+[{{"i":1,"c":"Concrete verifiable stake here, or an empty string.","s":3,"t":"neutral"}}, ...]
 
 Return ONLY the JSON array, no other text."""
 
@@ -123,10 +147,11 @@ async def generate_context(
     Batch-generate 'why it matters' one-liners and importance scores via Claude Haiku.
 
     Input: list of dicts with keys: source_url, title, summary
-    Output: dict mapping source_url -> {"context": str | None, "score": int}
+    Output: dict mapping source_url -> {"context": str | None, "score": int,
+    "tone": str}
 
     `context` is None when the quality gate drops the line (no real stake); the
-    score is still returned so callers can record it independently.
+    score and tone are still returned so callers can record them independently.
     """
     if not articles:
         return {}
@@ -173,7 +198,7 @@ async def _generate_batch(
     """Send a batch of articles to Claude Haiku for context + importance generation."""
     response = await client.messages.create(
         model=MODEL,
-        max_tokens=700,
+        max_tokens=800,  # 700 before the tone key; ~8 extra output tokens/article
         messages=[{"role": "user", "content": _build_context_prompt(batch)}],
     )
     log_usage("context_generator.batch", response, model=MODEL)
@@ -213,7 +238,11 @@ def _parse_context(text: str, batch: list[dict]) -> dict[str, dict]:
         gated = gate_why_it_matters(
             raw_context, title=article.get("title", ""), summary=article.get("summary", ""),
         )
-        results[article["source_url"]] = {"context": gated, "score": score}
+        results[article["source_url"]] = {
+            "context": gated,
+            "score": score,
+            "tone": _clamp_tone(item.get("t", item.get("tone"))),
+        }
 
     return results
 
@@ -268,7 +297,7 @@ async def submit_context_batch(articles: list[dict]) -> str | None:
             "custom_id": custom_id,
             "params": {
                 "model": MODEL,
-                "max_tokens": 700,
+                "max_tokens": 800,  # matches _generate_batch
                 "messages": [{"role": "user", "content": _build_context_prompt(sub)}],
             },
         })
@@ -394,7 +423,9 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
             if gated is None:
                 dropped += 1
             pending.append({
-                "url": url, "line": gated, "score": score, "title": title, "summary": summary,
+                "url": url, "line": gated, "score": score,
+                "tone": _clamp_tone(entry.get("t", entry.get("tone"))),
+                "title": title, "summary": summary,
             })
 
         # Optional runtime judge over the survivors (sift-api#90, off by default).
@@ -426,10 +457,11 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
                     UPDATE articles
                        SET why_it_matters = $1,
                            importance_score = $2,
+                           tone = $3,
                            updated_at = NOW()
-                     WHERE source_url = $3
+                     WHERE source_url = $4
                     """,
-                    p["line"], p["score"], p["url"],
+                    p["line"], p["score"], p["tone"], p["url"],
                 )
                 updated += 1
             except Exception as e:

@@ -138,10 +138,14 @@ class TestContextBatchPath:
         monkeypatch.setattr(cg, "get_pool", AsyncMock(return_value=pool))
 
         await cg.process_context_batch_results("batch-1", _batch_results(
-            "ctx-0", [{"i": 1, "c": GOOD_LINE, "s": 3}, {"i": 2, "c": GOOD_LINE, "s": 4}],
+            "ctx-0", [{"i": 1, "c": GOOD_LINE, "s": 3, "t": "grim"}, {"i": 2, "c": GOOD_LINE, "s": 4}],
         ))
 
-        assert {u[2] for u in pool.updates} == {URL1, URL2}
+        assert {u[3] for u in pool.updates} == {URL1, URL2}
+        # Params are (line, score, tone, url): tone reaches the write path,
+        # and a missing "t" lands on neutral, never grim.
+        tones = {u[3]: u[2] for u in pool.updates}
+        assert tones == {URL1: "grim", URL2: "neutral"}
 
     @pytest.mark.asyncio
     async def test_misaligned_sub_batch_is_skipped_whole(self, monkeypatch, caplog):
