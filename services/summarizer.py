@@ -9,6 +9,7 @@ import anthropic
 
 from app.config import settings
 from app.models import RSSArticle
+from services.cost_guard import check_budget
 from services.quality_gate import gate_summary
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
@@ -39,6 +40,15 @@ VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world
 # coercing to "top" — funneled exactly the least-classifiable content into the
 # most visible tab. Misfiling by policy is worse than not filing.
 FALLBACK_CATEGORY = "general"
+
+# Pre-call cost estimate for the budget check, per BATCH_SIZE-article call.
+# Measured from `ai_usage_daily` over 7 days to 2026-08-11: $7.91 across 2,969
+# calls. See docs/SOURCE_SCALING.md.
+SUMMARY_COST_PER_BATCH_USD = 0.0027
+
+
+def _batch_count(items: list) -> int:
+    return -(-len(items) // BATCH_SIZE)
 
 
 async def summarize_articles(
@@ -74,6 +84,27 @@ async def summarize_articles(
             "Skipping %d/%d articles whose RSS entry carries no body text",
             skipped_empty, len(articles),
         )
+
+    # Daily AI cost ceiling. Checked once for the whole set rather than per
+    # batch: the guard exists to stop a runaway day, and a ledger read per batch
+    # would add ~8 round trips a run for no extra protection.
+    #
+    # DEGRADES TO `_raw_content_fallback`, NOT TO `{}`, AND THAT IS LOAD-BEARING.
+    # `store_node` iterates `new_articles`, not `summaries`, so an article
+    # missing from this dict is still stored — with no summary — and
+    # `services.deduplicator` drops its source_url on every later cycle, so it
+    # is never re-summarized. Returning nothing would permanently blank a whole
+    # budget-stopped day. Truncated RSS text is worse than a real summary and
+    # far better than that; same reasoning as `_raw_content_fallback`'s own
+    # docstring.
+    budget = await check_budget(SUMMARY_COST_PER_BATCH_USD * _batch_count(summarizable))
+    if not budget.allowed:
+        logger.warning(
+            "Summarization skipped for %d articles (cost guard: %s); storing "
+            "truncated RSS content so the rows are not left permanently blank.",
+            len(summarizable), budget.reason,
+        )
+        return _raw_content_fallback(summarizable)
 
     for i in range(0, len(summarizable), BATCH_SIZE):
         batch = summarizable[i : i + BATCH_SIZE]

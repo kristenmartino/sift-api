@@ -9,6 +9,7 @@ import anthropic
 from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
+from services.cost_guard import check_budget
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
     AlignmentError,
@@ -22,6 +23,16 @@ logger = logging.getLogger("sift-api.entity_extractor")
 
 MODEL = "claude-haiku-4-5-20251001"
 BATCH_SIZE = 15  # More articles per call since extraction is lighter than summarization
+
+# Pre-call cost estimate for the budget check, per BATCH_SIZE-article request.
+# Measured from `ai_usage_daily` over 7 days to 2026-08-11: $1.74 across 872 calls
+# (already net of the 50% Batch API discount). See docs/SOURCE_SCALING.md.
+ENTITY_COST_PER_CALL_USD = 0.0020
+
+
+def _batch_count(articles: list) -> int:
+    return -(-len(articles) // BATCH_SIZE)
+
 
 BATCH_KIND = "entity"  # identifier persisted to api_batches.kind
 
@@ -214,6 +225,19 @@ async def submit_entity_batch(articles: list[dict]) -> str | None:
     Returns the batch_id (or None if submission failed / no input).
     """
     if not articles:
+        return None
+
+    # Daily AI cost ceiling. Returning None is the existing "did not submit"
+    # contract, so the caller already handles it: the articles simply go
+    # without entity extraction for now and are backfillable. Cheap to degrade,
+    # which is why the guard sits at submit time rather than in the result
+    # handler — by then the money is spent.
+    budget = await check_budget(ENTITY_COST_PER_CALL_USD * _batch_count(articles))
+    if not budget.allowed:
+        logger.warning(
+            "entity extraction: batch of %d articles not submitted (cost guard: %s)",
+            len(articles), budget.reason,
+        )
         return None
 
     requests: list[dict] = []

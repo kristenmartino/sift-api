@@ -50,12 +50,20 @@ from typing import TypedDict
 import anthropic
 
 from app.config import settings
+from services.cost_guard import check_budget
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.entity_linker_llm")
 
 MODEL = "claude-haiku-4-5-20251001"
 MAX_OUTPUT_TOKENS = 500
+
+# Pre-call cost estimate for the budget check. Measured from `ai_usage_daily`
+# over 7 days to 2026-08-11: $22.38 across 5,409 calls. Deliberately a measured
+# average rather than a token-count guess — the catalog's cache hit rate swings
+# the true per-call cost more than article length does, and the guard only needs
+# to be right enough to stop the run near the ceiling.
+LINK_COST_PER_CALL_USD = 0.0042
 # Per-article timeout — the LLM is fast (Haiku, small output) but if it
 # stalls we fall back to regex rather than block the pipeline.
 LLM_TIMEOUT_SECONDS = 8.0
@@ -452,6 +460,28 @@ async def link_articles_llm(
     if not articles or not catalog:
         # No catalog is a config failure, not an answer — under
         # omit_failures, saying [] for every article would clear them all.
+        if omit_failures:
+            return {}
+        return {a.get("source_url", ""): [] for a in articles if a.get("source_url")}
+
+    # Daily AI cost ceiling. This is the largest paid line item in the pipeline
+    # (1.50 of the 2.82 $/1k-article per-article total, docs/SOURCE_SCALING.md)
+    # and it ran with no ceiling at all until 2026-08-11 — the guard existed but
+    # was only wired into embedder and the optional judge.
+    #
+    # Checked once for the whole set rather than per article: the per-call
+    # ledger read would be 40 round trips a run, and the point is to stop the
+    # run, not to bill-shave inside it.
+    budget = await check_budget(LINK_COST_PER_CALL_USD * len(articles))
+    if not budget.allowed:
+        # Same shape as the no-catalog branch above, and for the same reason:
+        # under omit_failures this must NOT answer [] for every article, or a
+        # budget stop would clear every row it touched. Leaving them out routes
+        # them to the caller's regex fallback (services/entity_linker.py:853).
+        logger.warning(
+            "entity_linker_llm: skipped %d articles (cost guard: %s); "
+            "regex fallback applies.", len(articles), budget.reason,
+        )
         if omit_failures:
             return {}
         return {a.get("source_url", ""): [] for a in articles if a.get("source_url")}

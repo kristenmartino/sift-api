@@ -120,29 +120,51 @@ mean 40.7, zero windows at cap.** It only binds above ~9,600/day — 5.5× the c
 reached only in the +1000 scenario. Raising it now is tuning against a number nothing is
 touching.
 
-### `MAX_ENTRIES_PER_FEED = 10` — probably binding *today*
+### `MAX_ENTRIES_PER_FEED = 10` — binds on every feed, every run, and is *not* losing articles yet
 
 `services/rss.py:156`. Per-feed, per-run.
 
-| Source | max/window | windows ≥10 | windows | mean |
-|---|---:|---:|---:|---:|
-| Sports Illustrated | 23 | **170** | 300 | 7.95 |
-| New York Post | 17 | 37 | 321 | 6.17 |
-| CBS News | 12 | 4 | 213 | 3.12 |
-| Washington Examiner | 11 | 4 | 192 | 3.39 |
+**An earlier draft of this doc got this wrong and it is worth recording why.** It inferred
+from stored rows that Sports Illustrated was "at or above the cap in 170 of 300 windows"
+and concluded Sift was probably dropping SI articles today. Then the `feed_stats` event
+(`services/rss.py:258`), which logs *fetched* counts, said something much starker:
 
-Sports Illustrated sits at or above the cap in **57% of windows**. That strongly suggests
-Sift is dropping SI articles right now, independent of any expansion.
+```
+feeds_ok=59 failed=0 empty=0 fetched=571
+sources at or above cap 10: 55 of 55
+```
 
-**This cannot be proven from stored rows** — truncated articles were never written, and
-`created_at` buckets do not align exactly with pipeline runs, which is why a window can
-show 23. Confirm from the `feed_stats` event (`services/rss.py:258`), which logs
-`articles_by_source` as *fetched*. Only then change the constant.
+**Every outlet fetches exactly 10 every run.** Washington Post gets 23 only because it has
+four section feeds. So the cap binds universally — which makes the stored-row inference
+useless as evidence of *loss*, because it cannot distinguish "the feed had more to give"
+from "we took the top 10 of a feed that had not turned over".
+
+The question that actually decides it is **turnover**: a feed only loses articles when it
+publishes more than 10 in a 30-minute window, because the 11th scrolls off before the next
+fetch. Against 48 runs × 10 slots:
+
+| Source | stored/day | slots/day | turnover |
+|---|---:|---:|---:|
+| Sports Illustrated | 300.6 | 480 | **62.6%** |
+| New York Post | 249.8 | 480 | 52.0% |
+| Fox News | 114.0 | 480 | 23.8% |
+| Bloomberg | 87.9 | 480 | 18.3% |
+| CBS News | 83.6 | 480 | 17.4% |
+
+**No feed is saturated. SI has ~1.6× headroom and everything else has far more.** So the
+cap is not dropping articles on average today, and the constant should not be raised on
+the strength of the earlier inference. Bursts are a different matter — a Sunday evening of
+finals plausibly clears 10 in 30 minutes — but that is an argument for a per-feed cap, not
+a global raise.
+
+**It does matter for expansion, in the opposite direction from what was assumed.** The cap
+means per-feed intake is bounded at 480/day no matter what an outlet publishes, so adding
+high-volume outlets buys less than their raw rate suggests, and adding *many* outlets is
+the only way volume grows. That is consistent with the ~9/day marginal yield above.
 
 Note `rss.py:157` records that `FETCH_TIMEOUT` was raised for the WaPo section feeds in
-#122; the entry cap has not been revisited since. If confirmed, the fix is likely a
-per-feed cap rather than one global constant — 10 is right for Carbon Brief at 1/day and
-wrong for SI at 298/day.
+#122; the entry cap itself has not been revisited. If it is ever raised, make it per-feed —
+10 is right for Carbon Brief at 1/day and wrong for SI at 300/day.
 
 ### Storage is not the constraint
 

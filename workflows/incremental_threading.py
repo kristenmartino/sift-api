@@ -36,12 +36,31 @@ import json
 import logging
 from datetime import datetime
 
+from services.cost_guard import check_budget
+
 logger = logging.getLogger("sift-api.incremental_threading")
 
 # A story must reflect cross-outlet coverage, not one outlet publishing four
 # near-duplicates. Same gate as story_workflow.py:196 — the UI renders "how N
 # outlets covered this", so a single-outlet story misrepresents itself.
 MIN_UNIQUE_OUTLETS = 2
+
+# Pre-call cost estimates for the budget check, measured from `ai_usage_daily`
+# over 7 days to 2026-08-11 (docs/SOURCE_SCALING.md): the confirmer ran $1.45
+# across 230 calls, the synthesizer $10.14 across 4,564. The synthesis figure is
+# an upper bound per relevant candidate — most attaches skip synthesis entirely
+# because the outlet set did not change — so the guard trips slightly early,
+# which is the right direction for a ceiling.
+CONFIRM_COST_PER_CALL_USD = 0.0063
+SYNTHESIS_COST_PER_CALL_USD = 0.0022
+
+# Mirrors `services.story_confirmer.BATCH_SIZE`; imported lazily elsewhere in
+# this module, so it is restated rather than imported at module scope.
+_CONFIRM_BATCH_SIZE = 40
+
+
+def _confirm_batches(relevant: list) -> int:
+    return -(-len(relevant) // _CONFIRM_BATCH_SIZE)
 
 
 def seed_story_id(category: str, member_ids: list[str]) -> str:
@@ -211,6 +230,32 @@ async def run_incremental_threading(
 
     stats = summarize(candidates)
     relevant = [c for c in candidates if c["existing_stories"] or c["loose_neighbours"]]
+
+    # Daily AI cost ceiling, covering both paid calls this run makes: one
+    # confirmer call per 40 candidates, then up to one synthesis per decision.
+    #
+    # THE GUARD LIVES HERE RATHER THAN INSIDE `synthesize_story` ON PURPOSE.
+    # `synthesize_story` degrades by returning `_fallback()` — the first
+    # article's headline, flagged `_failed`. `story_workflow.py:246` reads that
+    # flag and stores `synthesis_status='failed'` so it can be retried, but
+    # `_attach` and `_create` below write `'complete'` unconditionally, so on
+    # the live incremental path a fallback would be stored as a finished story
+    # and never revisited. Skipping the whole run instead leaves every article
+    # queued — `mark_threaded` is not reached — so the next run redoes it
+    # properly once the budget resets.
+    budget = await check_budget(
+        CONFIRM_COST_PER_CALL_USD * _confirm_batches(relevant)
+        + SYNTHESIS_COST_PER_CALL_USD * len(relevant)
+    )
+    if not budget.allowed:
+        logger.warning(json.dumps({
+            "event": "incremental_threading_skipped",
+            "reason": budget.reason,
+            "queued": len(candidates),
+            "relevant": len(relevant),
+            "note": "articles left unmarked; next run re-threads them",
+        }))
+        return {"queued": len(candidates), "skipped": budget.reason}
 
     decisions = await confirm(relevant) if relevant else {}
 
