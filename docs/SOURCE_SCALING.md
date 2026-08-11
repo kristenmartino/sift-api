@@ -264,11 +264,24 @@ Ordered by how much they change the value of a later expansion.
 2. **Rank on distinct outlets** (`sift/lib/db.ts`, `sift/components/NewsAggregator.tsx`).
    Without it, added coverage raises the bill without becoming visible in the feed.
 
-3. **Wire up the cost guard** (`services/cost_guard.py`). It currently reads as protection
-   and is not: defaults off (`app/config.py:24`), neither env var set on Railway
-   (`sift/docs/OPERATING_CONTEXT.md:89`), and `check_budget` called at only 2 of 8 paid
-   call sites — `embedder.py:37` and the optional judge. The summarizer, linker, primer,
-   extractor, clusterer, confirmer and synthesizer have no ceiling at all.
+3. ~~**Wire up the cost guard**~~ — **done, and enabled on Railway 2026-08-11.** It read as
+   protection and was not: `check_budget` was called at 5 of 11 paid call sites, leaving
+   the four biggest spenders with no ceiling. Now at all of them.
+
+   **Two corrections to what this section first said.** It claimed neither env var was set
+   on Railway, citing `sift/docs/OPERATING_CONTEXT.md:89`. Both were —
+   `AI_COST_GUARD_ENABLED=false` and `DAILY_AI_COST_LIMIT_USD=100`. And it said 2 of 8 call
+   sites; it was 5 of 11. Read `railway variables` and the call sites, not the doc.
+
+   **`DAILY_AI_COST_LIMIT_USD` lowered 100 → 15** at the same time. $100 was 21× actual
+   spend — a runaway backstop, not a ceiling. $15 is ~3× the post-narrowing rate of
+   ~$4.70/day: enough to catch the error class that started this work (a 20× volume
+   assumption at `entity_linker_llm.py:32-34`) without tripping on a busy day.
+
+   **Do not tighten it further without re-reading the degradations.** The guard is
+   fail-closed, so a ledger outage blocks paid calls too — and a budget stop makes the
+   summarizer write truncated RSS text that nothing revisits. Below roughly 2× the run
+   rate, the ceiling costs more than it saves.
 
 4. **Diagnose the per-feed cap.** Independent of expansion; see above.
 
