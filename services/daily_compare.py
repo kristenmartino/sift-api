@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 
 from app.db import get_pool
@@ -51,6 +52,32 @@ DAILY_COMPARE_TIMEOUT = 90  # seconds
 _graph = build_compare_graph()
 _refresh_lock = asyncio.Lock()
 
+# Broadcast furniture that leaks from article titles into the standing example
+# (#195): "WATCH LIVE: Trump signs…" is a fine headline and a bad topic — the
+# prefix ends up on the landing page and pads five web-search prompts with a
+# label that means nothing off-air. Anchored to the start, separator required,
+# so "Breaking with tradition, …" survives; only label-colon/dash forms strip.
+_TOPIC_PREFIX_RE = re.compile(
+    r"^(?:watch\s+live|live\s+updates?|breaking\s+news|breaking|live|watch|video)"
+    r"\s*[:\-—–|]\s*",
+    re.IGNORECASE,
+)
+
+
+def clean_topic(title: str, max_len: int = 120) -> str:
+    """Strip stacked broadcast prefixes from a title and cap its length.
+
+    Never strips down to nothing — a title that is only furniture is kept
+    as-is rather than replaced with an empty topic.
+    """
+    topic = title.strip()
+    while True:
+        stripped = _TOPIC_PREFIX_RE.sub("", topic, count=1).strip()
+        if not stripped or stripped == topic:
+            break
+        topic = stripped
+    return topic[:max_len]
+
 
 async def _pick_topic(conn) -> str | None:
     """Today's most important non-grim story title.
@@ -74,9 +101,10 @@ async def _pick_topic(conn) -> str | None:
     )
     if not row or not row["title"]:
         return None
-    # Titles work as compare topics (the workflow web-searches them), but cap
-    # the length so a run-on headline doesn't bloat five search prompts.
-    return str(row["title"])[:120]
+    # Titles work as compare topics (the workflow web-searches them), minus
+    # broadcast prefixes and capped so a run-on headline doesn't bloat five
+    # search prompts.
+    return clean_topic(str(row["title"]))
 
 
 async def refresh_daily_example(force: bool = False) -> bool:
