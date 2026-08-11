@@ -73,13 +73,34 @@ Return ONLY a JSON object:
     try:
         response = await client.messages.create(
             model=model,
-            max_tokens=1024,
+            max_tokens=_max_tokens_for(len(articles)),
             messages=[{"role": "user", "content": prompt}],
         )
         log_usage("story_synthesizer.synthesize", response, model=model)
 
         text = "".join(b.text for b in response.content if b.type == "text")
         result = _extract_json_object(text)
+        stop_reason = getattr(response, "stop_reason", None)
+
+        # Structured so "the model returned something unparseable" is
+        # distinguishable from "the response was cut off mid-JSON". Under the
+        # old fixed ceiling both logged the same line, which is why a
+        # deterministic truncation read as intermittent API flakiness for a
+        # day. Same shape as `cluster_stats` in story_clusterer.
+        logger.info(json.dumps({
+            "event": "synthesis_stats",
+            "n_articles": len(articles),
+            "n_outlets": len({a.get("source_name") for a in articles}),
+            "stop_reason": stop_reason,
+            "parsed": result is not None,
+            "max_tokens": _max_tokens_for(len(articles)),
+        }))
+        if stop_reason == "max_tokens":
+            logger.warning(
+                "Synthesis response hit the output ceiling (%d articles) — "
+                "framings were likely lost to truncation",
+                len(articles),
+            )
 
         if result and "headline" in result and "summary" in result:
             # Validate framings
@@ -96,6 +117,29 @@ Return ONLY a JSON object:
     except Exception as e:
         logger.error("Story synthesis failed: %s", e)
         return _fallback(articles)
+
+
+def _max_tokens_for(article_count: int) -> int:
+    """Output ceiling for a synthesis call, scaled to the input size.
+
+    Clustering emits indices; this response carries one `framings` entry per
+    source — a sentence plus source_name and tone — so its output grows with
+    the cluster, and a fixed ceiling breaks on exactly the stories worth the
+    most. Measured 2026-08-11 against five prod stories a fixed 1024 was
+    truncating (`stop_reason='max_tokens'` on four of five, all five parsing
+    cleanly at 4096): the worst was **1,348 output tokens for 24 articles
+    across 18 outlets**, ~61 per article. 120 doubles that.
+
+    Budgeted per *article*, not per outlet: on larger clusters the model emits
+    roughly one framing per article rather than per source (18 outlets
+    produced 24 framings), so article count is the honest upper bound.
+
+    `max_tokens` is a ceiling, not a spend commitment — billing is on tokens
+    actually produced — so the headroom is close to free. The floor keeps every
+    cluster at or above the old fixed value, so nothing gets less room than it
+    had.
+    """
+    return max(1024, min(8192, 400 + 120 * article_count))
 
 
 def _fallback(articles: list[dict]) -> dict:

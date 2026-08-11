@@ -32,9 +32,16 @@ story already has adds nothing to synthesize.
 WHEN SYNTHESIS FAILS
 --------------------
 `story_synthesizer.synthesize_story` degrades rather than raising: on an API
-error, timeout or unparseable response it returns `_fallback()` — the first
-member's own title and summary, no framings, flagged `_failed`. That value is
-not a synthesis, and neither `_attach` nor `_create` may store it as one.
+error, timeout, truncated response or unparseable one it returns `_fallback()`
+— the first member's own title and summary, no framings, flagged `_failed`.
+That value is not a synthesis, and neither `_attach` nor `_create` may store it
+as one.
+
+Truncation was the dominant cause and is fixed separately: `max_tokens` was a
+fixed 1024 while `framings` carries one entry per source, so past roughly 13
+outlets every call was cut off mid-JSON — and `_attach` re-synthesizes exactly
+as outlets accumulate, making the failure permanent per story rather than
+intermittent. See `story_synthesizer._max_tokens_for`.
 
 Both paths honour the flag, the way `story_workflow.py:246` does:
 
