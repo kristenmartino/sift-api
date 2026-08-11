@@ -40,6 +40,31 @@ def _clamp_tone(raw: object) -> str:
         return raw.strip().lower()
     return "neutral"
 
+
+# Importance measures scope-of-consequence, not drama. The pre-2026-08-11
+# anchors let "wide impact, affects many people" pattern-match onto emotional
+# weight, so single-victim tabloid crime scored 4 and outranked elections —
+# and, being exempt from the D48 grim dampener at 4+, stacked the top of the
+# feed. Shared verbatim with scripts/rescore_importance.py so the re-score
+# and the live prompt cannot drift.
+IMPORTANCE_RUBRIC = """\
+   Importance measures the SCOPE of the event's consequences — how many \
+people's lives, money, safety, or rights are materially affected. It is NOT \
+a measure of how dramatic, shocking, or tragic the event is: emotional \
+weight is not impact, and attention is not impact.
+   1 = routine/minor (local interest, incremental update)
+   2 = somewhat notable (industry-specific or community-level consequence)
+   3 = noteworthy (broad interest, clear significance beyond those involved)
+   4 = significant (consequences materially reach many people: mass \
+evacuations, major legislation or rulings, market-moving events, \
+large-scale disasters)
+   5 = breaking/major (historic, urgent, massive consequence)
+   A crime, accident, or death with one or a few victims is a 1 or a 2 no \
+matter how disturbing the details, unless the article itself states \
+consequences beyond those involved (a new law or policy, a mass recall, \
+charges against a major public figure). A house fire that kills a family \
+is a 2; a wildfire forcing mass evacuations is a 4."""
+
 # Rough Sonnet judge cost per line (input title+summary+line + short output),
 # used only to pre-check the cost guard before the optional runtime judge.
 JUDGE_COST_PER_LINE_USD = 0.003
@@ -90,11 +115,7 @@ card simply shows nothing. Better empty than filler.
 
 2. An importance score from 1-5 (key "s"), independent of the line above — \
 always provide it, even when the line is empty:
-   1 = routine/minor (local interest, incremental update)
-   2 = somewhat notable (industry-specific, modest impact)
-   3 = noteworthy (broad interest, clear significance)
-   4 = significant (wide impact, affects many people)
-   5 = breaking/major (historic, urgent, massive consequence)
+{IMPORTANCE_RUBRIC}
 
 3. A tone tag (key "t") — independent of both above, always provide it. \
 Exactly one of:
