@@ -33,8 +33,21 @@ LLM's output alone until 2026-08-05. It no longer is; see the second caveat.
     passthru   = of ALL articles, the share the gate forwards
                  (i.e. what you still pay for)
 
-SHIP BAR: recall >= 95%. Below that, do not gate — batch the linker instead
-(~10 articles/call, modeled at -60% in STATUS.md), which has no recall risk.
+SHIP BAR: recall >= 95%.
+
+THE FALLBACK THIS USED TO NAME IS GONE. It read "below that, do not gate —
+batch the linker instead (~10 articles/call, modeled at -60% in STATUS.md),
+which has no recall risk." Batching was built and A/B'd on 2026-08-11 and its
+recall risk is large: **79.5% at 10/call, 83.6% at 5**, against a single-
+article path that agrees with itself 97.3% across two runs. Not a batch-size
+effect — a batch of *two* loses ~20 points — and not a position effect. It was
+reverted; the experiment is in docs/SOURCE_SCALING.md.
+
+So the gate is not being weighed against a free alternative. The live one is
+**roster narrowing** — send the regex's own candidates plus their collision
+siblings instead of all 856 rows — measured at 94.2% recall and ~22 roster
+tokens per call, un-shipped pending a precision check. It composes *with* this
+gate rather than replacing it, since it consumes the gate's match output.
 
 READ THE RECALL NUMBER WITH THIS CAVEAT
 ---------------------------------------

@@ -191,12 +191,12 @@ It is saturating the correct way on the wrong variable.
 
 Ordered by how much they change the value of a later expansion.
 
-1. **Batch the entity linker** (`services/entity_linker_llm.py`). It is **53% of the
-   per-article cost and the only paid stage with no batching** — `link_articles_llm:428`
-   fans out one call per article at concurrency 4, each re-sending a ~7K-token catalog
-   that is only affordable because of the ephemeral cache at `entity_linker_llm.py:399`.
-   The regex pre-gate (#130) already removed ~74% of calls; batching the survivors ~10/call
-   attacks what is left. This makes every future source cheaper, permanently.
+1. **Make the entity linker cheaper — but not by batching it.** It is **53% of the
+   per-article cost and the only paid stage with no batching**. Batching was the obvious
+   move and it was tried and rejected on measurement; see
+   [Batching the linker does not work](#batching-the-linker-does-not-work) below. The
+   promising replacement is **roster narrowing**, measured at 94.2% recall while cutting
+   the dominant input by 99.7%.
 
 2. **Rank on distinct outlets** (`sift/lib/db.ts`, `sift/components/NewsAggregator.tsx`).
    Without it, added coverage raises the bill without becoming visible in the feed.
@@ -213,6 +213,70 @@ Only then is expansion a config change rather than a project. Prefer wires (AP, 
 AFP) and spectrum gaps over more outlets of the kind already carried — depth per dollar is
 what makes compare and top-covered work, and the tail-yield numbers above say volume is
 not what is being bought.
+
+---
+
+## Batching the linker does not work
+
+**Measured 2026-08-11 and rejected.** This matters beyond the linker, because two places
+in the repo carry batching as the safe fallback: `STATUS.md` calls it "modeled at −60%"
+and `scripts/eval_linker_gate.py`'s ship-bar note recommends it as the alternative "which
+has no recall risk". Both are now falsified.
+
+Implemented as one call per 10 gated articles, returning a JSON object keyed by article
+number, then A/B'd against the current one-call-per-article path on real gated prod
+articles.
+
+| Path | Links found | Exact-match articles | Recall vs single | Precision |
+|---|---:|---:|---:|---:|
+| **single run #2 (control)** | 73 | 97.0% | **97.3%** | 97.3% |
+| batched, BATCH_SIZE=5 | 67 | 85.0% | 83.6% | 91.0% |
+| batched, BATCH_SIZE=10 | 64 | 83.0% | 79.5% | 90.6% |
+
+**The control is what makes this conclusive.** Run the single-article path twice over the
+same 100 articles and it agrees with itself **97.3%** — the model is stable. So the
+15–18 points batching gives up are real loss, not run-to-run noise. The first read of
+this experiment was nearly the opposite conclusion, because batch-vs-single was measured
+without ever measuring single-vs-single.
+
+Two diagnostics ruled out the fixable explanations:
+
+- **Not batch size.** Recall was 78.4% at BATCH_SIZE=2, 85.1% at 3 and 5, 82.4% at 10 —
+  no trend. Even a batch of *two* loses ~20 points.
+- **Not position.** Recall by slot within a batch of 10 ranged 66.7%–100% with no
+  gradient, so it is not late articles being skimmed.
+
+The loss is uniform, which points at the task framing itself: asking for N independent
+extractions in one pass makes the model less thorough on each, and there is no batch size
+or ordering that buys it back. Below the repo's 95% linker ship bar
+(`eval_linker_gate.py:SHIP_BAR`), so it was reverted rather than shipped.
+
+### What to do instead: narrow the roster
+
+The regex pre-gate already computes which catalog surface forms matched. The LLM's job,
+per its own docstring, is to *disambiguate* candidates, not discover entities whose names
+never appear — so it does not need all 856 roster entries, only the candidates plus their
+collision siblings.
+
+Prototyped as: regex matches, plus every catalog row sharing a last-name token with one
+(so "Susan Collins" the Senator still arrives alongside the Boston Fed President).
+
+| | Full roster | Narrowed |
+|---|---:|---:|
+| roster entries per call | 856 | **2.8 mean, 17 max** |
+| roster tokens per call | ~6,850 | **~22** |
+| links found (120 articles) | 86 | 95 |
+| exact-match articles | — | 86.7% |
+| **recall vs full roster** | — | **94.2%** |
+| precision vs full roster | — | 85.3% |
+
+This removes the roster — the ~95% of input that batching was trying to amortize — rather
+than spreading it thinner, and it keeps one call per article so nothing is diluted.
+
+**Not shipped, and two things need answering first.** Precision reads 85.3% because the
+narrowed path finds *more* links (95 vs 86), not fewer; whether those extra tags are
+correct or noise has not been checked, and the baseline is the current path rather than
+ground truth. And 94.2% sits just under the 95% bar, on n=120.
 
 ---
 

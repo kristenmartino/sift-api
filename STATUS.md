@@ -38,7 +38,7 @@ Four live unknowns (one — #3 — now resolved below). None block current work;
 
 Pipeline runs every 30 min, ingests **59 RSS feeds** (`len(services.rss.FEEDS)`; corrected 2026-07-27 from "~135 sources", which was wrong and had propagated into sift/docs/OPERATING_CONTEXT.md — see #104's README fix + drift guard). **Feeds are no longer 1:1 with outlets: 59 feeds = 56 outlets**, because Washington Post now takes four section feeds (#122). Quote the outlet number, not the feed number, in anything user-facing. Calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
 
-**What adding sources would cost is now measured** — [`docs/SOURCE_SCALING.md`](./docs/SOURCE_SCALING.md), 2026-08-11. +50 outlets ≈ $252–322/mo, +100 ≈ $307–457/mo, +1000 ≈ $1,384–3,747/mo *and* 227% of the threading queue. The doc also names the two changes that should precede any expansion (batch the entity linker; rank on distinct outlets) and the one ceiling that is probably binding today (`MAX_ENTRIES_PER_FEED`).
+**What adding sources would cost is now measured** — [`docs/SOURCE_SCALING.md`](./docs/SOURCE_SCALING.md), 2026-08-11. +50 outlets ≈ $252–322/mo, +100 ≈ $307–457/mo, +1000 ≈ $1,384–3,747/mo *and* 227% of the threading queue. The doc also names the two changes that should precede any expansion (make the entity linker cheaper — by roster narrowing, **not** batching, which was tried and rejected on recall; and rank on distinct outlets) and the one ceiling that is probably binding today (`MAX_ENTRIES_PER_FEED`).
 
 Watch for:
 - Pipeline run time approaches the 30-min cadence (e.g. exceeds ~25 min)
@@ -82,6 +82,10 @@ What would resolve this: a stable eval set with target precision/recall numbers,
 Separately, the linker was the **largest single cost lever** in the repo — one realtime call *per article*, 46.2% of Anthropic spend. **Addressed 2026-08-05 by #130**, which gates the LLM behind the free regex matcher and forwards only ~26% of articles.
 
 **Batching to ~10 articles/call is superseded, not merely deferred.** That modeled −60% against the *ungated* volume; gating already removes ~74% of the calls, so batching the remainder is a much smaller lever than the old number implies. Do not quote −60%.
+
+**And as of 2026-08-11 it is not just smaller — it is off the table on quality.** Built and A/B'd against the live path: batching gives up **15–18 points of recall** (79.5% at 10/call, 83.6% at 5) against a single-article path that agrees with *itself* 97.3% across two runs. Not a batch-size effect (a batch of **two** loses ~20 points) and not a position effect (no gradient across slots). Reverted, not shipped. Full experiment in [`docs/SOURCE_SCALING.md`](./docs/SOURCE_SCALING.md#batching-the-linker-does-not-work).
+
+**The live replacement is roster narrowing**, and it is the better idea anyway: the regex gate already knows which surface forms matched, so send the LLM those candidates plus their collision siblings instead of all 856 rows. Measured **94.2% recall at 2.8 roster entries per call** — ~6,850 roster tokens down to ~22. It removes the input batching was trying to amortize. Not shipped: precision reads 85.3% because it finds *more* links than the current path, and whether those are right is unchecked.
 
 The durability question itself is unchanged and still open — and #130 sharpens it, because the gate's recall now depends on catalog *coverage*: an entity the regex cannot name is one the LLM never gets asked about. `scripts/eval_linker_gate.py` measures that coverage (**97.02% as of 2026-08-06**, from 98.2% on the same 7-day window before `stat` was blocked; it read 97.63% against the ten-name blocklist on 2026-08-05, over a different window) and should run on every PR touching the linker or `entity_aliases`.
 
