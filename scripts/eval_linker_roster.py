@@ -216,7 +216,10 @@ async def main(n: int, out_json: str | None) -> int:
     jobs: list[tuple[dict, tuple[str, str], str]] = []
     agreed_refs: list[tuple[dict, tuple[str, str]]] = []
     agreed = 0
-    for a, f, nw in zip(articles, full, narrow):
+    # strict=True: these three come from gather() over the same list, so a
+    # length mismatch means results silently drifted out of alignment with the
+    # articles they describe — which would misattribute every link after it.
+    for a, f, nw in zip(articles, full, narrow, strict=True):
         fk, nk = _key(f), _key(nw)
         agreed += len(fk & nk)
         for ref in sorted(fk & nk):
@@ -254,7 +257,7 @@ async def main(n: int, out_json: str | None) -> int:
 
     stats = {"full": [0, 0], "narrow": [0, 0], "agreed": [0, 0]}   # [correct, judged]
     wrong: dict[str, list] = {"full": [], "narrow": []}
-    for (a, ref, side), v in zip(jobs, verdicts):
+    for (a, ref, side), v in zip(jobs, verdicts, strict=True):
         if v is None:
             continue
         stats[side][1] += 1
@@ -304,7 +307,7 @@ async def main(n: int, out_json: str | None) -> int:
     prec_ok = n_prec >= f_prec
     recall_ok = n_correct >= f_correct
     verdict = "PASS" if (prec_ok and recall_ok) else "FAIL"
-    print(f"\nSHIP BAR: overall precision must not regress AND correct links must not fall")
+    print("\nSHIP BAR: overall precision must not regress AND correct links must not fall")
     print(f"  precision {n_prec:.1f}% vs {f_prec:.1f}%  {'ok' if prec_ok else 'REGRESSION'}")
     print(f"  correct   {n_correct:.1f} vs {f_correct:.1f}  {'ok' if recall_ok else 'REGRESSION'}")
     print(f"  {verdict}")
