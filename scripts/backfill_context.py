@@ -71,10 +71,11 @@ async def main():
 
         for source_url, data in results.items():
             await pool.execute(
-                "UPDATE articles SET why_it_matters = $1, importance_score = $2, tone = $3 WHERE source_url = $4",
+                "UPDATE articles SET why_it_matters = $1, importance_score = $2, tone = $3, genre = $4 WHERE source_url = $5",
                 data["context"],
                 data["score"],
                 data["tone"],
+                data["genre"],
                 source_url,
             )
             total_updated += 1

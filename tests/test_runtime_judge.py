@@ -40,7 +40,7 @@ class FakePool:
         ]
 
     async def execute(self, _q, *a):
-        self.updates.append(a)  # (why_it_matters, importance_score, tone, source_url)
+        self.updates.append(a)  # (why_it_matters, importance_score, tone, genre, source_url)
 
 
 def _results():
@@ -72,7 +72,7 @@ async def test_judge_drops_rejected_line_keeps_score(monkeypatch):
 
     await cg.process_context_batch_results("batch-1", _results())
 
-    writes = {u[3]: u for u in pool.updates}
+    writes = {u[4]: u for u in pool.updates}
     assert writes[URL1][0] == LINE1          # kept
     assert writes[URL2][0] is None           # judge-dropped -> NULL line
     assert writes[URL2][1] == 4              # ...but score still recorded
@@ -89,7 +89,7 @@ async def test_flag_off_keeps_lines_and_skips_judge(monkeypatch):
     await cg.process_context_batch_results("batch-1", _results())
 
     judge.assert_not_called()
-    writes = {u[3]: u for u in pool.updates}
+    writes = {u[4]: u for u in pool.updates}
     assert writes[URL1][0] == LINE1
     assert writes[URL2][0] == LINE2
 
@@ -105,6 +105,6 @@ async def test_budget_block_skips_judge_keeps_lines(monkeypatch):
     await cg.process_context_batch_results("batch-1", _results())
 
     judge.assert_not_called()              # budget blocked -> never judged
-    writes = {u[3]: u for u in pool.updates}
+    writes = {u[4]: u for u in pool.updates}
     assert writes[URL1][0] == LINE1        # deterministic result kept
     assert writes[URL2][0] == LINE2

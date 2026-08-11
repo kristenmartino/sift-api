@@ -634,6 +634,14 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "BOOLEAN NOT NULL DEFAULT FALSE"
         )
 
+        # Article genre (migrations/025, ranking v2 stage 6). news |
+        # feature | soft, from the same Haiku call as tone. NULL = "news"
+        # at every ranking site. Applied to standalone articles only.
+        await conn.execute(
+            "ALTER TABLE articles ADD COLUMN IF NOT EXISTS genre TEXT "
+            "CHECK (genre IN ('news', 'feature', 'soft'))"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
