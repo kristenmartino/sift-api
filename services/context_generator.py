@@ -26,6 +26,16 @@ logger = logging.getLogger("sift-api.context_generator")
 MODEL = "claude-haiku-4-5-20251001"
 BATCH_SIZE = 10
 
+# Pre-call cost estimate for the budget check, per BATCH_SIZE-article request.
+# Measured from `ai_usage_daily` over 7 days to 2026-08-11: $1.55 across 1,231 calls
+# (already net of the 50% Batch API discount). See docs/SOURCE_SCALING.md.
+CONTEXT_COST_PER_CALL_USD = 0.0013
+
+
+def _batch_count(articles: list) -> int:
+    return -(-len(articles) // BATCH_SIZE)
+
+
 BATCH_KIND = "context"  # identifier persisted to api_batches.kind
 
 # Article tone (migrations/020): the third output of the same call. Enum, not
@@ -337,6 +347,19 @@ async def submit_context_batch(articles: list[dict]) -> str | None:
     Returns the batch_id (or None if submission failed / no input).
     """
     if not articles:
+        return None
+
+    # Daily AI cost ceiling. Returning None is the existing "did not submit"
+    # contract, so the caller already handles it: the articles simply go
+    # without context for now and are backfillable. Cheap to degrade,
+    # which is why the guard sits at submit time rather than in the result
+    # handler — by then the money is spent.
+    budget = await check_budget(CONTEXT_COST_PER_CALL_USD * _batch_count(articles))
+    if not budget.allowed:
+        logger.warning(
+            "context: batch of %d articles not submitted (cost guard: %s)",
+            len(articles), budget.reason,
+        )
         return None
 
     requests: list[dict] = []
