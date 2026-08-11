@@ -47,7 +47,18 @@ class AlignmentError(RuntimeError):
 
     Raised instead of writing a result that might belong to a different
     article. See aligned_entries for what "proven" means here.
+
+    The three response attributes below are filled in by callers that have the
+    response in hand (`aligned_entries` itself only sees the decoded JSON).
+    They exist because "the batch misaligned" does not say *why*, and one
+    likely why is cheap to test: a response cut off at `max_tokens` is
+    truncated JSON, which fails alignment exactly the way a genuinely
+    scrambled response does — but the fix is a bigger ceiling, not a re-ask.
     """
+
+    stop_reason: str | None = None
+    output_tokens: int | None = None
+    max_output_tokens: int | None = None
 
 
 def aligned_entries(parsed: list[Any], expected: int) -> dict[int, dict]:
@@ -122,6 +133,12 @@ async def with_alignment_retry(
                 "batch_size": len(ids),
                 "final": final,
                 "reason": str(e),
+                # How the call ended. "max_tokens" here means the response was
+                # truncated mid-array, so the re-ask is treating a too-small
+                # ceiling as a scrambled answer — raise the ceiling instead.
+                "stop_reason": e.stop_reason,
+                "output_tokens": e.output_tokens,
+                "max_output_tokens": e.max_output_tokens,
                 "source_urls": ids,
             }))
             logger.warning(

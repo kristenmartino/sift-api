@@ -215,3 +215,46 @@ def _record_to_ledger(
         task.add_done_callback(_pending_records.discard)
     except Exception as e:  # never let telemetry break the caller
         logger.debug("usage ledger scheduling failed for %s: %s", operation, e)
+
+
+def log_output_stop(
+    operation: str,
+    response: Any,
+    *,
+    aligned: bool,
+    batch_size: int,
+) -> None:
+    """Record how a call ended, without blocking the caller.
+
+    Same fire-and-forget shape as `_record_to_ledger`: schedules onto the
+    running loop, no-ops when there isn't one (sync contexts / unit tests),
+    and never raises.
+
+    `stop_reason == "max_tokens"` on a JSON-returning call means the response
+    was cut mid-array — which is a parse failure downstream, not a partial
+    result. Recording it next to `aligned` is what makes the correlation
+    readable; see migrations/021.
+    """
+    try:
+        usage = getattr(response, "usage", None)
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0) if usage else 0
+        stop_reason = getattr(response, "stop_reason", None) or "unknown"
+
+        loop = asyncio.get_running_loop()
+        from services.cost_guard import record_output_stop
+
+        task = loop.create_task(
+            record_output_stop(
+                operation,
+                stop_reason,
+                aligned=aligned,
+                batch_size=batch_size,
+                output_tokens=output_tokens,
+            )
+        )
+        _pending_records.add(task)
+        task.add_done_callback(_pending_records.discard)
+    except RuntimeError:
+        return  # no event loop to schedule onto
+    except Exception as e:  # never let telemetry break the caller
+        logger.debug("output-stop scheduling failed for %s: %s", operation, e)

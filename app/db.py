@@ -529,6 +529,28 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON threading_shadow (run_at DESC)"
         )
 
+        # How each Claude call ended, per day (migrations/021).
+        #
+        # Alignment re-asks on summarizer.batch run at 4-12% of calls and each
+        # is a full-price duplicate; nothing recorded *why*. `max_tokens = 700`
+        # against five ~60-token summaries is comfortable on a typical batch
+        # and tight on five long ones, and a response cut off at the cap is
+        # truncated JSON — which fails alignment exactly the way these retries
+        # look. Same queryability argument as threading_shadow above.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS llm_output_stops (
+                usage_date        DATE    NOT NULL,
+                operation         TEXT    NOT NULL,
+                stop_reason       TEXT    NOT NULL,
+                aligned           BOOLEAN NOT NULL,
+                batch_size        INTEGER NOT NULL,
+                call_count        INTEGER NOT NULL DEFAULT 0,
+                max_output_tokens INTEGER NOT NULL DEFAULT 0,
+                updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (usage_date, operation, stop_reason, aligned, batch_size)
+            )
+        """)
+
         # Interest-group rating provenance (migrations/019).
         # The column shipped as a bare {rater: score} dict — a claim about a
         # living person's voting record with no year and no citation, the same

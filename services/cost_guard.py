@@ -152,3 +152,48 @@ def _maybe_alert(spent: float, limit: float) -> None:
             sentry_sdk.capture_message(msg, level="warning")
         except Exception as e:
             logger.debug("cost_guard: sentry alert failed: %s", e)
+
+
+async def record_output_stop(
+    operation: str,
+    stop_reason: str,
+    *,
+    aligned: bool,
+    batch_size: int,
+    output_tokens: int,
+) -> None:
+    """Count how one Claude call ended, in `llm_output_stops` (migration 021).
+
+    Separate from `record_usage` on purpose: that table answers "what did we
+    spend", this one answers "why are we re-asking". Splitting on `aligned` is
+    the point — the question is not whether calls ever hit `max_tokens` but
+    whether the *misaligned* ones are the ones that did.
+
+    Never raises, for the same reason as everything else in this module: lost
+    telemetry must not break ingest.
+    """
+    try:
+        pool = await get_pool()
+        await pool.execute(
+            """
+            INSERT INTO llm_output_stops
+                (usage_date, operation, stop_reason, aligned, batch_size,
+                 call_count, max_output_tokens, updated_at)
+            VALUES ($1, $2, $3, $4, $5, 1, $6, NOW())
+            ON CONFLICT (usage_date, operation, stop_reason, aligned, batch_size)
+            DO UPDATE SET
+                call_count = llm_output_stops.call_count + 1,
+                max_output_tokens = GREATEST(
+                    llm_output_stops.max_output_tokens, EXCLUDED.max_output_tokens
+                ),
+                updated_at = NOW()
+            """,
+            _utc_today(),
+            operation,
+            str(stop_reason or "unknown"),
+            bool(aligned),
+            int(batch_size),
+            int(output_tokens or 0),
+        )
+    except Exception as e:
+        logger.debug("cost_guard: output-stop write failed for %s: %s", operation, e)
