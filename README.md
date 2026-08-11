@@ -95,6 +95,7 @@ All endpoints are available at both `/v1/...` (preferred) and legacy paths (for 
 | GET | `/redoc` | Alternative API documentation (ReDoc) |
 | POST | `/v1/pipeline/refresh` | Trigger RSS pipeline (auth required) |
 | POST | `/v1/analyze/compare` | Multi-source comparison via LangGraph |
+| POST | `/v1/analyze/compare/stream` | Same comparison as SSE: `stage` / `source-done` / `results` / `error` events |
 
 ## Project structure
 
