@@ -37,7 +37,7 @@ import json
 import math
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -286,7 +286,7 @@ def score(picks: list[str]) -> None:
     if len(picks) != len(pairs):
         raise SystemExit(f"{len(pairs)} pairs on file but {len(picks)} picks given")
 
-    scored = [(p, pick) for p, pick in zip(pairs, picks) if pick in ("a", "b")]
+    scored = [(p, pick) for p, pick in zip(pairs, picks, strict=False) if pick in ("a", "b")]
     skipped = len(pairs) - len(scored)
     if not scored:
         raise SystemExit("no scorable picks")
