@@ -85,6 +85,15 @@ class TestContextPrompt:
         # buries a story; false-neutral costs nothing).
         assert 'choose "neutral"' in prompt
 
+    def test_prompt_encodes_scope_not_drama(self):
+        # The pre-2026-08-11 rubric let "wide impact" pattern-match onto
+        # emotional weight: single-victim tabloid crime scored 4, which is
+        # exempt from the grim dampener — exactly the top-of-feed failure.
+        prompt = _build_context_prompt(CTX_BATCH).lower()
+        assert "scope" in prompt
+        assert "emotional weight is not impact" in prompt
+        assert "one or a few victims is a 1 or a 2" in prompt
+
 
 class TestPrimerParse:
     def _batch(self):
