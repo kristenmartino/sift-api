@@ -16,12 +16,20 @@ from services.index_alignment import (
     aligned_entries,
     with_alignment_retry,
 )
-from services.usage_tracker import log_usage
+from services.usage_tracker import log_output_stop, log_usage
 
 logger = logging.getLogger("sift-api.summarizer")
 
 BATCH_SIZE = 5
 MODEL = "claude-haiku-4-5-20251001"
+
+# Output ceiling for one batch. Five summaries at ~60 tokens each is ~300, so
+# a typical batch has room to spare — but the longest summaries in prod run 79
+# words (~105 tokens), and five of those land near 575 plus JSON scaffolding.
+# Named rather than inline because it is the number the truncation question is
+# about, and because it has to scale with BATCH_SIZE: a response cut off at the
+# cap is truncated JSON, and truncated JSON fails index alignment.
+MAX_OUTPUT_TOKENS = 700
 
 VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
 
@@ -154,7 +162,7 @@ async def _summarize_batch(
 
     response = await client.messages.create(
         model=MODEL,
-        max_tokens=700,
+        max_tokens=MAX_OUTPUT_TOKENS,
         messages=[{"role": "user", "content": prompt}],
     )
     log_usage("summarizer.batch", response, model=MODEL)
@@ -164,7 +172,29 @@ async def _summarize_batch(
         if block.type == "text":
             text += block.text
 
-    return _parse_summaries(text, batch)
+    # Record how the call ended, split on whether it aligned. Alignment
+    # re-asks run at 4-12% of calls and nothing recorded why; a response cut
+    # off at MAX_OUTPUT_TOKENS is truncated JSON, which fails alignment
+    # exactly the way those retries look. See migrations/021.
+    try:
+        parsed = _parse_summaries(text, batch)
+    except AlignmentError as e:
+        log_output_stop(
+            "summarizer.batch", response, aligned=False, batch_size=len(batch),
+        )
+        # Carry the response context onto the error so the retry log names the
+        # stop reason too — the table gives the rate, the log gives the case.
+        e.stop_reason = getattr(response, "stop_reason", None)
+        e.output_tokens = int(
+            getattr(getattr(response, "usage", None), "output_tokens", 0) or 0
+        )
+        e.max_output_tokens = MAX_OUTPUT_TOKENS
+        raise
+
+    log_output_stop(
+        "summarizer.batch", response, aligned=True, batch_size=len(batch),
+    )
+    return parsed
 
 
 def _build_prompt(batch: list[RSSArticle]) -> str:
