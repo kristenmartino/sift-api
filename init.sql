@@ -462,3 +462,24 @@ CREATE TABLE IF NOT EXISTS entity_aliases (
 
 CREATE INDEX IF NOT EXISTS idx_entity_aliases_target
     ON entity_aliases (entity_type, canonical_id);
+
+-- Feed-balance drift snapshots (migrations/022, ranking v2 stage 3).
+-- One row per category per daily check, written by services/feed_balance.py.
+-- grim_share_top10 / mean_civic_top10 are the tripped metrics (the D48/D45
+-- policy numbers); story columns record the stage-1 saturation change.
+-- Persisted rather than only logged so the trailing-13-day baselines
+-- survive Railway log rotation and deploys.
+CREATE TABLE IF NOT EXISTS feed_balance (
+    run_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    category              TEXT NOT NULL,
+    grim_share_top10      REAL,
+    mean_civic_top10      REAL,
+    mean_sources_top5     REAL,
+    story_grim_share_top5 REAL,
+    n_articles            INTEGER NOT NULL DEFAULT 0,
+    n_stories             INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (run_at, category)
+);
+
+CREATE INDEX IF NOT EXISTS idx_feed_balance_run_at
+    ON feed_balance (run_at DESC);
