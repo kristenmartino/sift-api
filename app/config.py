@@ -52,6 +52,30 @@ class Settings(BaseSettings):
     # the surface forms #40 deliberately refuses to match on.
     entity_linker_regex_gate_enabled: bool = True
 
+    # Roster narrowing: send the LLM linker only the catalog rows the regex
+    # gate already matched (plus same-surname siblings) instead of all ~856.
+    # Measured at 2.3 rows per call — it deletes ~95% of the call's input,
+    # which was the roster, not the article.
+    #
+    # Default true for the same reason as the gate above: it saves money, and a
+    # saving you must remember to switch on is one you do not get. Treat it as
+    # a kill switch. It rides on the gate, which is what computes the matches —
+    # with the gate off this flag does nothing.
+    #
+    # It is also, on measurement, MORE accurate rather than a quality trade.
+    # scripts/eval_linker_roster.py over 400 gated articles, disagreements plus
+    # a sampled agreed base, blind-adjudicated by Sonnet: overall precision
+    # 82.9% vs the full roster's 80.9%, and 257 correct links vs 241. Of the
+    # links only the narrowed path found, 70.5% were judged correct against
+    # 46.9% for those only the full roster found — fewer distractors, better
+    # answers.
+    #
+    # Do NOT judge this by diffing against the full-roster path alone. That
+    # reads "94.2% recall, 85.3% precision" and looks like a downgrade, because
+    # it treats the incumbent as ground truth when the disagreements are mostly
+    # where the incumbent is wrong. The eval script's docstring has the trap.
+    entity_linker_roster_narrowing_enabled: bool = True
+
     # Incremental story threading (docs/INCREMENTAL_THREADING.md) — OFF, and
     # off is the right default here, unlike the gate above.
     #

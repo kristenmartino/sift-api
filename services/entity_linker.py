@@ -614,6 +614,71 @@ def build_catalog(
     return rows
 
 
+def narrow_catalog(
+    catalog: list[CatalogRow],
+    matches: list[EntityLink],
+) -> list[CatalogRow]:
+    """The candidate roster for one article: what the regex matched, plus the
+    catalog rows that could be confused with those.
+
+    WHY
+    ---
+    The roster block is ~7K tokens and an article is ~300, so ~95% of every
+    linker call's input was a roster the article had nothing to do with. This
+    is the cheapest thing in the pipeline to delete, and it is deletable
+    because the regex gate has *already computed* which surface forms occur:
+    `link_articles` runs `link_text` to decide whether to call the LLM at all,
+    then throws the matches away.
+
+    It is safe to delete because of what the LLM is for. Per this module's own
+    gate comment and `entity_linker_llm`'s docstring, the model exists to
+    *disambiguate* candidates — "Susan Collins" the Senator from Maine versus
+    the Boston Fed President — not to *discover* entities whose names never
+    appear in the text. Disambiguation needs the candidate and its plausible
+    confusions, not the other 850 rows.
+
+    Note the alternative it is disambiguating against is usually NOT another
+    catalog row: `build_search_dict` already drops any surface form that maps
+    to two entities. The competing Susan Collins is a person the roster has
+    never heard of, so the judgement rests on the model's own knowledge and
+    the article's context. That is why this can narrow hard.
+
+    THE SIBLINGS
+    ------------
+    Same-surname rows are kept anyway, for the case the regex cannot see: two
+    catalog politicians named Johnson where only one surface form matched. It
+    is a handful of rows and it costs nothing, so it is insurance rather than
+    a load-bearing claim.
+
+    Returns rows in `catalog` order so the roster block stays stable across
+    calls, which keeps the prompt cache useful for articles that narrow to the
+    same candidate set.
+    """
+    if not matches:
+        return []
+
+    wanted = {(m["type"], m["canonical_id"]) for m in matches}
+    by_ref = {(r["type"], r["canonical_id"]): r for r in catalog}
+
+    surnames = set()
+    for ref in wanted:
+        row = by_ref.get(ref)
+        if not row:
+            continue
+        parts = (row.get("primary_name") or "").strip().lower().split()
+        if len(parts) >= 2:
+            surnames.add(parts[-1])
+
+    keep = set(wanted)
+    if surnames:
+        for row in catalog:
+            parts = (row.get("primary_name") or "").strip().lower().split()
+            if len(parts) >= 2 and parts[-1] in surnames:
+                keep.add((row["type"], row["canonical_id"]))
+
+    return [r for r in catalog if (r["type"], r["canonical_id"]) in keep]
+
+
 def link_text(
     text: str,
     search_dict: dict[str, tuple[str, str]],
@@ -793,6 +858,10 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
     # what the other 1.9% is and why it is acceptable.
     gated_out: set[str] = set()
     to_link = articles
+    # Per-article narrowed rosters, keyed by source_url. Built from the gate's
+    # own matches — it already computes them to decide whether to call the LLM
+    # at all, and used to throw them away. See narrow_catalog().
+    narrowed: dict[str, list[CatalogRow]] = {}
     if settings.entity_linker_regex_gate_enabled:
         to_link = []
         for article in articles:
@@ -800,15 +869,26 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
             if not url:
                 continue
             text = f"{article.get('title') or ''}\n{article.get('summary') or ''}"
-            if link_text(text, search_dict):
+            matches = link_text(text, search_dict)
+            if matches:
                 to_link.append(article)
+                if settings.entity_linker_roster_narrowing_enabled:
+                    narrowed[url] = narrow_catalog(catalog, matches)
             else:
                 gated_out.add(url)
+        roster_sizes = [len(c) for c in narrowed.values()]
         logger.info(json.dumps({
             "event": "linker_gate_stats",
             "articles": len(articles),
             "forwarded": len(to_link),
             "skipped": len(gated_out),
+            # Roster rows actually sent, against len(catalog). The whole saving
+            # is in this ratio, so it is logged rather than inferred.
+            "roster_full": len(catalog),
+            "roster_mean": (
+                round(sum(roster_sizes) / len(roster_sizes), 1) if roster_sizes else 0
+            ),
+            "roster_max": max(roster_sizes) if roster_sizes else 0,
         }))
 
     # Primary: LLM linker. Falls back to regex per-article on any error.
@@ -823,7 +903,9 @@ async def link_articles(articles: list[dict]) -> dict[str, list[EntityLink]]:
             # it here, a failure still arrived as [] — indistinguishable from
             # the LLM's real "no entities" verdict — and the fallback never
             # fired for it.
-            out = await link_articles_llm(to_link, catalog, omit_failures=True)  # type: ignore[arg-type]
+            out = await link_articles_llm(  # type: ignore[arg-type]
+                to_link, catalog, omit_failures=True, catalogs=narrowed or None,
+            )
             # Denominator is *unique urls*, not len(to_link). link_articles_llm
             # keys by source_url, so two articles sharing one collapse to a
             # single entry — and the deduplicator only dedupes intra-batch by
