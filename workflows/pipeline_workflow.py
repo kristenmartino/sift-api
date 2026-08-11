@@ -306,6 +306,7 @@ async def link_entities_node(state: PipelineState) -> dict:
 async def store_node(state: PipelineState) -> dict:
     """Upsert articles into Postgres and update pipeline_state."""
     from app.db import get_pool
+    from services.genre import detect_opinion
     from services.rss import stable_hash
 
     new_articles = state.get("new_articles", [])
@@ -364,8 +365,9 @@ async def store_node(state: PipelineState) -> dict:
                 """
                 INSERT INTO articles (id, title, summary, source_url, source_name,
                     image_url, category, published_date, embedding, read_time,
-                    why_it_matters, importance_score, content_hash, entity_links)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12, $13, $14::jsonb)
+                    why_it_matters, importance_score, content_hash, entity_links,
+                    is_opinion)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12, $13, $14::jsonb, $15)
                 ON CONFLICT (source_url) DO UPDATE SET
                     summary = EXCLUDED.summary,
                     category = EXCLUDED.category,
@@ -374,6 +376,7 @@ async def store_node(state: PipelineState) -> dict:
                     importance_score = EXCLUDED.importance_score,
                     content_hash = EXCLUDED.content_hash,
                     entity_links = EXCLUDED.entity_links,
+                    is_opinion = EXCLUDED.is_opinion,
                     updated_at = NOW()
                 """,
                 article_id,
@@ -390,6 +393,7 @@ async def store_node(state: PipelineState) -> dict:
                 importance_score,
                 article.content_hash,
                 entity_links_json,
+                detect_opinion(article.source_url, article.title),
             )
             stored += 1
         except Exception as e:
