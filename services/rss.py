@@ -7,7 +7,7 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import NamedTuple
 
@@ -410,7 +410,23 @@ def _upgrade_image_url(url: str | None) -> str | None:
 
 
 def _parse_date(entry) -> datetime | None:
-    """Parse the publication date from an RSS entry."""
+    """Parse the publication date from an RSS entry.
+
+    Dates more than an hour in the future are dropped (→ None, so storage
+    falls back to created_at semantics): feeds occasionally stamp scheduled
+    or timezone-mangled dates, and a future published_date gives the article
+    recency decay > 1 in every ranker, pinning it to the top of the feed
+    until its date arrives. The read path clamps too; this stops the bad
+    value at the source.
+    """
+    dt = _parse_date_raw(entry)
+    if dt is not None and dt > datetime.now(tz=timezone.utc) + timedelta(hours=1):
+        logger.info("Dropping future publication date %s", dt.isoformat())
+        return None
+    return dt
+
+
+def _parse_date_raw(entry) -> datetime | None:
     for field in ("published_parsed", "updated_parsed"):
         parsed = entry.get(field)
         if parsed:
