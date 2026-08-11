@@ -74,6 +74,8 @@ WITH scored AS (
          CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END *
          CASE WHEN is_opinion THEN 0.6 ELSE 1.0 END *
          CASE WHEN is_roundup THEN 0.4 ELSE 1.0 END *
+         CASE WHEN category = 'top' AND COALESCE(importance_score, 3) <= 2 THEN 0.35 ELSE 1.0 END *
+         CASE WHEN genre IN ('feature', 'soft') THEN 0.5 ELSE 1.0 END *
          (1 + 0.1 * LEAST(COALESCE((
            SELECT SUM(CASE t WHEN 'bill' THEN 1.0 WHEN 'politician' THEN 1.0 WHEN 'org' THEN 0.5 ELSE 0 END)
            FROM (SELECT DISTINCT el->>'type' AS t, el->>'canonical_id' AS cid
@@ -118,6 +120,8 @@ ORDER BY
   CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END *
   CASE WHEN is_opinion THEN 0.6 ELSE 1.0 END *
   CASE WHEN is_roundup THEN 0.4 ELSE 1.0 END *
+  CASE WHEN category = 'top' AND COALESCE(importance_score, 3) <= 2 THEN 0.35 ELSE 1.0 END *
+  CASE WHEN genre IN ('feature', 'soft') THEN 0.5 ELSE 1.0 END *
   (1 + 0.1 * LEAST(COALESCE((
     SELECT SUM(CASE t WHEN 'bill' THEN 1.0 WHEN 'politician' THEN 1.0 WHEN 'org' THEN 0.5 ELSE 0 END)
     FROM (SELECT DISTINCT el->>'type' AS t, el->>'canonical_id' AS cid
