@@ -1,0 +1,349 @@
+{
+  "generated_at": "2026-08-11T13:54:23.866653+00:00",
+  "hours": "live-top-feed",
+  "note": "session 2: pairs from the visible top feed; old=pre-v2, new=v2 stages 1-4",
+  "pairs": [
+    {
+      "pair_id": "1d6ea6670b",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "ngiem",
+        "title": "Bessent Bets Big on the Japanese Yen",
+        "summary": "Treasury official Bessent is betting on the Japanese yen; separately, a 7.4-magnitude earthquake struck Colombia and Iran linked Strait of Hormuz reopening to U.S. concessions."
+      },
+      "b": {
+        "id": "k3v9d4",
+        "title": "Big Sur\u2019s Timber Fire explodes another 1,000 acres and forces extensive highway closure",
+        "summary": "California's Timber Fire has expanded by 1,000 acres and forced the closure of a 16-mile stretch of Highway 1, with the fire currently at only 5% containment. The blaze continues to pose significant t"
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.2978
+    },
+    {
+      "pair_id": "efd8b221bb",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "rx7fgt",
+        "title": "John Gotti\u2019s grandson ordered to prison after judge gets tired of waiting for mom\u2019s kidney transplant",
+        "summary": "A federal judge denied John Gotti's grandson's request to further delay his prison sentence, rejecting his claim that he needed time to donate a kidney to his ailing mother. He has been ordered to ser"
+      },
+      "b": {
+        "id": "l0zpw4",
+        "title": "America Is Atomizing",
+        "summary": "The New York Times characterizes America as increasingly fragmented into numerous opposing factions rather than a unified nation."
+      },
+      "old_pick": "a",
+      "new_pick": "a",
+      "disagreement": false,
+      "margin": 0.3321
+    },
+    {
+      "pair_id": "b83e192fad",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "vm587u",
+        "title": "Morning news brief",
+        "summary": "Voters in six states hold primary elections Tuesday, Trump signals a strategic shift on Iran policy, and a 7.4 magnitude earthquake in Colombia kills at least 111 people."
+      },
+      "b": {
+        "id": "pv3ejx",
+        "title": "1 year in, National Guard became a part of D.C. life. And, deadly quake hits Colombia",
+        "summary": "The National Guard has been deployed in Washington D.C. for one year following the January 6 Capitol riot. Separately, a 7.4 magnitude earthquake struck Colombia, killing over 100 people."
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.3724
+    },
+    {
+      "pair_id": "d8f54b9082",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "gcdja",
+        "title": "Iran live updates: No negotiations with US but messages being exchanged, Tehran says",
+        "summary": "President Trump announced 'major combat operations' against Iran on February 28, with massive joint U.S.-Israeli strikes. Iran says it is not negotiating with the U.S. but messages are being exchanged"
+      },
+      "b": {
+        "id": "7v8n4z",
+        "title": "Kevin Dowdell\u2019s Last Fire",
+        "summary": "A veteran firefighter disappeared on 9/11, and his teenage sons later searched for answers about what happened to him. The article explores the personal impact of that day on his family."
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.3133
+    },
+    {
+      "pair_id": "649c054fe8",
+      "kind": "story",
+      "category": "top",
+      "a": {
+        "id": "08c38ffb2ac12ef7",
+        "title": "Trial begins for Duane Davis, charged with organizing Tupac Shakur's 1996 murder",
+        "summary": "Duane 'Keffe D' Davis went to trial nearly 30 years after the 1996 Las Vegas drive-by shooting that killed rapper Tupac Shakur. Davis, who has pleaded not guilty, is accused by prosecutors of orchestr"
+      },
+      "b": {
+        "id": "19eb2e705be3ea0b",
+        "title": "7.4-magnitude earthquake strikes western Colombia, killing at least 20 to over 130 people",
+        "summary": "A 7.4-magnitude earthquake struck western Colombia on Monday, causing widespread building collapses in cities including Cali and Pereira. Death tolls reported across sources range from at least 20 to "
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 1.4114
+    },
+    {
+      "pair_id": "7a458befa6",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "7rhd3w",
+        "title": "The Evening: An Earthquake Shakes Colombia",
+        "summary": "A news briefing covering an earthquake in Colombia and Trump's call for fewer childhood vaccines."
+      },
+      "b": {
+        "id": "rx7fgt",
+        "title": "John Gotti\u2019s grandson ordered to prison after judge gets tired of waiting for mom\u2019s kidney transplant",
+        "summary": "A federal judge denied John Gotti's grandson's request to further delay his prison sentence, rejecting his claim that he needed time to donate a kidney to his ailing mother. He has been ordered to ser"
+      },
+      "old_pick": "b",
+      "new_pick": "a",
+      "disagreement": true,
+      "margin": 0.0241
+    },
+    {
+      "pair_id": "16b12bd16b",
+      "kind": "story",
+      "category": "top",
+      "a": {
+        "id": "e4b5bfd8617951b7",
+        "title": "Wildfires across western U.S. and Canada force tens of thousands to evacuate",
+        "summary": "More than 20,000 people have been forced to evacuate due to wildfires spreading across western North America, with British Columbia declaring a state of emergency as over 100 fires burn across the pro"
+      },
+      "b": {
+        "id": "08c38ffb2ac12ef7",
+        "title": "Trial begins for Duane Davis, charged with organizing Tupac Shakur's 1996 murder",
+        "summary": "Duane 'Keffe D' Davis went to trial nearly 30 years after the 1996 Las Vegas drive-by shooting that killed rapper Tupac Shakur. Davis, who has pleaded not guilty, is accused by prosecutors of orchestr"
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.0519
+    },
+    {
+      "pair_id": "dfd7d2bd4a",
+      "kind": "story",
+      "category": "top",
+      "a": {
+        "id": "4de38341daa44ce1",
+        "title": "Bodies found buried in Arizona backyard; police seek man in connection with deaths",
+        "summary": "Two decomposing bodies were discovered buried in a backyard in Litchfield Park, Arizona. Police have launched an international manhunt for Matthew Flores in connection with the discovery. According to"
+      },
+      "b": {
+        "id": "9964ecc5a9f2bde9",
+        "title": "Mother and 5-month-old infant killed in New York Harbor boat capsize; captain charged",
+        "summary": "A motorboat capsized near Liberty Island in New York Harbor on Saturday night, killing a 27-year-old mother and her 5-month-old daughter; 12 others were rescued. Boat captain Manuel Hernandez, 46, was"
+      },
+      "old_pick": "a",
+      "new_pick": "a",
+      "disagreement": false,
+      "margin": 0.0392
+    },
+    {
+      "pair_id": "29572605ff",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "z7rooi",
+        "title": "LGBT rainbow door at California church ripped down and smashed for second time in weeks",
+        "summary": "A rainbow door at a California church was vandalized and destroyed for the second time in weeks, according to the church's pastor. The repeated incident highlights ongoing threats to LGBT symbols at t"
+      },
+      "b": {
+        "id": "vldx4e",
+        "title": "Mom of 2 kidnapped, killed by Florida deputy boyfriend in shocking murder-suicide",
+        "summary": "A Florida deputy killed his ex-girlfriend, a mother of two, in what authorities are describing as a murder-suicide. Law enforcement officials stated the deputy was no longer considered a law enforceme"
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.0576
+    },
+    {
+      "pair_id": "633382d394",
+      "kind": "story",
+      "category": "top",
+      "a": {
+        "id": "8949d76592bf581b",
+        "title": "NORAD Intercepts Aircraft That Entered Restricted Airspace Near Trump's Bedminster Golf Club",
+        "summary": "NORAD fighter jets scrambled to intercept two general aviation aircraft that entered restricted airspace near President Trump's golf club in Bedminster, New Jersey, while he was present. The articles "
+      },
+      "b": {
+        "id": "9964ecc5a9f2bde9",
+        "title": "Mother and 5-month-old infant killed in New York Harbor boat capsize; captain charged",
+        "summary": "A motorboat capsized near Liberty Island in New York Harbor on Saturday night, killing a 27-year-old mother and her 5-month-old daughter; 12 others were rescued. Boat captain Manuel Hernandez, 46, was"
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.1557
+    },
+    {
+      "pair_id": "fd094172bc",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "gcdja",
+        "title": "Iran live updates: No negotiations with US but messages being exchanged, Tehran says",
+        "summary": "President Trump announced 'major combat operations' against Iran on February 28, with massive joint U.S.-Israeli strikes. Iran says it is not negotiating with the U.S. but messages are being exchanged"
+      },
+      "b": {
+        "id": "vldx4e",
+        "title": "Mom of 2 kidnapped, killed by Florida deputy boyfriend in shocking murder-suicide",
+        "summary": "A Florida deputy killed his ex-girlfriend, a mother of two, in what authorities are describing as a murder-suicide. Law enforcement officials stated the deputy was no longer considered a law enforceme"
+      },
+      "old_pick": "a",
+      "new_pick": "a",
+      "disagreement": false,
+      "margin": 0.1583
+    },
+    {
+      "pair_id": "a615ca39cb",
+      "kind": "story",
+      "category": "top",
+      "a": {
+        "id": "4de38341daa44ce1",
+        "title": "Bodies found buried in Arizona backyard; police seek man in connection with deaths",
+        "summary": "Two decomposing bodies were discovered buried in a backyard in Litchfield Park, Arizona. Police have launched an international manhunt for Matthew Flores in connection with the discovery. According to"
+      },
+      "b": {
+        "id": "e4b5bfd8617951b7",
+        "title": "Wildfires across western U.S. and Canada force tens of thousands to evacuate",
+        "summary": "More than 20,000 people have been forced to evacuate due to wildfires spreading across western North America, with British Columbia declaring a state of emergency as over 100 fires burn across the pro"
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.0317
+    },
+    {
+      "pair_id": "503b73d2c6",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "q9cwsu",
+        "title": "Trump Hardens Stance on Iran, Nvidia Taps Wall Street for $500B | The Opening Trade 8/11/2026",
+        "summary": "President Trump hardened his negotiating stance on Iran by demanding reparations for past attacks, while major investment firms partnered with Nvidia to source $500 billion in financing for AI infrast"
+      },
+      "b": {
+        "id": "k3v9d4",
+        "title": "Big Sur\u2019s Timber Fire explodes another 1,000 acres and forces extensive highway closure",
+        "summary": "California's Timber Fire has expanded by 1,000 acres and forced the closure of a 16-mile stretch of Highway 1, with the fire currently at only 5% containment. The blaze continues to pose significant t"
+      },
+      "old_pick": "a",
+      "new_pick": "a",
+      "disagreement": false,
+      "margin": 0.557
+    },
+    {
+      "pair_id": "f30f0616c2",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "q9cwsu",
+        "title": "Trump Hardens Stance on Iran, Nvidia Taps Wall Street for $500B | The Opening Trade 8/11/2026",
+        "summary": "President Trump hardened his negotiating stance on Iran by demanding reparations for past attacks, while major investment firms partnered with Nvidia to source $500 billion in financing for AI infrast"
+      },
+      "b": {
+        "id": "vm587u",
+        "title": "Morning news brief",
+        "summary": "Voters in six states hold primary elections Tuesday, Trump signals a strategic shift on Iran policy, and a 7.4 magnitude earthquake in Colombia kills at least 111 people."
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.4126
+    },
+    {
+      "pair_id": "27c436a493",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "t9a1n1",
+        "title": "Iran Security Shake-up; China Attempts to Close AI Gap with US | The Pulse 8/10/2026",
+        "summary": "Bloomberg's 'The Pulse' program features interviews with economists and industry leaders discussing Iran's security situation and China's efforts to close its AI technology gap with the United States."
+      },
+      "b": {
+        "id": "80yvqi",
+        "title": "Ex-fraternity member pleads guilty to hazing an Arizona university pledge to death",
+        "summary": "A former Northern Arizona University fraternity leader pleaded guilty to hazing and causing a pledge's death through excessive alcohol consumption at a rush event."
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.0002
+    },
+    {
+      "pair_id": "ae7cafb0eb",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "l0zpw4",
+        "title": "America Is Atomizing",
+        "summary": "The New York Times characterizes America as increasingly fragmented into numerous opposing factions rather than a unified nation."
+      },
+      "b": {
+        "id": "80yvqi",
+        "title": "Ex-fraternity member pleads guilty to hazing an Arizona university pledge to death",
+        "summary": "A former Northern Arizona University fraternity leader pleaded guilty to hazing and causing a pledge's death through excessive alcohol consumption at a rush event."
+      },
+      "old_pick": "a",
+      "new_pick": "a",
+      "disagreement": false,
+      "margin": 0.0157
+    },
+    {
+      "pair_id": "505b6f5a14",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "7rhd3w",
+        "title": "The Evening: An Earthquake Shakes Colombia",
+        "summary": "A news briefing covering an earthquake in Colombia and Trump's call for fewer childhood vaccines."
+      },
+      "b": {
+        "id": "z7rooi",
+        "title": "LGBT rainbow door at California church ripped down and smashed for second time in weeks",
+        "summary": "A rainbow door at a California church was vandalized and destroyed for the second time in weeks, according to the church's pastor. The repeated incident highlights ongoing threats to LGBT symbols at t"
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.0477
+    },
+    {
+      "pair_id": "bf48a085f8",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "93okj6",
+        "title": "Officials Reveal a Secret Ruse to Evacuate Trump, and the F.D.A. Takes On a Food Safety Loophole",
+        "summary": "The article appears to be a news briefing covering multiple unrelated stories including an unnamed evacuation ruse involving Trump, an FDA food safety matter, and a Harry Potter fan incident."
+      },
+      "b": {
+        "id": "ngiem",
+        "title": "Bessent Bets Big on the Japanese Yen",
+        "summary": "Treasury official Bessent is betting on the Japanese yen; separately, a 7.4-magnitude earthquake struck Colombia and Iran linked Strait of Hormuz reopening to U.S. concessions."
+      },
+      "old_pick": "b",
+      "new_pick": "b",
+      "disagreement": false,
+      "margin": 0.062
+    }
+  ]
+}
