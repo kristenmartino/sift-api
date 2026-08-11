@@ -164,8 +164,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://siftnews.ai",
-        "https://www.siftnews.ai",
+        "https://siftnews.io",
+        "https://www.siftnews.io",
         "https://siftnews.kristenmartino.ai",
     ],
     allow_credentials=True,
