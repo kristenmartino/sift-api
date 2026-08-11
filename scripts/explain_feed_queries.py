@@ -55,7 +55,7 @@ WHERE s.category = $1 AND s.synthesis_status = 'complete'
 GROUP BY s.id
 HAVING COUNT(a.id) >= 2
 ORDER BY
-  COUNT(a.id)::float *
+  (3 + 0.8 * LN(1 + COUNT(a.id)))::float *
   EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_date, s.created_at))), 0) / 86400.0, 700))
 DESC NULLS LAST
 LIMIT 20
