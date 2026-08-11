@@ -80,11 +80,11 @@ class TestCORSHeaders:
         response = client.options(
             "/health",
             headers={
-                "Origin": "https://siftnews.ai",
+                "Origin": "https://siftnews.io",
                 "Access-Control-Request-Method": "GET",
             },
         )
-        assert response.headers.get("access-control-allow-origin") == "https://siftnews.ai"
+        assert response.headers.get("access-control-allow-origin") == "https://siftnews.io"
 
     def test_cors_blocks_unlisted_origin(self, client):
         """Requests from unlisted origins don't get CORS allow header."""
@@ -102,7 +102,7 @@ class TestCORSHeaders:
         response = client.options(
             "/pipeline/refresh",
             headers={
-                "Origin": "https://siftnews.ai",
+                "Origin": "https://siftnews.io",
                 "Access-Control-Request-Method": "POST",
                 "Access-Control-Request-Headers": "X-Pipeline-Key",
             },
