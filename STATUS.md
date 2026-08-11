@@ -38,6 +38,8 @@ Four live unknowns (one — #3 — now resolved below). None block current work;
 
 Pipeline runs every 30 min, ingests **59 RSS feeds** (`len(services.rss.FEEDS)`; corrected 2026-07-27 from "~135 sources", which was wrong and had propagated into sift/docs/OPERATING_CONTEXT.md — see #104's README fix + drift guard). **Feeds are no longer 1:1 with outlets: 59 feeds = 56 outlets**, because Washington Post now takes four section feeds (#122). Quote the outlet number, not the feed number, in anything user-facing. Calls Claude for summaries + entity linking + primer generation. Today: comfortably under hobby-tier limits.
 
+**What adding sources would cost is now measured** — [`docs/SOURCE_SCALING.md`](./docs/SOURCE_SCALING.md), 2026-08-11. +50 outlets ≈ $252–322/mo, +100 ≈ $307–457/mo, +1000 ≈ $1,384–3,747/mo *and* 227% of the threading queue. The doc also names the two changes that should precede any expansion (batch the entity linker; rank on distinct outlets) and the one ceiling that is probably binding today (`MAX_ENTRIES_PER_FEED`).
+
 Watch for:
 - Pipeline run time approaches the 30-min cadence (e.g. exceeds ~25 min)
 - ~~Anthropic monthly bill from pipeline crosses $50/mo (today: ~$15)~~ — ~~**corrected 2026-07-30: actual is ~$10/day (~$300/mo)**~~ — ~~**broken down 2026-08-05 from five full days of `ai_usage_daily` (07-31..08-04): $8.99/day**~~ — **reduced to ~$3.24 per 1k articles as of 2026-08-10 (−39.8%), see the table below.** The original breakdown, kept because every later figure is measured against it: **$8.99/day.** `entity_linker_llm.link_text` **46.2%** ($4.15), `story_synthesizer.synthesize` 26.3% ($2.37), `story_clusterer.cluster` 17.1% ($1.54), `summarizer.batch` 10.3% ($0.93), Voyage 0.02%. Threading (clusterer + synthesizer) is **43.4%**, close to the 39% guessed at `workflows/pipeline_workflow.py:17`.
@@ -46,21 +48,24 @@ Watch for:
 
   **Root cause is a volume assumption, not pricing.** `services/entity_linker_llm.py:32-34` documents its economics as "~100 new articles/day → ~$3-5/month". Actual ingest is **~2,000/day**, so that one call site is ~$125/mo.
 
-  **Verified 2026-08-10, and the volume-free column is the one to quote.** Per 1k articles, comparable scope: **$5.38 → $3.24 (−39.8%)**.
+  **Verified 2026-08-10, re-run on the full clean day 2026-08-11, and the volume-free column is the one to quote.** Per 1k articles, comparable scope: **$5.38 → $3.22 (−40.1%)**. The directional 2.4-hour figure was $3.24; the full day confirms it.
 
   | operation | baseline $/1k | now $/1k | |
   |---|---:|---:|---|
-  | `entity_linker_llm.link_text` | 2.48 | **1.58** | −36.3% (#130 regex pre-gate) |
-  | `story_synthesizer.synthesize` | 1.42 | **0.84** | −40.6% (#129 reuse skip, then synthesize-on-change) |
+  | `entity_linker_llm.link_text` | 2.48 | **1.50** | −39.6% (#130 regex pre-gate) |
+  | `story_synthesizer.synthesize` | 1.42 | **0.54** | −61.8% (#129 reuse skip, then synthesize-on-change) |
   | `story_clusterer.cluster` | 0.92 | **0.00** | **−100%** — retired by incremental threading |
-  | `story_confirmer.confirm` | — | **0.27** | its replacement, one batched call per run |
-  | `summarizer.batch` | 0.56 | 0.56 | untouched; the remaining lever |
-  | **threading subtotal** | **2.34** | **1.11** | **−52.5%** |
-  | **total (comparable)** | **5.38** | **3.24** | **−39.8%** |
+  | `story_confirmer.confirm` | — | **0.16** | its replacement, one batched call per run |
+  | `summarizer.batch` | 0.56 | 0.65 | see the light-day caveat below; 7-day value is **0.57** |
+  | **threading subtotal** | **2.34** | **0.70** | **−70.0%** |
+  | **total (comparable)** | **5.38** | **3.22** | **−40.1%** |
+  | **total (all recorded)** | — | **3.88** | includes the three Batch API paths |
+
+  **The batch-scheduled stages mis-weight on a light day, and 08-11 was light** (1,090 articles vs a 1,750 run rate). `summarizer.batch`, `primer_generator.batch`, `context_generator.batch` and `entity_extractor.batch` fire on a schedule rather than strictly per article, so their $/1k rises when volume falls — which is why summarizer reads +17% here and −2% over 7 days. **Quote the clean day for threading and the 7-day window for the batch paths.** The threading numbers are the ones the clean day exists to isolate, and they are unaffected.
 
   **Read `$/1k articles`, not `$/day`.** The `raw` column showed −95.9% on this window purely because it was 2.4 hours long, and has separately shown a −2.4% operation as +17.8% on a busy day. Re-baseline from `scripts/verify_cost_baseline.py`, never by hand.
 
-  **Confidence, stated honestly:** the deploy-check verdicts are structural and solid — `clusterer calls per day 0.00 PASS — legacy path retired`, `synthesize per story touched 0.62 PASS`. The *dollar* figures come from **2.4 overnight hours and 115 articles**, the first window with no legacy threading in it, so treat them as directional. The batch paths (`primer_generator`, `entity_extractor`, `context_generator`) fire on a schedule rather than per article, so a short window mis-weights them. **UTC day 2026-08-11 is the first full clean day** and completes 20:00 EDT 08-11 — re-run `--since 2026-08-11` then and replace these numbers.
+  **Confidence, stated honestly — and the full-day re-run is now done.** The deploy-check verdicts were structural and solid from the start: `clusterer calls per day 0.00 PASS — legacy path retired`, `synthesize per story touched 1.16 PASS`. The original *dollar* figures came from 2.4 overnight hours and 115 articles and were flagged as directional; **the full UTC day 2026-08-11 has now been measured and they held** ($3.24 → $3.22 comparable). The remaining caveat is the batch-path light-day weighting noted above, not the threading result.
 - Neon Postgres connection pool `max=5` starts queuing requests visibly
 - Native app launches and pushes write volume up
 
@@ -126,6 +131,16 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 - **Incremental threading cutover** (Next 3 #3) — blocked on the ivfflat recall@10 check and the entities-lag watermark fix, in that order. Neither is optional: the first decides whether the free candidate gate actually retrieves, the second is a data-loss bug the current rescan design accidentally prevents.
 
 ## Recent decisions
+
+- **2026-08-11** — **Source expansion is affordable at +50/+100 and architecturally impossible at +1000 — but two things go first.** Full analysis in [`docs/SOURCE_SCALING.md`](./docs/SOURCE_SCALING.md). Measured: **+50 outlets ≈ $252–322/mo, +100 ≈ $307–457/mo, +1000 ≈ $1,384–3,747/mo**, from ~$197/mo today.
+
+  **The correction that moves the estimate 3×: the marginal outlet is not the average outlet.** 55 sources / 1,757 articles per day gives a 32/day average that is pure skew — Sports Illustrated 298/day, NY Post 248/day, **top 10 sources = 64% of all volume**. Ranks 26–50 average **8.8/day**, ranks 51–55 average **1.7/day**. Anything added now lands in the tail, so model new outlets at **~9/day**.
+
+  **The blow-up risk was the wrong one.** Synthesis re-fires on every new outlet joining a story (`incremental_threading.py:78`) and re-sends all members, so it looked quadratic. It is not: deeper stories mean *fewer* stories for the same article count and the effects cancel (predicted 633 synthesis calls/day from 205 stories × 3.09 outlets; 652 measured). **The bill is ~85% linear in article count**, which puts the optimization target on the per-article stages, not threading.
+
+  **`MAX_QUEUE = 200` is not the ceiling to worry about** — busiest 30-min window in 7 days was 131, p95 85, zero saturated windows. **`MAX_ENTRIES_PER_FEED = 10` probably is, today**: Sports Illustrated sits at or above it in **170 of 300 windows (57%)**, which cannot be proven from stored rows because truncated articles were never written. Diagnose from the `feed_stats` event before touching the constant.
+
+  **More sources will not surface top-covered stories on their own.** The pool ranks on `COUNT(a.id)` — raw articles, not distinct outlets (`sift/lib/db.ts:197`). 29% of stories have more articles than outlets; re-ranking on `COUNT(DISTINCT source_name)` moves **sports 11.7 places on average, entertainment 8.1**, politics 2.7, health/science ~0.4. The `ln` saturation is right and deliberate; the variable under it is wrong, and adding sources makes the distortion worse.
 
 - **2026-08-11** — **"Sift should be showing important news, not entertainment": the genre key** (ranking v2 stage 6; D51 in `sift/docs/DECISIONS.md`). Measured first: **303 of 489 'top' articles in 7 days score importance ≤2**, and the tone data says it is not celebrity content (8 `light`) — it is crime spectacle ("Naked champion swimmer accused of killing security guard", "Penthouse Pet calls ex-hubby from jail"). Those scores are *already correct*; nothing stopped a fresh importance-2 from riding recency onto the front page, which the read path now fixes with a low-importance weight scoped to 'top'. The residue importance cannot catch is genre: magazine features and soft/curiosity pieces that legitimately score 3+. `genre` (news | feature | soft) is a **fourth key on the existing context call** — no new call, max_tokens 800→850 — with the same clamp discipline as tone (unknown → "news", the no-penalty value) and the explicit guard that it tags *the kind of writing, not its importance or subject*, so it never becomes a second importance score or a spectacle detector. Applied to **standalone articles only**: story ranking is corroboration-based, so a tabloid or feature piece inside a multi-outlet story still appears under "how this was covered" — the product owner's stated preference, and already the architecture.
 
