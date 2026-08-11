@@ -557,6 +557,18 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "CHECK (tone IN ('grim', 'neutral', 'light'))"
         )
 
+        # Daily compare example (migrations/021). One row, refreshed at most
+        # once per UTC day after a pipeline run — the anonymous door into the
+        # compare feature. Read path is sift/lib/db.ts (landing demo + the
+        # signed-out /news compare branch).
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_compare_example (
+                id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                payload JSONB NOT NULL,
+                generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

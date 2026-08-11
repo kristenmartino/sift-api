@@ -96,6 +96,7 @@ All endpoints are available at both `/v1/...` (preferred) and legacy paths (for 
 | POST | `/v1/pipeline/refresh` | Trigger RSS pipeline (auth required) |
 | POST | `/v1/analyze/compare` | Multi-source comparison via LangGraph |
 | POST | `/v1/analyze/compare/stream` | Same comparison as SSE: `stage` / `source-done` / `results` / `error` events |
+| POST | `/v1/analyze/compare/daily/refresh` | Force-regenerate the anonymous daily compare example (auth required) |
 
 ## Project structure
 

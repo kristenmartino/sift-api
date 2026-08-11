@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import time
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from app.config import settings
 from app.dependencies import limiter
 from app.models import PipelineRequest, PipelineResponse
+from services.daily_compare import refresh_daily_example
 from workflows.pipeline_workflow import build_pipeline_graph, PipelineState
 
 logger = logging.getLogger("sift-api.pipeline-router")
@@ -64,6 +66,13 @@ async def refresh_pipeline(
     errors = result.get("errors", [])
     if errors:
         logger.warning("Pipeline completed with errors: %s", errors)
+
+    # Fire-and-forget: refresh the anonymous daily compare example if the UTC
+    # day rolled over. Self-guarded (lock, staleness check, cost guard, its
+    # own exception handling) — it can never fail or slow the pipeline
+    # response. The 30-minute heartbeat cadence makes this effectively
+    # "within half an hour of midnight UTC".
+    asyncio.create_task(refresh_daily_example())
 
     return PipelineResponse(
         results=result.get("results", {}),
