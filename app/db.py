@@ -604,6 +604,14 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "opinion_share_top10 REAL"
         )
 
+        # Roundup/brief-container flag (migrations/024, ranking v2 stage 5).
+        # Program episodes and daily briefs inherit importance from the
+        # events they mention; the read path ranks them x0.4.
+        await conn.execute(
+            "ALTER TABLE articles ADD COLUMN IF NOT EXISTS is_roundup "
+            "BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS articles (
     importance_score INTEGER,
     tone TEXT CHECK (tone IN ('grim', 'neutral', 'light')),  -- D48 dampener input (migrations/020); NULL = unclassified = neutral
     is_opinion BOOLEAN NOT NULL DEFAULT FALSE,  -- outlet-declared opinion marker (migrations/023); read path dampens and excludes from spectrum bonus
+    is_roundup BOOLEAN NOT NULL DEFAULT FALSE,  -- program-episode/brief container (migrations/024); read path ranks x0.4
     content_hash TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
