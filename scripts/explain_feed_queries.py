@@ -71,7 +71,12 @@ WITH scored AS (
          category, published_date, read_time, why_it_matters, importance_score, tone, created_at,
          COALESCE(importance_score, 3)::float *
          EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(published_date, created_at))), 0) / 86400.0, 700)) *
-         CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END
+         CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END *
+         (1 + 0.1 * LEAST(COALESCE((
+           SELECT SUM(CASE t WHEN 'bill' THEN 1.0 WHEN 'politician' THEN 1.0 WHEN 'org' THEN 0.5 ELSE 0 END)
+           FROM (SELECT DISTINCT el->>'type' AS t, el->>'canonical_id' AS cid
+                 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(entity_links) = 'array' THEN entity_links ELSE '[]'::jsonb END) el) links
+         ), 0), 3))
          AS rank_score
   FROM articles
   WHERE category = $1 AND from_search = false
@@ -108,7 +113,12 @@ WHERE category = $1 AND from_search = false
 ORDER BY
   COALESCE(importance_score, 3)::float *
   EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(published_date, created_at))), 0) / 86400.0, 700)) *
-  CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END
+  CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END *
+  (1 + 0.1 * LEAST(COALESCE((
+    SELECT SUM(CASE t WHEN 'bill' THEN 1.0 WHEN 'politician' THEN 1.0 WHEN 'org' THEN 0.5 ELSE 0 END)
+    FROM (SELECT DISTINCT el->>'type' AS t, el->>'canonical_id' AS cid
+          FROM jsonb_array_elements(CASE WHEN jsonb_typeof(entity_links) = 'array' THEN entity_links ELSE '[]'::jsonb END) el) links
+  ), 0), 3))
 DESC NULLS LAST
 LIMIT 30
 """
