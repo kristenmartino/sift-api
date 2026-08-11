@@ -25,6 +25,13 @@ MODEL = "claude-haiku-4-5-20251001"
 
 VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
 
+# Sink for articles whose category the model failed to provide (unrecognized
+# label, or a whole batch degraded to _raw_content_fallback). Maps to no feed
+# tab: the row is stored and searchable but never ranked. The old behavior —
+# coercing to "top" — funneled exactly the least-classifiable content into the
+# most visible tab. Misfiling by policy is worse than not filing.
+FALLBACK_CATEGORY = "general"
+
 
 async def summarize_articles(
     articles: list[RSSArticle],
@@ -131,7 +138,7 @@ def _raw_content_fallback(batch: list[RSSArticle]) -> dict[str, dict]:
     return {
         article.source_url: {
             "summary": _truncate(article.raw_content, 200),
-            "category": "top",
+            "category": FALLBACK_CATEGORY,
         }
         for article in batch
         if article.raw_content
@@ -173,7 +180,7 @@ def _build_prompt(batch: list[RSSArticle]) -> str:
     return f"""Summarize each of the following news articles in 1-2 concise sentences. Focus on the key facts and why the story matters.
 
 Also classify each article into exactly ONE category:
-- "top" — only for major breaking news or cross-cutting stories that transcend a single topic
+- "top" — reserved for stories of major, broad public significance: breaking news of national or international consequence, or stories that genuinely cut across several of the categories below. A story is NOT "top" merely because it is dramatic, violent, or shocking. Single-incident crime, accident, or death stories (a killing, a shooting, an assault charge, a fatal crash, a trial) are never "top" — classify them into the closest topical category instead
 - "technology" — tech industry, software, hardware, AI, cybersecurity, social media
 - "business" — Wall Street, stock market, earnings reports, M&A, IPOs, venture capital, interest rates, Federal Reserve, banking, employment data, GDP, inflation, corporate strategy, trade policy. NOT consumer product launches, pop culture brands, or retail sales events
 - "science" — research, discoveries, space, physics, biology, climate science
@@ -184,7 +191,17 @@ Also classify each article into exactly ONE category:
 - "sports" — professional sports, college sports, Olympics, player trades, game results
 - "entertainment" — movies, TV, music, celebrities, streaming, awards, pop culture, consumer product launches, brand collaborations, viral consumer trends
 
-Most articles should go into a specific topic category. Only use "top" for truly major stories.
+Most articles must go into a specific topic category — when unsure, prefer the specific category over "top".
+
+Routing rule for crime, accident, and death stories: these are "top" only when \
+the event itself has national or international consequence (a mass-casualty \
+attack, the assassination of a public figure, a disaster prompting a national \
+response). Otherwise classify by setting or participants: sports figures → \
+"sports"; entertainers or media personalities → "entertainment"; corporate or \
+financial wrongdoing → "business"; policing, courts, or justice-system policy → \
+"politics"; incidents outside the U.S. → "world"; deaths with public-health \
+relevance (overdoses, outbreaks) → "health". If none fit, pick the closest \
+category anyway — never default to "top".
 
 Rules about people and legal matters — these override everything above:
 - Describe only what the source article states. Do not add facts, motives, or \
@@ -229,11 +246,17 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
     for idx, entry in aligned_entries(parsed, len(batch)).items():
         # Accept short keys (new) and fall back to long keys (legacy prompt form).
         summary = entry.get("s", entry.get("summary", ""))
-        category = entry.get("c", entry.get("category", "top"))
+        category = entry.get("c", entry.get("category", FALLBACK_CATEGORY))
         # An unrecognized category label says nothing about alignment; coerce
-        # it as before rather than throwing the batch away.
+        # it rather than throwing the batch away. Normalize first — "Top" and
+        # " technology " are answers, not noise — then sink whatever remains.
+        category = str(category).strip().lower()
         if category not in VALID_CATEGORIES:
-            category = "top"
+            logger.info(
+                "Unrecognized category %r at index %d coerced to %r",
+                entry.get("c", entry.get("category")), idx, FALLBACK_CATEGORY,
+            )
+            category = FALLBACK_CATEGORY
         # An article with no summary of its own is a missing entry wearing a
         # valid index — same evidence of a shift, same all-or-nothing answer.
         # Checked on the RAW text, BEFORE the refusal gate: a refusal is a

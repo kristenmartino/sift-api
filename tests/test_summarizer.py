@@ -9,6 +9,7 @@ import pytest
 
 from services.index_alignment import MAX_BATCH_ATTEMPTS, AlignmentError
 from services.summarizer import (
+    FALLBACK_CATEGORY,
     _extract_json_array,
     _has_summarizable_content,
     _build_prompt,
@@ -179,7 +180,15 @@ class TestParseSummaries:
     def test_unknown_category_is_coerced_not_treated_as_misalignment(self):
         batch = [_make_article(1)]
         results = _parse_summaries(_response({"i": 1, "s": "Body", "c": "sportsball"}), batch)
-        assert results["https://example.com/article-1"]["category"] == "top"
+        # Sunk to the invisible fallback category, NOT "top": coercing junk
+        # labels into the most visible tab was how classifier noise reached
+        # the feed's front page.
+        assert results["https://example.com/article-1"]["category"] == FALLBACK_CATEGORY
+
+    def test_miscased_category_is_normalized_not_sunk(self):
+        batch = [_make_article(1)]
+        results = _parse_summaries(_response({"i": 1, "s": "Body", "c": " Technology "}), batch)
+        assert results["https://example.com/article-1"]["category"] == "technology"
 
     def test_preamble_line_no_longer_shifts_every_summary(self):
         """The deleted positional fallback's failure mode.
