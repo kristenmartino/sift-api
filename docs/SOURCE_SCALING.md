@@ -6,9 +6,13 @@
 The question: what happens to cost if we add 50, 100, or 1,000 outlets — to have more
 to compare against, and to surface top-covered stories more cleanly?
 
-**Short answer: +50 to +100 outlets is affordable (~$250–460/mo, from ~$197/mo). +1,000
-breaks the architecture before it breaks the budget.** But two things should land first,
-and neither is about cost ceilings — see [What should happen first](#what-should-happen-first).
+**Short answer: +50 to +100 outlets is affordable (~$173–324/mo, from ~$135/mo). +1,000
+breaks the architecture before it breaks the budget.**
+
+Those figures are *post*-roster-narrowing, which shipped out of this analysis and took the
+bill from $3.88 to **$2.69 per 1k articles (−31%)** — see
+[What worked instead](#what-worked-instead-narrow-the-roster--shipped-2026-08-11). At the
+old rate the same rows read $197 / $252–322 / $307–457.
 
 ---
 
@@ -77,12 +81,18 @@ outlets at ~9 articles/day, not 32.**
 Ranges span marginal yield 9–20 articles/day/outlet and two assumptions about how fast
 coverage depth grows with outlet count (see [the depth caveat](#the-depth-assumption-is-the-weakest-part)).
 
+**Post-narrowing** (the shipped rate — $2.69/1k articles, linker at 0.31):
+
 | Scenario | Outlets | Articles/day | Depth | $/mo | vs now | Threading queue |
 |---|---:|---:|---:|---:|---:|---:|
-| **Today** | 55 | 1,750 | 3.1 | **$197** | — | 18% |
-| **+50** | 105 | 2,200–2,750 | 3.7–4.3 | **$252–322** | 1.3–1.6× | 29% |
-| **+100** | 155 | 2,650–3,750 | 4.1–5.3 | **$307–457** | 1.6–2.3× | 39% |
-| **+1000** | 1,055 | 10,750–21,750 | 6.6–12 | **$1,384–3,747** | 7–19× | **227%** |
+| **Today** | 55 | 1,750 | 3.1 | **$135** | — | 18% |
+| **+50** | 105 | 2,200–2,750 | 3.7–4.3 | **$173–224** | 1.3–1.7× | 29% |
+| **+100** | 155 | 2,650–3,750 | 4.1–5.3 | **$212–324** | 1.6–2.4× | 39% |
+| **+1000** | 1,055 | 10,750–21,750 | 6.6–12 | **$1,000–2,971** | 7–22× | **227%** |
+
+At the pre-narrowing rate of $3.88/1k those read $197 / $252–322 / $307–457 / $1,384–3,747.
+**Roster narrowing paid for roughly the first 50 outlets** — +50 now costs less than doing
+nothing did a day earlier.
 
 ### Cost is not quadratic — the thing that looked dangerous isn't
 
@@ -245,12 +255,11 @@ against decay is the open question.
 
 Ordered by how much they change the value of a later expansion.
 
-1. **Make the entity linker cheaper — but not by batching it.** It is **53% of the
-   per-article cost and the only paid stage with no batching**. Batching was the obvious
-   move and it was tried and rejected on measurement; see
-   [Batching the linker does not work](#batching-the-linker-does-not-work) below. The
-   promising replacement is **roster narrowing**, measured at 94.2% recall while cutting
-   the dominant input by 99.7%.
+1. ~~**Make the entity linker cheaper**~~ — **done 2026-08-11.** It was 53% of per-article
+   cost. Batching was the obvious move and was tried and rejected on measurement; **roster
+   narrowing** shipped instead, at **−80% per call and −31% of the whole bill**, and it is
+   *more* accurate rather than a trade. See
+   [Batching the linker does not work](#batching-the-linker-does-not-work) below.
 
 2. **Rank on distinct outlets** (`sift/lib/db.ts`, `sift/components/NewsAggregator.tsx`).
    Without it, added coverage raises the bill without becoming visible in the feed.
@@ -305,32 +314,65 @@ extractions in one pass makes the model less thorough on each, and there is no b
 or ordering that buys it back. Below the repo's 95% linker ship bar
 (`eval_linker_gate.py:SHIP_BAR`), so it was reverted rather than shipped.
 
-### What to do instead: narrow the roster
+### What worked instead: narrow the roster — **shipped 2026-08-11**
 
-The regex pre-gate already computes which catalog surface forms matched. The LLM's job,
-per its own docstring, is to *disambiguate* candidates, not discover entities whose names
-never appear — so it does not need all 856 roster entries, only the candidates plus their
-collision siblings.
+The regex pre-gate already computes which catalog surface forms matched, and then throws
+them away. The LLM's job, per its own docstring, is to *disambiguate* candidates, not
+discover entities whose names never appear — so it does not need all 856 roster entries,
+only the candidates plus their collision siblings.
 
-Prototyped as: regex matches, plus every catalog row sharing a last-name token with one
-(so "Susan Collins" the Senator still arrives alongside the Boston Fed President).
+`services/entity_linker.narrow_catalog`, behind
+`entity_linker_roster_narrowing_enabled` (default on, kill switch).
+
+**Measured end to end through `link_articles` against prod:**
 
 | | Full roster | Narrowed |
 |---|---:|---:|
-| roster entries per call | 856 | **2.8 mean, 17 max** |
-| roster tokens per call | ~6,850 | **~22** |
-| links found (120 articles) | 86 | 95 |
-| exact-match articles | — | 86.7% |
-| **recall vs full roster** | — | **94.2%** |
-| precision vs full roster | — | 85.3% |
+| roster rows per call | 856 | **2.1 mean, 6 max** |
+| input tokens per call | ~7,300 | **~650** |
+| cost per call | $0.0042 | **$0.00086** (−80%) |
+| linker, $/1k articles | 1.50 | **0.31** |
+| **all-in, $/1k articles** | **3.88** | **2.69** |
 
-This removes the roster — the ~95% of input that batching was trying to amortize — rather
-than spreading it thinner, and it keeps one call per article so nothing is diluted.
+**~$204/mo → ~$141/mo at the current run rate — 31% off the whole bill**, from the stage
+that was 53% of per-article cost.
 
-**Not shipped, and two things need answering first.** Precision reads 85.3% because the
-narrowed path finds *more* links (95 vs 86), not fewer; whether those extra tags are
-correct or noise has not been checked, and the baseline is the current path rather than
-ground truth. And 94.2% sits just under the 95% bar, on n=120.
+#### The accuracy check, and the bar that was wrong first
+
+Diffing the narrowed path against the full one reads **94.2% recall, 85.3% precision**,
+which looks like a downgrade. It is not, and the reason is that the diff treats the
+incumbent as ground truth. The narrowed path finds *more* links, not fewer — so "85.3%
+precision" only says 15% of its links are ones the full roster missed, not that they are
+wrong.
+
+`scripts/eval_linker_roster.py` answers it properly: run both paths, take the links they
+disagree on plus a sample of the ones they agree on, and put each to Sonnet blind — the
+adjudicator never sees which path proposed a tag, and the order is content-hashed. Over
+400 gated articles:
+
+| bucket | judged | correct | precision |
+|---|---:|---:|---:|
+| both paths agree | 60 | 51 | 85.0% |
+| **full roster only** | 32 | 15 | **46.9%** |
+| **narrowed only** | 44 | 31 | **70.5%** |
+
+Pricing the agreed base at 85.0% and applying it to both:
+
+| path | links | est. correct | precision |
+|---|---:|---:|---:|
+| full | 298 | 241.1 | 80.9% |
+| **narrowed** | **310** | **257.1** | **82.9%** |
+
+**Narrowing is more accurate, not a quality trade** — +2.0 points of precision *and* 16
+more correct links. Where the two disagree, the narrowed path is right about half again
+as often. Fewer distractors, better answers.
+
+**The first version of this eval shipped on the wrong bar** and it is worth recording.
+It scored only the disagreements, on "narrowed-unique precision ≥ full-unique precision",
+and passed at 50.0% vs 42.9% on n=200. That bar ignores volume: the narrowed path produces
+far more unique links, so a similar per-link rate still drags overall precision down. The
+agreed base had to be priced before any of it meant anything. The corrected bar is
+overall precision plus total correct links, and both had to hold.
 
 ---
 

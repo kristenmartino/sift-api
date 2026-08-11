@@ -58,12 +58,27 @@ logger = logging.getLogger("sift-api.entity_linker_llm")
 MODEL = "claude-haiku-4-5-20251001"
 MAX_OUTPUT_TOKENS = 500
 
-# Pre-call cost estimate for the budget check. Measured from `ai_usage_daily`
-# over 7 days to 2026-08-11: $22.38 across 5,409 calls. Deliberately a measured
-# average rather than a token-count guess — the catalog's cache hit rate swings
-# the true per-call cost more than article length does, and the guard only needs
-# to be right enough to stop the run near the ceiling.
-LINK_COST_PER_CALL_USD = 0.0042
+# Pre-call cost estimates for the budget check. Measured averages rather than
+# token-count guesses — the guard only needs to be right enough to stop a run
+# near the ceiling, and a per-call estimate that tracks reality beats one that
+# is defensibly derived and 5x off.
+#
+# FULL: $22.38 across 5,409 calls, `ai_usage_daily` over 7 days to 2026-08-11.
+# NARROWED: $0.000857/call observed end to end once roster narrowing landed —
+# the roster went from ~7,000 tokens to ~600, so the same call is 80% cheaper.
+# Using the full-roster figure while narrowing is live would trip the ceiling
+# at a fifth of the real spend.
+LINK_COST_PER_CALL_FULL_USD = 0.0042
+LINK_COST_PER_CALL_NARROWED_USD = 0.00086
+
+
+def _link_cost_per_call() -> float:
+    """Which estimate applies depends on the roster the caller will send."""
+    return (
+        LINK_COST_PER_CALL_NARROWED_USD
+        if settings.entity_linker_roster_narrowing_enabled
+        else LINK_COST_PER_CALL_FULL_USD
+    )
 # Per-article timeout — the LLM is fast (Haiku, small output) but if it
 # stalls we fall back to regex rather than block the pipeline.
 LLM_TIMEOUT_SECONDS = 8.0
@@ -439,11 +454,24 @@ async def link_articles_llm(
     *,
     concurrency: int = 4,
     omit_failures: bool = False,
+    catalogs: dict[str, list[CatalogEntry]] | None = None,
 ) -> dict[str, list[EntityLink]]:
     """Batch wrapper: run link_text_llm over `articles`, keyed by
     `source_url`. Articles without a source_url are skipped.
 
     Concurrency-limited so we don't burst Claude in a single tick.
+
+    `catalogs` optionally supplies a per-article roster, keyed by source_url —
+    the narrowed candidate set from `entity_linker.narrow_catalog`, which is
+    ~2.3 rows against the full catalog's ~856 and is where nearly all of this
+    stage's input cost went. An article missing from the mapping falls back to
+    the full `catalog`, so a partial mapping is safe.
+
+    An article whose narrowed roster is EMPTY is still called with the full
+    catalog rather than skipped. Under the regex gate that cannot happen — the
+    gate only forwards articles that matched something — but this function is
+    also called directly (backfills, the read path), and silently answering []
+    for an article nobody narrowed would be a failure disguised as a verdict.
 
     `omit_failures` controls what happens to an article whose call failed
     (see link_text_llm: API error, unparseable response, timeout):
@@ -472,7 +500,7 @@ async def link_articles_llm(
     # Checked once for the whole set rather than per article: the per-call
     # ledger read would be 40 round trips a run, and the point is to stop the
     # run, not to bill-shave inside it.
-    budget = await check_budget(LINK_COST_PER_CALL_USD * len(articles))
+    budget = await check_budget(_link_cost_per_call() * len(articles))
     if not budget.allowed:
         # Same shape as the no-catalog branch above, and for the same reason:
         # under omit_failures this must NOT answer [] for every article, or a
@@ -494,10 +522,14 @@ async def link_articles_llm(
             url = article.get("source_url") or ""
             if not url:
                 return "", []
+            # `or catalog` covers both "no mapping supplied" and "mapped to an
+            # empty roster" — see the docstring on why the empty case must not
+            # short-circuit to [].
+            roster = (catalogs or {}).get(url) or catalog
             links = await link_text_llm(
                 article.get("title") or "",
                 article.get("summary") or "",
-                catalog,
+                roster,
                 source_name=article.get("source_name") or None,
                 client=client,
             )

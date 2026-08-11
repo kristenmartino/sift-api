@@ -43,11 +43,15 @@ article path that agrees with itself 97.3% across two runs. Not a batch-size
 effect — a batch of *two* loses ~20 points — and not a position effect. It was
 reverted; the experiment is in docs/SOURCE_SCALING.md.
 
-So the gate is not being weighed against a free alternative. The live one is
-**roster narrowing** — send the regex's own candidates plus their collision
-siblings instead of all 856 rows — measured at 94.2% recall and ~22 roster
-tokens per call, un-shipped pending a precision check. It composes *with* this
-gate rather than replacing it, since it consumes the gate's match output.
+What shipped instead is **roster narrowing** (2026-08-11): send the regex's own
+candidates plus their collision siblings rather than all 856 rows. −80% per
+call, and MORE accurate — 82.9% overall precision against the full roster's
+80.9%, blind-adjudicated in scripts/eval_linker_roster.py.
+
+That composes *with* this gate rather than replacing it — it consumes the very
+matches this gate computes — which raises the stake on the recall number below.
+The gate now decides both whether an article is linked at all AND what roster it
+is linked against, so a surface form this gate cannot see is invisible twice.
 
 READ THE RECALL NUMBER WITH THIS CAVEAT
 ---------------------------------------
