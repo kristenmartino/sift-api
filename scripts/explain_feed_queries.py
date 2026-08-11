@@ -72,6 +72,7 @@ WITH scored AS (
          COALESCE(importance_score, 3)::float *
          EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(published_date, created_at))), 0) / 86400.0, 700)) *
          CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END *
+         CASE WHEN is_opinion THEN 0.6 ELSE 1.0 END *
          (1 + 0.1 * LEAST(COALESCE((
            SELECT SUM(CASE t WHEN 'bill' THEN 1.0 WHEN 'politician' THEN 1.0 WHEN 'org' THEN 0.5 ELSE 0 END)
            FROM (SELECT DISTINCT el->>'type' AS t, el->>'canonical_id' AS cid
@@ -114,6 +115,7 @@ ORDER BY
   COALESCE(importance_score, 3)::float *
   EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(published_date, created_at))), 0) / 86400.0, 700)) *
   CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END *
+  CASE WHEN is_opinion THEN 0.6 ELSE 1.0 END *
   (1 + 0.1 * LEAST(COALESCE((
     SELECT SUM(CASE t WHEN 'bill' THEN 1.0 WHEN 'politician' THEN 1.0 WHEN 'org' THEN 0.5 ELSE 0 END)
     FROM (SELECT DISTINCT el->>'type' AS t, el->>'canonical_id' AS cid
