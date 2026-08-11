@@ -44,3 +44,43 @@ def detect_opinion(source_url: str | None, title: str | None) -> bool:
     if title and _OPINION_TITLE.match(title):
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Roundup/brief containers — ranking v2 stage 5.
+#
+# The second labeling session (data/eval/ranking_pairs_session2, #204) showed
+# program episodes and newsletter briefs ranking near the top of 'top':
+# "Morning news brief" at importance 4, Bloomberg show episodes, NYT's "The
+# Evening". These are CONTAINERS — their summaries mention the day's biggest
+# events, so the importance model scores the events, not the item. The
+# original doom-feed session's pinned article ("D4vd Charged with Murder |
+# Case by Case") was the same defect: a CBS true-crime show episode.
+#
+# Patterns measured on 30 days of prod before shipping (~115 matches, every
+# sample a genuine program/brief): Bloomberg "| <Show> M/D/YYYY" episode
+# titles; CBS "| <Show name>" segment suffixes; NPR's two-part "X. And, Y"
+# brief format; named briefs (NPR, NYT); dated program titles. Fox's
+# "MORNING GLORY:" is deliberately absent — it is an op-ed column, already
+# covered by the opinion flag above.
+# ---------------------------------------------------------------------------
+
+_ROUNDUP_PATTERNS = [
+    # "Headline | Show Name 8/11/2026" (Bloomberg episode convention).
+    re.compile(r"\|[^|]*\d{1,2}/\d{1,2}/\d{4}\s*$"),
+    # "Segment title | Show Name" for known shows (CBS convention).
+    re.compile(r"\|\s*(?:case by case|60 minutes(?:\s+archive)?|face the nation|meet the press)\s*$", re.IGNORECASE),
+    # Named daily briefs.
+    re.compile(r"^\s*(?:morning news brief|up first|the evening:|the morning:|news brief|evening edition)", re.IGNORECASE),
+    # "Bloomberg This Weekend 08/09/2026" — outlet-branded dated program.
+    re.compile(r"^[A-Za-z ]+\d{2}/\d{2}/\d{4}\s*$"),
+    # NPR's two-part brief format: "First story. And, second story".
+    re.compile(r"\. And, ", re.IGNORECASE),
+]
+
+
+def detect_roundup(title: str | None) -> bool:
+    """True when the title marks a program episode or multi-story brief."""
+    if not title:
+        return False
+    return any(p.search(title) for p in _ROUNDUP_PATTERNS)

@@ -1,7 +1,7 @@
 """Tests for opinion-genre detection (ranking v2 stage 4)."""
 from __future__ import annotations
 
-from services.genre import detect_opinion
+from services.genre import detect_opinion, detect_roundup
 
 
 class TestDetectOpinion:
@@ -32,3 +32,28 @@ class TestDetectOpinion:
 
     def test_none_inputs(self):
         assert not detect_opinion(None, None)
+
+
+
+class TestDetectRoundup:
+    def test_bloomberg_episode_titles(self):
+        assert detect_roundup("Trump Hardens Stance on Iran, Nvidia Taps Wall Street for $500B | The Opening Trade 8/11/2026")
+        assert detect_roundup("Bloomberg This Weekend 08/09/2026")
+
+    def test_cbs_show_suffixes(self):
+        # The original doom-feed session's pinned #1 was one of these.
+        assert detect_roundup("D4vd Charged with Murder | Case by Case")
+        assert detect_roundup("Exonerees, crime survivors come together for healing | 60 Minutes")
+
+    def test_named_briefs_and_npr_format(self):
+        assert detect_roundup("Morning news brief")
+        assert detect_roundup("The Evening: An Earthquake Shakes Colombia")
+        assert detect_roundup("3 dead in mass shooting in Seattle. And, U.S. and Iran pause fighting")
+
+    def test_plain_headlines_are_not_roundups(self):
+        assert not detect_roundup("7.4 magnitude earthquake rocks Colombia, over 100 dead")
+        # A pipe alone is not a show marker.
+        assert not detect_roundup("Jones v. Smith | what the ruling means")
+        # "And," mid-sentence without the period boundary is prose.
+        assert not detect_roundup("Senators and, surprisingly, governors agree")
+        assert not detect_roundup(None)
