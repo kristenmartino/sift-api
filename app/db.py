@@ -590,6 +590,20 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON feed_balance (run_at DESC)"
         )
 
+        # Opinion-genre flag (migrations/023, ranking v2 stage 4). Set at
+        # store time by services/genre.py from outlet-declared markers; the
+        # read path dampens opinion x0.6 and excludes it from the
+        # cross-spectrum bonus. DEFAULT FALSE, not nullable — under a
+        # precision-first heuristic, no marker IS the reported verdict.
+        await conn.execute(
+            "ALTER TABLE articles ADD COLUMN IF NOT EXISTS is_opinion "
+            "BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        await conn.execute(
+            "ALTER TABLE feed_balance ADD COLUMN IF NOT EXISTS "
+            "opinion_share_top10 REAL"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

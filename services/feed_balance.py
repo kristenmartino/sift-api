@@ -69,7 +69,7 @@ FIRST_CHECK_DELAY_SECONDS = 10 * 60
 # 10-row aggregate and omitted). Returns one row per category snapshot.
 _ARTICLES_QUERY = """
 WITH scored AS (
-  SELECT tone,
+  SELECT tone, is_opinion,
          COALESCE((
            SELECT SUM(CASE t WHEN 'bill' THEN 1.0 WHEN 'politician' THEN 1.0 WHEN 'org' THEN 0.5 ELSE 0 END)
            FROM (SELECT DISTINCT el->>'type' AS t, el->>'canonical_id' AS cid
@@ -94,6 +94,7 @@ WITH scored AS (
 )
 SELECT AVG(CASE WHEN tone = 'grim' THEN 1.0 ELSE 0 END) AS grim_share_top,
        AVG(LEAST(civic_weight, 3))                      AS mean_civic_top,
+       AVG(CASE WHEN is_opinion THEN 1.0 ELSE 0 END)    AS opinion_share_top,
        COUNT(*)                                          AS n_articles
 FROM scored
 """
@@ -134,8 +135,9 @@ SELECT category, grim_share_top10, mean_civic_top10
 _INSERT = """
 INSERT INTO feed_balance
     (category, grim_share_top10, mean_civic_top10,
-     mean_sources_top5, story_grim_share_top5, n_articles, n_stories)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+     mean_sources_top5, story_grim_share_top5, n_articles, n_stories,
+     opinion_share_top10)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 """
 
 
@@ -195,6 +197,7 @@ async def check_feed_balance(pool) -> dict:
         snap = {
             "grim_share_top10": float(art["grim_share_top"]) if art and art["grim_share_top"] is not None else None,
             "mean_civic_top10": float(art["mean_civic_top"]) if art and art["mean_civic_top"] is not None else None,
+            "opinion_share_top10": float(art["opinion_share_top"]) if art and art["opinion_share_top"] is not None else None,
             "mean_sources_top5": float(sto["mean_sources_top"]) if sto and sto["mean_sources_top"] is not None else None,
             "story_grim_share_top5": float(sto["story_grim_share_top"]) if sto and sto["story_grim_share_top"] is not None else None,
             "n_articles": int(art["n_articles"]) if art else 0,
@@ -207,6 +210,7 @@ async def check_feed_balance(pool) -> dict:
                 snap["grim_share_top10"], snap["mean_civic_top10"],
                 snap["mean_sources_top5"], snap["story_grim_share_top5"],
                 snap["n_articles"], snap["n_stories"],
+                snap["opinion_share_top10"],
             )
         except Exception as e:  # noqa: BLE001 — observation must never break the monitor
             logger.warning("feed_balance snapshot insert failed for %s: %s", category, e)

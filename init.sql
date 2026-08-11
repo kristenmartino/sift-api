@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS articles (
     reading_levels JSONB,                    -- simpler/detailed rewrites, long-form only (migrations/005)
     importance_score INTEGER,
     tone TEXT CHECK (tone IN ('grim', 'neutral', 'light')),  -- D48 dampener input (migrations/020); NULL = unclassified = neutral
+    is_opinion BOOLEAN NOT NULL DEFAULT FALSE,  -- outlet-declared opinion marker (migrations/023); read path dampens and excludes from spectrum bonus
     content_hash TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -478,6 +479,7 @@ CREATE TABLE IF NOT EXISTS feed_balance (
     story_grim_share_top5 REAL,
     n_articles            INTEGER NOT NULL DEFAULT 0,
     n_stories             INTEGER NOT NULL DEFAULT 0,
+    opinion_share_top10   REAL,  -- migrations/023; recorded, untripped
     PRIMARY KEY (run_at, category)
 );
 
