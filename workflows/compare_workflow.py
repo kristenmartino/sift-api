@@ -98,6 +98,71 @@ class CompareState(TypedDict):
 # --- Node functions ---
 
 
+async def search_one_source(
+    client: "anthropic.AsyncAnthropic", topic: str, source: str
+) -> tuple[str, str | None]:
+    """Search a single source. Returns (source_name, result_text | None).
+
+    Module-level (not a closure inside the node) so the SSE stream endpoint
+    can fan these out with as_completed and emit a per-source event the
+    moment each one finishes — the same work, reported live.
+    """
+    try:
+        response = await asyncio.wait_for(
+            client.messages.create(
+                model=MODEL,
+                max_tokens=2048,
+                tools=[{
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 3,
+                }],
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f'Search for recent news coverage from {source} about: "{topic}"\n\n'
+                        f"Summarize what {source} reports about this topic, including key facts, "
+                        f"figures, quotes, and their perspective or framing. "
+                        f"If you cannot find relevant coverage from {source}, say "
+                        f"'No relevant coverage found from {source}.'"
+                    ),
+                }],
+            ),
+            timeout=PER_SOURCE_TIMEOUT,
+        )
+        log_usage(
+            "compare.search_sources",
+            response,
+            model=MODEL,
+            web_searches=count_web_searches(response),
+        )
+
+        # Extract text blocks from response
+        text_parts = []
+        for block in response.content:
+            if block.type == "text":
+                text_parts.append(block.text)
+
+        result = "\n".join(text_parts).strip()
+        if not result:
+            return (source, None)
+
+        logger.info("search_sources: got %d chars from %s", len(result), source)
+        return (source, result)
+
+    except asyncio.TimeoutError:
+        logger.warning("search_sources: timed out for %s after %ds", source, PER_SOURCE_TIMEOUT)
+        return (source, None)
+    except Exception as e:
+        logger.error("search_sources: failed for %s: %s", source, e)
+        return (source, None)
+
+
+def source_found_coverage(text: str | None) -> bool:
+    """Whether a search_one_source result counts as real coverage."""
+    return bool(text) and "no relevant coverage found" not in (text or "").lower()
+
+
 async def search_sources_node(state: CompareState) -> dict:
     """Search each source in parallel using Claude web_search."""
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
@@ -111,61 +176,9 @@ async def search_sources_node(state: CompareState) -> dict:
             "errors": ["No valid sources provided"],
         }
 
-    async def search_one(source: str) -> tuple[str, str | None]:
-        """Search a single source. Returns (source_name, result_text | None)."""
-        try:
-            response = await asyncio.wait_for(
-                client.messages.create(
-                    model=MODEL,
-                    max_tokens=2048,
-                    tools=[{
-                        "type": "web_search_20250305",
-                        "name": "web_search",
-                        "max_uses": 3,
-                    }],
-                    messages=[{
-                        "role": "user",
-                        "content": (
-                            f'Search for recent news coverage from {source} about: "{topic}"\n\n'
-                            f"Summarize what {source} reports about this topic, including key facts, "
-                            f"figures, quotes, and their perspective or framing. "
-                            f"If you cannot find relevant coverage from {source}, say "
-                            f"'No relevant coverage found from {source}.'"
-                        ),
-                    }],
-                ),
-                timeout=PER_SOURCE_TIMEOUT,
-            )
-            log_usage(
-                "compare.search_sources",
-                response,
-                model=MODEL,
-                web_searches=count_web_searches(response),
-            )
-
-            # Extract text blocks from response
-            text_parts = []
-            for block in response.content:
-                if block.type == "text":
-                    text_parts.append(block.text)
-
-            result = "\n".join(text_parts).strip()
-            if not result:
-                return (source, None)
-
-            logger.info("search_sources: got %d chars from %s", len(result), source)
-            return (source, result)
-
-        except asyncio.TimeoutError:
-            logger.warning("search_sources: timed out for %s after %ds", source, PER_SOURCE_TIMEOUT)
-            return (source, None)
-        except Exception as e:
-            logger.error("search_sources: failed for %s: %s", source, e)
-            return (source, None)
-
     # Run all source searches in parallel
     results = await asyncio.gather(
-        *[search_one(s) for s in sources],
+        *[search_one_source(client, topic, s) for s in sources],
         return_exceptions=True,
     )
 
@@ -177,8 +190,8 @@ async def search_sources_node(state: CompareState) -> dict:
             errors.append(f"search: {result}")
             continue
         source_name, text = result
-        if text and "no relevant coverage found" not in text.lower():
-            search_results[source_name] = text
+        if source_found_coverage(text):
+            search_results[source_name] = text  # type: ignore[assignment]
         else:
             errors.append(f"No coverage found from {source_name}")
 
@@ -305,6 +318,12 @@ async def format_response_node(state: CompareState) -> dict:
             cleaned["sources_against"] = []
 
         cleaned_claims.append(cleaned)
+
+    # Disputed first — cross-spectrum disagreement is the feature's whole
+    # point, so it leads instead of sitting mid-list. Stable sort keeps the
+    # model's ordering within each band.
+    agreement_order = {"disputed": 0, "majority": 1, "unanimous": 2, "unique": 3}
+    cleaned_claims.sort(key=lambda c: agreement_order.get(c["agreement"], 4))
 
     return {"claims": cleaned_claims}
 

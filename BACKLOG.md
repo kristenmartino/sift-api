@@ -6,6 +6,7 @@ Items not committed to a current milestone. Promote to GitHub issues when work i
 
 ## Stretch / nice-to-have
 
+- **Citations on REST compare claims** *(2026-08-10, from the human-touch pass)* — `/v1/analyze/compare` claims carry only outlet names; no article IDs or URLs, so "drill into the source" ends at a name. `extract_and_compare_node` already knows which source produced which claim; threading IDs/URLs through `CompareResponse.claims` is real API-shape work (and unlocks sift-mcp BACKLOG's `dossier_links` idea). Do it with the #62 merge, when the two compare implementations become one.
 - *(Add items here as they surface. Prose, not bullet-perfect — the point is to not lose ideas, not to perfectly organize them.)*
 
 ## Bugs / quirks to revisit

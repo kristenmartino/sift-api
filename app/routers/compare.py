@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import time
 
 import asyncio
 
+import anthropic
 from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from app.config import settings
 from app.dependencies import limiter
 from app.models import CompareRequest, CompareResponse
 from services.cost_guard import check_budget
-from workflows.compare_workflow import build_compare_graph, CompareState
+from workflows.compare_workflow import (
+    CompareState,
+    build_compare_graph,
+    extract_and_compare_node,
+    filter_allowed_sources,
+    format_response_node,
+    load_allowed_sources,
+    search_one_source,
+    source_found_coverage,
+)
 
 logger = logging.getLogger("sift-api.compare-router")
 
@@ -153,4 +165,181 @@ async def compare_sources(
         sources_checked=actually_checked,
         claims=claims,
         duration_ms=duration_ms,
+    )
+
+
+def _sse(event: str, data: dict) -> str:
+    """One SSE frame — same wire format as sift's topic route (sseEvent)."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.post(
+    "/compare/stream",
+    summary="Multi-source news comparison (SSE)",
+    description=(
+        "The same comparison as POST /compare, streamed as Server-Sent Events: "
+        "`stage` on each pipeline phase, `source-done` as each outlet's search "
+        "finishes, then `results` with the full CompareResponse payload, or "
+        "`error`. Rate limited to 10 requests per minute."
+    ),
+)
+@limiter.limit("10/minute")
+async def compare_sources_stream(
+    request: Request,
+    body: CompareRequest,
+    x_pipeline_key: str = Header(...),
+):
+    if not hmac.compare_digest(x_pipeline_key, settings.pipeline_api_key):
+        raise HTTPException(status_code=401, detail="Invalid pipeline key")
+
+    if not body.topic or len(body.topic.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Topic must be at least 3 characters")
+
+    if len(body.sources) > 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 sources allowed")
+
+    # Same fail-closed budget pre-check as the JSON endpoint. Raising here
+    # (before the stream opens) lets the proxy surface a normal HTTP error.
+    budget = await check_budget(
+        COMPARE_COST_ESTIMATE_PER_SOURCE_USD * len(body.sources)
+    )
+    if not budget.allowed:
+        if budget.reason == "guard_unavailable":
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "detail": (
+                        "Comparison is temporarily unavailable: the cost guard "
+                        "could not verify the AI budget. Please try again shortly."
+                    ),
+                    "code": "COST_GUARD_UNAVAILABLE",
+                },
+            )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "detail": (
+                    "Comparison is temporarily unavailable: today's AI budget "
+                    "has been reached. Please try again tomorrow."
+                ),
+                "code": "AI_BUDGET_EXCEEDED",
+            },
+        )
+
+    sanitized_topic = body.topic.strip()
+    seen: set[str] = set()
+    unique_sources: list[str] = []
+    for s in body.sources:
+        key = s.lower().strip()
+        if key not in seen:
+            seen.add(key)
+            unique_sources.append(s)
+
+    async def event_stream():
+        """The same three stages the LangGraph runs, reported as they happen.
+
+        Search fans out with as_completed so each outlet's finish is an event;
+        extract/format reuse the graph's own node functions, so the two
+        endpoints cannot drift apart in behavior — only in reporting.
+        """
+        start = time.time()
+        tasks: list[asyncio.Task] = []
+        try:
+            async with asyncio.timeout(COMPARE_TIMEOUT):
+                allowed = await load_allowed_sources()
+                sources = filter_allowed_sources(unique_sources, allowed)
+                if not sources:
+                    yield _sse("error", {"message": "No valid sources provided", "code": "NO_VALID_SOURCES"})
+                    return
+
+                yield _sse("stage", {"stage": "search", "sources": sources})
+
+                client = anthropic.AsyncAnthropic(
+                    api_key=settings.anthropic_api_key, max_retries=2
+                )
+                tasks = [
+                    asyncio.create_task(search_one_source(client, sanitized_topic, s))
+                    for s in sources
+                ]
+                search_results: dict[str, str] = {}
+                for finished in asyncio.as_completed(tasks):
+                    source, text = await finished
+                    found = source_found_coverage(text)
+                    if found and text:
+                        search_results[source] = text
+                    yield _sse("source-done", {"source": source, "found": found})
+
+                if not search_results:
+                    yield _sse(
+                        "error",
+                        {
+                            "message": "Could not generate comparison. The sources may not have relevant coverage.",
+                            "code": "NO_COVERAGE",
+                        },
+                    )
+                    return
+
+                yield _sse("stage", {"stage": "claims"})
+                state: CompareState = {
+                    "topic": sanitized_topic,
+                    "sources": sources,
+                    "search_results": search_results,
+                    "claims": [],
+                    "comparison": "",
+                    "errors": [],
+                }
+                extracted = await extract_and_compare_node(state)
+
+                yield _sse("stage", {"stage": "summary"})
+                state["claims"] = extracted.get("claims", [])
+                state["comparison"] = extracted.get("comparison", "")
+                formatted = await format_response_node(state)
+
+                comparison = state["comparison"]
+                claims = formatted.get("claims", [])
+                if not comparison and not claims:
+                    yield _sse(
+                        "error",
+                        {
+                            "message": "Could not generate comparison. The sources may not have relevant coverage.",
+                            "code": "NO_COVERAGE",
+                        },
+                    )
+                    return
+
+                yield _sse(
+                    "results",
+                    {
+                        "topic": sanitized_topic,
+                        "comparison": comparison,
+                        "sources_checked": list(search_results.keys()),
+                        "claims": claims,
+                        "duration_ms": int((time.time() - start) * 1000),
+                    },
+                )
+        except TimeoutError:
+            logger.error("Compare stream timed out after %ds", COMPARE_TIMEOUT)
+            yield _sse(
+                "error",
+                {
+                    "message": "Comparison timed out. Try fewer sources or a simpler topic.",
+                    "code": "COMPARISON_TIMEOUT",
+                },
+            )
+        except Exception as e:
+            logger.error("Compare stream failed: %s", e)
+            yield _sse("error", {"message": "Comparison failed", "code": "COMPARISON_FAILED"})
+        finally:
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Tells nginx-style proxies not to buffer the stream.
+            "X-Accel-Buffering": "no",
+        },
     )
