@@ -63,13 +63,15 @@ LIMIT 20
 
 # The scored/capped CTEs mirror the per-source cap in db.ts
 # (MAX_ARTICLES_PER_SOURCE = 6): one outlet can hold at most 6 of the
-# 50-article standalone pool.
+# 50-article standalone pool. The CASE is the D48 grim dampener
+# (GRIM_DAMPENER = 0.6 in db.ts).
 STANDALONE_SQL = """
 WITH scored AS (
   SELECT id, title, summary, source_url, source_name, image_url,
-         category, published_date, read_time, why_it_matters, importance_score, created_at,
+         category, published_date, read_time, why_it_matters, importance_score, tone, created_at,
          COALESCE(importance_score, 3)::float *
-         EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(published_date, created_at))), 0) / 86400.0, 700))
+         EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(published_date, created_at))), 0) / 86400.0, 700)) *
+         CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END
          AS rank_score
   FROM articles
   WHERE category = $1 AND from_search = false
@@ -87,7 +89,7 @@ capped AS (
   FROM scored
 )
 SELECT id, title, summary, source_url, source_name, image_url,
-       category, published_date, read_time, why_it_matters, importance_score, created_at
+       category, published_date, read_time, why_it_matters, importance_score, tone, created_at
 FROM capped
 WHERE source_rank <= 6
 ORDER BY rank_score DESC
@@ -96,7 +98,7 @@ LIMIT 50
 
 ARTICLES_SQL = """
 SELECT id, title, summary, source_url, source_name, image_url,
-       category, published_date, read_time, why_it_matters, importance_score, created_at
+       category, published_date, read_time, why_it_matters, importance_score, tone, created_at
 FROM articles
 WHERE category = $1 AND from_search = false
   AND summary IS NOT NULL AND summary != ''
@@ -105,7 +107,8 @@ WHERE category = $1 AND from_search = false
        OR (published_date IS NULL AND created_at > NOW() - INTERVAL '30 days'))
 ORDER BY
   COALESCE(importance_score, 3)::float *
-  EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(published_date, created_at))), 0) / 86400.0, 700))
+  EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(published_date, created_at))), 0) / 86400.0, 700)) *
+  CASE WHEN tone = 'grim' AND COALESCE(importance_score, 3) <= 3 THEN 0.6 ELSE 1.0 END
 DESC NULLS LAST
 LIMIT 30
 """
