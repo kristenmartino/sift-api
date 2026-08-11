@@ -15,6 +15,7 @@ from app.config import settings
 from app.dependencies import limiter
 from app.models import CompareRequest, CompareResponse
 from services.cost_guard import check_budget
+from services.daily_compare import refresh_daily_example
 from workflows.compare_workflow import (
     CompareState,
     build_compare_graph,
@@ -343,3 +344,23 @@ async def compare_sources_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post(
+    "/compare/daily/refresh",
+    summary="Force-refresh the daily compare example",
+    description=(
+        "Regenerates the anonymous daily compare example immediately instead "
+        "of waiting for the next pipeline run. For first-deploy seeding and "
+        "ops; the payload is read by the frontend from Postgres directly."
+    ),
+)
+@limiter.limit("5/minute")
+async def refresh_daily(
+    request: Request,
+    x_pipeline_key: str = Header(...),
+):
+    if not hmac.compare_digest(x_pipeline_key, settings.pipeline_api_key):
+        raise HTTPException(status_code=401, detail="Invalid pipeline key")
+    refreshed = await refresh_daily_example(force=True)
+    return {"refreshed": refreshed}
