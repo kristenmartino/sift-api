@@ -45,6 +45,28 @@ class TestContextParse:
         out = _parse_context(text, CTX_BATCH)
         assert out["https://example.com/1"]["score"] == 3
 
+    def test_tone_recorded(self):
+        text = json.dumps([{"i": 1, "c": GOOD_LINE, "s": 4, "t": "grim"}])
+        out = _parse_context(text, CTX_BATCH)
+        assert out["https://example.com/1"]["tone"] == "grim"
+
+    def test_missing_tone_defaults_to_neutral(self):
+        # Rows written before the tone key existed (and any model omission)
+        # must land on the no-penalty value, never on grim.
+        text = json.dumps([{"i": 1, "c": GOOD_LINE, "s": 4}])
+        out = _parse_context(text, CTX_BATCH)
+        assert out["https://example.com/1"]["tone"] == "neutral"
+
+    def test_invalid_tone_clamped_to_neutral(self):
+        text = json.dumps([{"i": 1, "c": GOOD_LINE, "s": 4, "t": "sad"}])
+        out = _parse_context(text, CTX_BATCH)
+        assert out["https://example.com/1"]["tone"] == "neutral"
+
+    def test_miscased_tone_normalized(self):
+        text = json.dumps([{"i": 1, "c": GOOD_LINE, "s": 4, "t": " Grim "}])
+        out = _parse_context(text, CTX_BATCH)
+        assert out["https://example.com/1"]["tone"] == "grim"
+
 
 class TestContextPrompt:
     def test_prompt_encodes_the_rubric(self):
@@ -54,6 +76,14 @@ class TestContextPrompt:
         assert "do not restate" in prompt
         assert "importance score" in prompt       # score still requested
         assert "raises serious questions" in prompt  # banned-phrasing example
+
+    def test_prompt_encodes_the_tone_rubric(self):
+        prompt = _build_context_prompt(CTX_BATCH).lower()
+        assert '"grim"' in prompt
+        assert "judge the event, not the writing style" in prompt
+        # The tie-break that protects against false-grim (which wrongly
+        # buries a story; false-neutral costs nothing).
+        assert 'choose "neutral"' in prompt
 
 
 class TestPrimerParse:

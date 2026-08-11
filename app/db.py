@@ -548,6 +548,15 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "OR jsonb_typeof(interest_group_ratings) <> 'array'"
         )
 
+        # Article tone signal (migrations/020). grim | neutral | light,
+        # written by the same Haiku call as why_it_matters/importance_score;
+        # NULL = unclassified, treated as neutral by every ranking site.
+        # Feeds the D48 grim dampener in sift/lib/db.ts.
+        await conn.execute(
+            "ALTER TABLE articles ADD COLUMN IF NOT EXISTS tone TEXT "
+            "CHECK (tone IN ('grim', 'neutral', 'light'))"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
