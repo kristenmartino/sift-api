@@ -28,6 +28,31 @@ filtered — against the old path's ~5.4 clusterer calls plus ~23 synthesize
 calls. Synthesis now runs only when a story's *outlet set* changes, because
 that is what its framings are built from; a second article from an outlet the
 story already has adds nothing to synthesize.
+
+WHEN SYNTHESIS FAILS
+--------------------
+`story_synthesizer.synthesize_story` degrades rather than raising: on an API
+error, timeout or unparseable response it returns `_fallback()` — the first
+member's own title and summary, no framings, flagged `_failed`. That value is
+not a synthesis, and neither `_attach` nor `_create` may store it as one.
+
+Both paths honour the flag, the way `story_workflow.py:246` does:
+
+* `_create` writes `synthesis_status = 'failed'`, keeping the row out of the
+  feed (`idx_stories_feed`, `sift/lib/db.ts:194`) until it has real text.
+* `_attach` writes nothing but `article_count` — the story keeps whatever
+  synthesis it already had, rather than having it overwritten by one outlet's
+  headline.
+
+This was live-broken from #161 until 2026-08-11: both wrote `'complete'`
+unconditionally, so **4 prod stories** (13–18 outlets each) were serving a
+single member's headline with an empty `framings` array.
+
+**Nothing currently retries a `'failed'` row.** The only reader of that status
+is `story_workflow.py:226`, and `pipeline_workflow.py:459` makes the two
+threading paths mutually exclusive — with incremental enabled, that code never
+runs. A story created `'failed'` here is re-synthesized only if `_attach` later
+brings it a new outlet. See STATUS.md.
 """
 from __future__ import annotations
 
@@ -90,6 +115,32 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
            FROM articles WHERE story_id = $1""", story_id,
     )]
     synthesis = await synthesize(members)
+
+    if synthesis.get("_failed"):
+        # `story_synthesizer._fallback` is not a synthesis — it is the first
+        # member's own headline and summary with no framings. Writing it here
+        # would replace a story's real cross-outlet text with one outlet's
+        # copy, and (stored as 'complete') nothing would ever revisit it.
+        #
+        # So take the count and leave the text alone. A story that already had
+        # a real synthesis keeps it, merely missing the newest outlet's
+        # framing; one that never had one keeps whatever status it carries, so
+        # it stays out of the feed. `synthesis_status` is deliberately not
+        # written: every value it could hold is already the right one.
+        await pool.execute(
+            """UPDATE stories SET article_count = $2, updated_at = NOW()
+                WHERE id = $1""",
+            story_id, len(members),
+        )
+        logger.warning(json.dumps({
+            "event": "synthesis_failed_on_attach",
+            "story_id": story_id,
+            "article_id": article["id"],
+            "outlet": article.get("source_name"),
+            "note": "existing story text preserved; framings now stale",
+        }))
+        return "attached_new_outlet_synthesis_failed"
+
     await pool.execute(
         """UPDATE stories
               SET headline = $2, summary = $3, framings = $4::jsonb,
@@ -102,7 +153,7 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
 
 
 async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str | None:
-    """Create a story from a confirmed new cluster. Returns its id, or None.
+    """Create a story from a confirmed new cluster. Returns what was done, or None.
 
     Only claims members that are still unattached AT WRITE TIME. `find_candidates`
     snapshots the whole queue before any decision is applied, so one article can
@@ -142,9 +193,23 @@ async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str
             "UPDATE articles SET story_id = $1 WHERE id = ANY($2::text[])",
             story_id, [m["id"] for m in members],
         )
-        return story_id
+        return "created"
 
     synthesis = await synthesize(members)
+
+    # Same flag story_workflow.py:246 reads. A fallback stored as 'complete'
+    # is a finished story carrying one member's headline and no framings —
+    # exactly what the feed renders as "how N outlets covered this". 'failed'
+    # keeps it out of the feed (idx_stories_feed / sift/lib/db.ts:194) and
+    # marks it as still owing a real synthesis.
+    status = "failed" if synthesis.get("_failed") else "complete"
+    if status == "failed":
+        logger.warning(json.dumps({
+            "event": "synthesis_failed_on_create",
+            "story_id": story_id,
+            "category": article.get("category"),
+            "article_count": len(members),
+        }))
 
     image = next((m["image_url"] for m in members if m.get("image_url")), None)
     dates = [m["published_date"] for m in members if m.get("published_date")]
@@ -159,18 +224,18 @@ async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str
         """
         INSERT INTO stories (id, headline, summary, category, framings, entities,
             article_count, representative_image_url, published_date, synthesis_status)
-        VALUES ($1, $2, $3, $4, $5::jsonb, '[]'::jsonb, $6, $7, $8, 'complete')
+        VALUES ($1, $2, $3, $4, $5::jsonb, '[]'::jsonb, $6, $7, $8, $9)
         ON CONFLICT (id) DO NOTHING
         """,
         story_id, synthesis["headline"], synthesis["summary"],
         article.get("category"), json.dumps(synthesis.get("framings", [])),
-        len(members), image, earliest,
+        len(members), image, earliest, status,
     )
     await pool.execute(
         "UPDATE articles SET story_id = $1 WHERE id = ANY($2::text[])",
         story_id, [m["id"] for m in members],
     )
-    return story_id
+    return "created_synthesis_failed" if status == "failed" else "created"
 
 
 async def run_incremental_threading(
@@ -215,7 +280,8 @@ async def run_incremental_threading(
     decisions = await confirm(relevant) if relevant else {}
 
     applied = {"attached": 0, "resynthesized": 0, "created": 0,
-               "dropped_single_outlet": 0, "none": 0, "already_claimed": 0}
+               "dropped_single_outlet": 0, "none": 0, "already_claimed": 0,
+               "synthesis_failed": 0}
 
     # Articles this run has already put into a story. Candidates were all
     # generated against one snapshot, so the same loose neighbour is routinely
@@ -240,6 +306,8 @@ async def run_incremental_threading(
                 applied["attached"] += 1
                 if what == "attached_new_outlet_resynthesized":
                     applied["resynthesized"] += 1
+                elif what == "attached_new_outlet_synthesis_failed":
+                    applied["synthesis_failed"] += 1
             elif d["action"] == "new":
                 members = [m for m in d["members"] if m not in claimed]
                 if not members:
@@ -247,11 +315,13 @@ async def run_incremental_threading(
                     # single article, which is not a story.
                     applied["already_claimed"] += 1
                     continue
-                sid = await _create(pool, article, members, synthesize)
-                if sid:
+                what = await _create(pool, article, members, synthesize)
+                if what:
                     claimed.add(article["id"])
                     claimed.update(members)
                     applied["created"] += 1
+                    if what == "created_synthesis_failed":
+                        applied["synthesis_failed"] += 1
                 else:
                     applied["dropped_single_outlet"] += 1
             else:
