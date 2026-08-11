@@ -62,6 +62,17 @@ class TestContextParse:
         out = _parse_context(text, CTX_BATCH)
         assert out["https://example.com/1"]["tone"] == "neutral"
 
+    def test_genre_recorded_and_defaults_to_news(self):
+        text = json.dumps([{"i": 1, "c": GOOD_LINE, "s": 4, "g": "feature"}])
+        assert _parse_context(text, CTX_BATCH)["https://example.com/1"]["genre"] == "feature"
+        # Missing or invalid genre must land on the no-penalty value. A
+        # false "feature" buries real reporting; a false "news" costs
+        # nothing — same asymmetry as tone.
+        for entry in ({"i": 1, "c": GOOD_LINE, "s": 4},
+                      {"i": 1, "c": GOOD_LINE, "s": 4, "g": "listicle"}):
+            out = _parse_context(json.dumps([entry]), CTX_BATCH)
+            assert out["https://example.com/1"]["genre"] == "news"
+
     def test_miscased_tone_normalized(self):
         text = json.dumps([{"i": 1, "c": GOOD_LINE, "s": 4, "t": " Grim "}])
         out = _parse_context(text, CTX_BATCH)
@@ -84,6 +95,13 @@ class TestContextPrompt:
         # The tie-break that protects against false-grim (which wrongly
         # buries a story; false-neutral costs nothing).
         assert 'choose "neutral"' in prompt
+
+    def test_prompt_encodes_the_genre_rubric(self):
+        prompt = _build_context_prompt(CTX_BATCH).lower()
+        assert '"feature"' in prompt and '"soft"' in prompt
+        # The guard that keeps genre from becoming a second importance
+        # score or a spectacle detector.
+        assert "the kind of writing, not its importance" in prompt
 
     def test_prompt_encodes_scope_not_drama(self):
         # The pre-2026-08-11 rubric let "wide impact" pattern-match onto

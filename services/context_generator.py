@@ -34,11 +34,26 @@ BATCH_KIND = "context"  # identifier persisted to api_batches.kind
 # no-penalty value, mirroring the score clamp below.
 VALID_TONES = {"grim", "neutral", "light"}
 
+# Article genre (migrations/025) — ranking v2 stage 6. is_opinion and
+# is_roundup catch what outlets DECLARE (URL paths, show titles); this
+# catches what they don't: magazine-style features and soft/curiosity
+# pieces that read as news and can score importance 3. Deliberately NOT a
+# spectacle detector — crime spectacle is already correctly scored
+# importance 1-2, and the low-importance weight in sift/lib/db.ts handles
+# it. Anything unexpected clamps to "news", the no-penalty value.
+VALID_GENRES = {"news", "feature", "soft"}
+
 
 def _clamp_tone(raw: object) -> str:
     if isinstance(raw, str) and raw.strip().lower() in VALID_TONES:
         return raw.strip().lower()
     return "neutral"
+
+
+def _clamp_genre(raw: object) -> str:
+    if isinstance(raw, str) and raw.strip().lower() in VALID_GENRES:
+        return raw.strip().lower()
+    return "news"
 
 
 # Importance measures scope-of-consequence, not drama. The pre-2026-08-11
@@ -129,6 +144,19 @@ sports achievement, positive milestone
 "grim"; an alarmed report about interest rates is "neutral". When unsure \
 between "grim" and "neutral", choose "neutral".
 
+4. A genre tag (key "g") — independent of the three above, always provide \
+it. Exactly one of:
+   "news" = a report of something that happened, however small — arrests, \
+rulings, votes, disasters, earnings, announcements, live updates
+   "feature" = magazine-style writing rather than reporting: narrative \
+longform, profiles, retrospectives, "the untold story of", human-interest \
+storytelling about people rather than events
+   "soft" = curiosity, lifestyle, celebrity gossip, viral oddities, \
+service journalism ("what to know about", listicles, rankings)
+   A reported event is "news" no matter how dramatic, tabloid, or minor \
+it is — this tag is about the KIND of writing, not its importance or its \
+subject. When unsure, choose "news".
+
 Rules about people and legal matters — these override everything above, \
 including the instruction to find a concrete stake. When a stake can only be \
 stated by breaking one of these, return "" instead:
@@ -148,8 +176,8 @@ Articles:
 {_build_articles_text(batch)}
 
 Return a JSON array with one object per article, in the same order.
-Use short keys: i=index, c=why-it-matters line (string; "" when there is no real stake), s=score, t=tone.
-[{{"i":1,"c":"Concrete verifiable stake here, or an empty string.","s":3,"t":"neutral"}}, ...]
+Use short keys: i=index, c=why-it-matters line (string; "" when there is no real stake), s=score, t=tone, g=genre.
+[{{"i":1,"c":"Concrete verifiable stake here, or an empty string.","s":3,"t":"neutral","g":"news"}}, ...]
 
 Return ONLY the JSON array, no other text."""
 
@@ -219,7 +247,7 @@ async def _generate_batch(
     """Send a batch of articles to Claude Haiku for context + importance generation."""
     response = await client.messages.create(
         model=MODEL,
-        max_tokens=800,  # 700 before the tone key; ~8 extra output tokens/article
+        max_tokens=850,  # +tone (stage 3) and +genre (stage 6) keys
         messages=[{"role": "user", "content": _build_context_prompt(batch)}],
     )
     log_usage("context_generator.batch", response, model=MODEL)
@@ -263,6 +291,7 @@ def _parse_context(text: str, batch: list[dict]) -> dict[str, dict]:
             "context": gated,
             "score": score,
             "tone": _clamp_tone(item.get("t", item.get("tone"))),
+            "genre": _clamp_genre(item.get("g", item.get("genre"))),
         }
 
     return results
@@ -318,7 +347,7 @@ async def submit_context_batch(articles: list[dict]) -> str | None:
             "custom_id": custom_id,
             "params": {
                 "model": MODEL,
-                "max_tokens": 800,  # matches _generate_batch
+                "max_tokens": 850,  # matches _generate_batch
                 "messages": [{"role": "user", "content": _build_context_prompt(sub)}],
             },
         })
@@ -446,6 +475,7 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
             pending.append({
                 "url": url, "line": gated, "score": score,
                 "tone": _clamp_tone(entry.get("t", entry.get("tone"))),
+                "genre": _clamp_genre(entry.get("g", entry.get("genre"))),
                 "title": title, "summary": summary,
             })
 
@@ -479,10 +509,11 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
                        SET why_it_matters = $1,
                            importance_score = $2,
                            tone = $3,
+                           genre = $4,
                            updated_at = NOW()
-                     WHERE source_url = $4
+                     WHERE source_url = $5
                     """,
-                    p["line"], p["score"], p["tone"], p["url"],
+                    p["line"], p["score"], p["tone"], p["genre"], p["url"],
                 )
                 updated += 1
             except Exception as e:
