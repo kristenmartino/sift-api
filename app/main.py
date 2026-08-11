@@ -72,6 +72,7 @@ async def lifespan(app: FastAPI):
     cron_task = None
     poller_task = None
     feed_health_task = None
+    feed_balance_task = None
     if settings.environment == "production":
         cron_task = asyncio.create_task(_scheduled_refresh())
         logger.info("Scheduled refresh enabled (every %ds)", REFRESH_INTERVAL)
@@ -88,6 +89,13 @@ async def lifespan(app: FastAPI):
         from services.feed_health import run_feed_health_monitor
         feed_health_task = asyncio.create_task(run_feed_health_monitor())
 
+        # Ranking v2 stage 3: feed-balance drift tripwire. Daily snapshot of
+        # the ranked pool's grim share + civic density per category, tripping
+        # on drift vs a trailing baseline — the D48/D45 policy numbers as
+        # logged metrics instead of vibes.
+        from services.feed_balance import run_feed_balance_monitor
+        feed_balance_task = asyncio.create_task(run_feed_balance_monitor())
+
     yield
 
     # Shutdown
@@ -97,6 +105,8 @@ async def lifespan(app: FastAPI):
         poller_task.cancel()
     if feed_health_task:
         feed_health_task.cancel()
+    if feed_balance_task:
+        feed_balance_task.cancel()
     await close_pool()
     logger.info("sift-api shut down")
 

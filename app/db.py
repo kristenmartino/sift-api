@@ -569,6 +569,27 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             )
         """)
 
+        # Feed-balance drift snapshots (migrations/022, ranking v2 stage 3).
+        # Written daily by services/feed_balance.py; persisted so the
+        # trailing-13-day tripwire baselines survive log rotation/deploys.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS feed_balance (
+                run_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                category              TEXT NOT NULL,
+                grim_share_top10      REAL,
+                mean_civic_top10      REAL,
+                mean_sources_top5     REAL,
+                story_grim_share_top5 REAL,
+                n_articles            INTEGER NOT NULL DEFAULT 0,
+                n_stories             INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (run_at, category)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_feed_balance_run_at "
+            "ON feed_balance (run_at DESC)"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
