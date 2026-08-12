@@ -57,7 +57,8 @@ GROUP BY s.id
 HAVING COUNT(a.id) >= 2
 ORDER BY
   (1 + 2.0 * LN(1 + COUNT(DISTINCT a.source_name)))::float *
-  EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_date, s.created_at))), 0) / 86400.0, 700))
+  EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_date, s.created_at))), 0) / 86400.0, 700)) *
+  (COALESCE(AVG(a.importance_score), 3) / 2.5)
 DESC NULLS LAST
 LIMIT 20
 """
