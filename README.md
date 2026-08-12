@@ -90,7 +90,7 @@ All endpoints are available at both `/v1/...` (preferred) and legacy paths (for 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | Service info + available endpoints |
-| GET | `/health` | Health check + DB status + last pipeline run |
+| GET | `/health` | Health check + DB status + last pipeline run. Also carries `model_overrides` when `LLM_MODEL_OVERRIDES` has moved a stage off its default model — omitted entirely when nothing has |
 | GET | `/docs` | Interactive API documentation (Swagger UI) |
 | GET | `/redoc` | Alternative API documentation (ReDoc) |
 | POST | `/v1/pipeline/refresh` | Trigger RSS pipeline (auth required) |
@@ -209,6 +209,19 @@ IRS bulk zips use Deflate64, which Python's `zipfile`, `bsdtar` and macOS
 | `AI_COST_ALERT_THRESHOLD_RATIO` | No | Budget fraction that triggers an alert (default: `0.8`) |
 | `WHY_IT_MATTERS_JUDGE_ENABLED` | No | Run the runtime LLM-judge on generated `why_it_matters` lines (default: `false`; adds a paid call per kept line, increases suppression) |
 | `ENTITY_LINKER_REGEX_GATE_ENABLED` | No | Send an article to the LLM entity linker only when the free regex matcher finds a candidate surface form (default: **`true`** — a kill switch, not an opt-in, since it saves rather than spends). Forwards ~26% of articles and retains 98.11% of the links the ungated path produced, measured by `scripts/eval_linker_gate.py`. Set `false` to restore one LLM call per article |
+| `LLM_MODEL_OVERRIDES` | No | Per-stage model overrides against `services/model_registry.py`, as `operation=catalog_id` pairs — e.g. `summarizer.batch=sonnet-4-6,judge.batch=haiku-4-5`. Empty (the default) runs every stage on the model it used before the registry existed. A malformed entry, unknown operation, unknown model, or a model lacking a capability the stage requires is dropped with an ERROR and that stage stays on its incumbent — never a hard failure, never silent. Active overrides are logged at WARNING on startup and echoed in `GET /health` |
+
+### Which model is a stage on?
+
+Ask the service, don't infer it from the env var:
+
+```bash
+curl -s https://<host>/health | jq .model_overrides
+```
+
+`null` means every stage is on its default. `services/model_registry.py` holds the
+mapping and `ai_usage_daily` records the model each call actually ran on, so
+spend per stage per model is a SQL query rather than an assumption.
 
 ## Tests
 
