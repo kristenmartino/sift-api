@@ -45,6 +45,7 @@ STORIES_SQL = """
 SELECT s.id, s.headline, s.summary, s.category, s.framings, s.entities,
        COUNT(a.id)::int AS article_count,
        COUNT(DISTINCT a.source_name)::int AS outlet_count,
+       MAX(COALESCE(a.importance_score, 3)) AS max_importance,
        s.representative_image_url, s.published_date, s.synthesis_status
 FROM stories s
 LEFT JOIN articles a
@@ -56,9 +57,16 @@ WHERE s.category = $1 AND s.synthesis_status = 'complete'
 GROUP BY s.id
 HAVING COUNT(a.id) >= 2
 ORDER BY
-  (1 + 2.0 * LN(1 + COUNT(DISTINCT a.source_name)))::float *
-  EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_date, s.created_at))), 0) / 86400.0, 700)) *
-  (COALESCE(AVG(a.importance_score), 3) / 2.5)
+  CASE WHEN MAX(COALESCE(a.importance_score, 3)) >= 4
+       THEN GREATEST(
+         (1 + 2.0 * LN(1 + COUNT(DISTINCT a.source_name)))::float
+           * (COALESCE(AVG(a.importance_score), 3) / 2.5),
+         MAX(COALESCE(a.importance_score, 3))::float)
+       ELSE
+         (1 + 2.0 * LN(1 + COUNT(DISTINCT a.source_name)))::float
+           * (COALESCE(AVG(a.importance_score), 3) / 2.5)
+  END *
+  EXP(-LEAST(GREATEST(EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_date, s.created_at))), 0) / 86400.0, 700))
 DESC NULLS LAST
 LIMIT 20
 """
@@ -74,6 +82,14 @@ LIMIT 20
 # freshness. They are literals here because this file mirrors the deployed SQL
 # byte for byte; if they change there and not here, this diagnostic silently
 # starts measuring a query nobody runs.
+#
+# The CASE/GREATEST is stage 7's floor: a story never ranks below a member at
+# importance >= 4. Stage 7 scores on the MEAN, which is right against wire
+# pickup but averages one important article down — 5 of 523 prod stories in
+# 48h had a best member at 4-5 sitting below it. Gated at 4 because an
+# unconditional floor restores the single-outlet leverage the mean removed.
+# Measured old vs new over eight categories: 21-34ms either way, top-20 churn
+# 0-1, and the floor lifts 2 stories. It is a safety net, not a re-ranking.
 
 # The scored/capped CTEs mirror the per-source cap in db.ts
 # (MAX_ARTICLES_PER_SOURCE = 6): one outlet can hold at most 6 of the
