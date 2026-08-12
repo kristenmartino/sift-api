@@ -44,6 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.config import settings  # noqa: E402
 from services.funding_edges import (  # noqa: E402
     FundingEdge,
     NameVerdict,
@@ -166,6 +167,60 @@ def fetch_filings(selected: dict[str, dict], year: str, cache: Path) -> dict[str
     return out
 
 
+def resolve_filings(
+    year: str, only: set[str] | None, cache: Path
+) -> tuple[dict[str, dict], dict[str, str], Path]:
+    """Filings for the requested year, falling forward when the index lies.
+
+    The IRS index is not always consistent with its own archives: Brookings'
+    2025 return (object_id 202531349349306718) is indexed to
+    2025_TEOS_XML_05A and is *not in that file* — verified by streaming the
+    whole 497MB archive twice. The same organization's next filing is present
+    in the following year's batch, so rather than silently dropping an org,
+    any filing the primary year cannot produce is retried against year + 1.
+
+    Returns (selected rows, object_id -> XML, index path used for validation).
+    """
+    index_path = _download(
+        f"{IRS_BASE}/{year}/index_{year}.csv", cache / f"index_{year}.csv"
+    )
+    selected = select_filings(index_path, only)
+    logger.info("selected %d/%d filings", len(selected), len(only or ORGS))
+    filings = fetch_filings(selected, year, cache)
+
+    missing = {ein for ein, row in selected.items() if row["OBJECT_ID"] not in filings}
+    if not missing:
+        return selected, filings, index_path
+
+    next_year = str(int(year) + 1)
+    logger.warning(
+        "%d filing(s) indexed to an archive that does not contain them (%s); "
+        "retrying against the %s index",
+        len(missing),
+        ", ".join(sorted(ORGS[e] for e in missing)),
+        next_year,
+    )
+    try:
+        next_index = _download(
+            f"{IRS_BASE}/{next_year}/index_{next_year}.csv",
+            cache / f"index_{next_year}.csv",
+        )
+    except Exception as e:  # a future year may not exist yet
+        logger.warning("no %s index available (%s); leaving those orgs out", next_year, e)
+        return selected, filings, index_path
+
+    retry_selected = select_filings(next_index, missing)
+    retry_filings = fetch_filings(retry_selected, next_year, cache)
+    for ein, row in retry_selected.items():
+        if row["OBJECT_ID"] in retry_filings:
+            selected[ein] = row  # newer filing; fiscal_period travels with it
+            filings[row["OBJECT_ID"]] = retry_filings[row["OBJECT_ID"]]
+            logger.info(
+                "recovered %s from %s (period %s)", ORGS[ein], next_year, row["TAX_PERIOD"]
+            )
+    return selected, filings, index_path
+
+
 def build_edges(
     selected: dict[str, dict], filings: dict[str, str], ein_index: dict[str, set[str]]
 ) -> list[FundingEdge]:
@@ -194,11 +249,25 @@ def build_edges(
 async def persist(edges: list[FundingEdge]) -> int:
     import asyncpg
 
-    db_url = os.environ.get("DATABASE_URL")
+    # Same resolution order as every other script here: explicit env var wins,
+    # otherwise pydantic-settings reads sift-api/.env. Reading only the env var
+    # meant a normal `./.venv/bin/python3 scripts/…` run refused to start even
+    # with a perfectly good .env sitting next to it.
+    db_url = os.environ.get("DATABASE_URL", settings.database_url)
     if not db_url:
-        raise SystemExit("DATABASE_URL not set — refusing to guess a database.")
+        raise SystemExit("No DATABASE_URL in the environment or .env.")
     host = db_url.split("@")[-1].split("/")[0]
     logger.info("connecting to %s", host)  # never silently write to the wrong DB
+    if "localhost" in host or "127.0.0.1" in host:
+        # settings' default is local docker. Reaching it by *default* rather
+        # than by intent is the documented way this repo has written to the
+        # wrong database before — from a worktree, where .env is gitignored
+        # and absent, a prod repair script reported success against local.
+        logger.warning(
+            "resolved to a LOCAL database (%s). If you meant production, set "
+            "DATABASE_URL explicitly or run from a directory with .env.",
+            host,
+        )
     conn = await asyncpg.connect(db_url)
     try:
         written = 0
@@ -245,15 +314,11 @@ def main() -> None:
     cache = Path(args.cache or (Path(tempfile.gettempdir()) / "sift-990-cache"))
     cache.mkdir(parents=True, exist_ok=True)
 
-    index_path = _download(
-        f"{IRS_BASE}/{args.year}/index_{args.year}.csv",
-        cache / f"index_{args.year}.csv",
-    )
-    selected = select_filings(index_path, only)
-    logger.info("selected %d/%d filings", len(selected), len(only or ORGS))
-
-    filings = fetch_filings(selected, args.year, cache)
-    ein_index = load_ein_index([str(index_path)])
+    selected, filings, index_path = resolve_filings(args.year, only, cache)
+    # Validate against every index year on disk: an EIN absent from one year's
+    # filers is often present in another, and a wrong 'ein_absent' verdict
+    # withholds a good edge.
+    ein_index = load_ein_index(sorted(str(p) for p in cache.glob("index_*.csv")))
     edges = build_edges(selected, filings, ein_index)
 
     counts: dict[str, int] = defaultdict(int)
