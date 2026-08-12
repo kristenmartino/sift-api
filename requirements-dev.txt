@@ -20,11 +20,11 @@ pytest==8.4.2
 # test count grew. Verified: 0 live sockets after a full run, was 2.
 pytest-asyncio==1.4.0
 pytest-cov==6.0.0
-ruff==0.8.6
+ruff==0.16.2
 # Reads the IRS 990 bulk zips, which use Deflate64 (method 9) — Python's
 # zipfile, bsdtar/libarchive and macOS ditto all refuse it, and bsdtar fails
 # by writing a zero-byte file rather than erroring. Also streams, so
 # scripts/ingest_funding_edges.py abandons a 497MB archive as soon as its
 # targets are found. Used only by that script, never by the running service,
 # so it belongs here and not in requirements.txt.
-stream-unzip==0.0.97
+stream-unzip==0.0.101
