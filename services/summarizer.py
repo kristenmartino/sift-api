@@ -10,6 +10,7 @@ import anthropic
 from app.config import settings
 from app.models import RSSArticle
 from services.cost_guard import check_budget
+from services.model_registry import resolve
 from services.quality_gate import gate_summary
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
@@ -22,7 +23,7 @@ from services.usage_tracker import log_output_stop, log_usage
 logger = logging.getLogger("sift-api.summarizer")
 
 BATCH_SIZE = 5
-MODEL = "claude-haiku-4-5-20251001"
+OPERATION = "summarizer.batch"
 
 # Output ceiling for one batch. Five summaries at ~60 tokens each is ~300, so
 # a typical batch has room to spare — but the longest summaries in prod run 79
@@ -190,13 +191,14 @@ async def _summarize_batch(
 ) -> dict[str, dict]:
     """Send a batch of articles to Claude Haiku and parse summaries + categories."""
     prompt = _build_prompt(batch)
+    spec = resolve(OPERATION)
 
     response = await client.messages.create(
-        model=MODEL,
+        model=spec.model,
         max_tokens=MAX_OUTPUT_TOKENS,
         messages=[{"role": "user", "content": prompt}],
     )
-    log_usage("summarizer.batch", response, model=MODEL)
+    log_usage(OPERATION, response, model=spec.model)
 
     text = ""
     for block in response.content:

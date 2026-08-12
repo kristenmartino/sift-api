@@ -22,7 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import anthropic  # noqa: E402
 import asyncpg  # noqa: E402
 from app.config import settings  # noqa: E402
-from services.context_generator import MODEL, _clamp_genre, _extract_json_array  # noqa: E402
+from services.context_generator import OPERATION, _clamp_genre, _extract_json_array  # noqa: E402
+from services.model_registry import resolve  # noqa: E402
 from services.index_alignment import AlignmentError, aligned_entries  # noqa: E402
 
 BATCH_SIZE = 20
@@ -57,7 +58,7 @@ Return ONLY the JSON array, no other text."""
 
 async def classify(client: anthropic.AsyncAnthropic, batch: list[dict]) -> dict[str, str]:
     resp = await client.messages.create(
-        model=MODEL, max_tokens=400,
+        model=resolve(OPERATION).model, max_tokens=400,
         messages=[{"role": "user", "content": _build_prompt(batch)}],
     )
     text = "".join(b.text for b in resp.content if b.type == "text")

@@ -76,10 +76,17 @@ from services.entity_linker import (  # noqa: E402
     narrow_catalog,
 )
 from services import entity_linker_llm as ELL  # noqa: E402
+from services.model_registry import resolve  # noqa: E402
 
 # Same tier as services/judge.py — the adjudicator has to be better than the
 # thing it is judging, or it just re-votes for whichever answer Haiku prefers.
-JUDGE_MODEL = "claude-sonnet-4-6"
+#
+# Read from the registry rather than restated here. This was a hardcoded copy
+# with a comment claiming it matched services/judge.py, which is precisely the
+# arrangement that lets the two drift apart silently — and an adjudicator that
+# quietly dropped to the tier it is judging would still produce numbers, just
+# meaningless ones.
+JUDGE_MODEL = resolve("judge.batch").model
 JUDGE_CONCURRENCY = 6
 
 # How many agreed links to price the shared base with. Both paths carry the

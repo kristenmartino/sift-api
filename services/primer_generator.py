@@ -30,6 +30,7 @@ from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
 from services.cost_guard import check_budget
+from services.model_registry import resolve
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
     AlignmentError,
@@ -42,7 +43,13 @@ from services.usage_tracker import log_batch_usage, log_usage
 
 logger = logging.getLogger("sift-api.primer_generator")
 
-MODEL = "claude-haiku-4-5-20251001"
+OPERATION = "primer_generator.batch"
+
+
+def _model() -> str:
+    """Resolved per call, never cached at import — an override must not need a
+    restart to take effect, and a module constant would lie in tests."""
+    return resolve(OPERATION).model
 BATCH_SIZE = 5  # primer is more tokens out per article than one-liner context
 
 # Pre-call cost estimate for the budget check, per BATCH_SIZE-article request.
@@ -224,11 +231,11 @@ async def _generate_batch_live(
     batch: list[dict],
 ) -> dict[str, dict]:
     response = await client.messages.create(
-        model=MODEL,
+        model=_model(),
         max_tokens=1500,  # ~300 tokens per article * 5 articles + headroom
         messages=[{"role": "user", "content": _build_prompt(batch)}],
     )
-    log_usage("primer_generator.batch", response, model=MODEL)
+    log_usage(OPERATION, response, model=_model())
 
     text = "".join(b.text for b in response.content if b.type == "text")
     return _parse_primers(text, batch)
@@ -348,7 +355,7 @@ async def submit_primer_batch(articles: list[dict]) -> str | None:
         requests.append({
             "custom_id": custom_id,
             "params": {
-                "model": MODEL,
+                "model": _model(),
                 "max_tokens": 1500,
                 "messages": [{"role": "user", "content": _build_prompt(sub)}],
             },
@@ -365,7 +372,9 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
     """Poller callback. Parses JSONL results and UPDATEs articles.context_primer."""
     # Batch spend was invisible until 2026-08-05 — this path recorded
     # nothing, leaving ~$1/day unattributed between the ledger and the bill.
-    log_batch_usage("primer_generator.batch", results)
+    # Pass the resolved model — see the note in context_generator: omitting it
+    # logged the alias here and the dated snapshot on the realtime path.
+    log_batch_usage(OPERATION, results, model=_model())
     pool = await get_pool()
     row = await pool.fetchrow(
         "SELECT metadata FROM api_batches WHERE batch_id = $1", batch_id,

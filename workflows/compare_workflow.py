@@ -11,11 +11,18 @@ from langgraph.graph import StateGraph, END
 
 from app.config import settings
 from app.db import get_pool
+from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage
 
 logger = logging.getLogger("sift-api.compare")
 
-MODEL = "claude-haiku-4-5-20251001"
+# Two operations live in this file and they are not interchangeable.
+# `compare.search_sources` uses Anthropic's server-side web_search_20250305
+# tool, which has no portable equivalent — model_registry.CAPABILITIES refuses
+# to move it off a model that provides one. `compare.extract_and_compare` is an
+# ordinary completion over the text those searches returned, and is swappable.
+SEARCH_OPERATION = "compare.search_sources"
+EXTRACT_OPERATION = "compare.extract_and_compare"
 PER_SOURCE_TIMEOUT = 20  # seconds per source search
 
 # Safe fallback allowlist — used ONLY when the curated set can't be loaded from
@@ -110,7 +117,7 @@ async def search_one_source(
     try:
         response = await asyncio.wait_for(
             client.messages.create(
-                model=MODEL,
+                model=resolve(SEARCH_OPERATION).model,
                 max_tokens=2048,
                 tools=[{
                     "type": "web_search_20250305",
@@ -131,9 +138,9 @@ async def search_one_source(
             timeout=PER_SOURCE_TIMEOUT,
         )
         log_usage(
-            "compare.search_sources",
+            SEARCH_OPERATION,
             response,
-            model=MODEL,
+            model=resolve(SEARCH_OPERATION).model,
             web_searches=count_web_searches(response),
         )
 
@@ -224,7 +231,7 @@ async def extract_and_compare_node(state: CompareState) -> dict:
     sources_list = list(search_results.keys())
 
     response = await client.messages.create(
-        model=MODEL,
+        model=resolve(EXTRACT_OPERATION).model,
         max_tokens=4096,
         messages=[{
             "role": "user",
@@ -263,7 +270,7 @@ Available sources: {json.dumps(sources_list)}
 Return ONLY the JSON, no other text.""",
         }],
     )
-    log_usage("compare.extract_and_compare", response, model=MODEL)
+    log_usage(EXTRACT_OPERATION, response, model=resolve(EXTRACT_OPERATION).model)
 
     # Extract text from response
     text = ""

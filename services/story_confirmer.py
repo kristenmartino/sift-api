@@ -35,11 +35,12 @@ import anthropic
 
 from app.config import settings
 from services.index_alignment import AlignmentError, aligned_entries, with_alignment_retry
+from services.model_registry import resolve
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_confirmer")
 
-MODEL = "claude-haiku-4-5-20251001"
+OPERATION = "story_confirmer.confirm"
 
 # Output is one short object per candidate. 60 tokens each is generous for
 # {"i":N,"action":"...","story_id":"..."}; the floor covers small runs.
@@ -173,7 +174,9 @@ async def confirm(
     candidates: list[dict],
     *,
     client: anthropic.AsyncAnthropic | None = None,
-    model: str = MODEL,
+    # None, not a default of MODEL — a default argument is evaluated once at
+    # import, which froze the model for the life of the process.
+    model: str | None = None,
 ) -> dict[str, Decision]:
     """Confirm candidates, returning {article_id: Decision}.
 
@@ -184,6 +187,8 @@ async def confirm(
     """
     if not candidates:
         return {}
+
+    model = model or resolve(OPERATION).model
 
     client = client or anthropic.AsyncAnthropic(
         api_key=settings.anthropic_api_key, max_retries=2,
@@ -200,7 +205,7 @@ async def confirm(
                 max_tokens=_max_tokens(len(batch)),
                 messages=[{"role": "user", "content": _prompt(batch)}],
             )
-            log_usage("story_confirmer.confirm", resp, model=model)
+            log_usage(OPERATION, resp, model=model)
             text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
             return _parse(text, batch)
 

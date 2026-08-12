@@ -850,6 +850,20 @@ def prompt_sha256(batch: dict) -> str:
 
 # ─── scoring ──────────────────────────────────────────────
 
+def _resolved_clusterer_model() -> str:
+    """The model the clusterer would actually use right now.
+
+    Recorded into the baseline and every response fixture, because a metric is
+    only comparable against another run on the same model — and since
+    services/model_registry.py the answer can be changed by an env var rather
+    than a code edit, so it has to be read rather than assumed.
+    """
+    from services.model_registry import resolve
+    from services.story_clusterer import OPERATION
+
+    return resolve(OPERATION).model
+
+
 def score_batch(batch: dict, groups: list[dict]) -> cluster_metrics.ClusteringReport:
     articles = batch["articles"]
     n = len(articles)
@@ -947,7 +961,8 @@ def run_replay(corpus: list[dict], fixtures_dir: Path) -> dict:
 async def run_live(corpus: list[dict], repeats: int, record_to: Path | None) -> dict:
     import anthropic
 
-    from services.story_clusterer import MODEL, build_prompt, cluster_articles
+    from services.model_registry import resolve
+    from services.story_clusterer import OPERATION, build_prompt, cluster_articles
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     runs: list[dict] = []
@@ -963,7 +978,7 @@ async def run_live(corpus: list[dict], repeats: int, record_to: Path | None) -> 
                 record_to.mkdir(parents=True, exist_ok=True)
                 (record_to / f"{batch['batch_id']}.json").write_text(json.dumps({
                     "batch_id": batch["batch_id"],
-                    "model": MODEL,
+                    "model": resolve(OPERATION).model,
                     "prompt_sha256": hashlib.sha256(build_prompt(articles).encode()).hexdigest(),
                     "response_text": json.dumps([
                         {
@@ -1126,7 +1141,7 @@ def main() -> None:
     if args.live and args.record:
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(json.dumps({
-            "model": __import__("services.story_clusterer", fromlist=["MODEL"]).MODEL,
+            "model": _resolved_clusterer_model(),
             "corpus_sha256": hashlib.sha256(args.corpus.read_bytes()).hexdigest(),
             "live_repeats": args.repeats,
             # Set from ~2x the observed spread after the first --repeats 5 run.

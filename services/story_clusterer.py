@@ -6,11 +6,12 @@ import logging
 import anthropic
 
 from app.config import settings
+from services.model_registry import resolve
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_clusterer")
 
-MODEL = "claude-haiku-4-5-20251001"
+OPERATION = "story_clusterer.cluster"
 
 
 def build_prompt(articles: list[dict]) -> str:
@@ -64,7 +65,9 @@ async def cluster_articles(
     articles: list[dict],
     *,
     client: anthropic.AsyncAnthropic | None = None,
-    model: str = MODEL,
+    # None, not a default of MODEL — a default argument is evaluated once at
+    # import, which froze the model for the life of the process.
+    model: str | None = None,
 ) -> list[dict]:
     """
     LLM-as-judge clustering: group articles covering the same event.
@@ -79,6 +82,8 @@ async def cluster_articles(
     """
     if len(articles) < 2:
         return []
+
+    model = model or resolve(OPERATION).model
 
     if client is None:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -96,7 +101,7 @@ async def cluster_articles(
             max_tokens=_max_tokens_for(len(articles)),
             messages=[{"role": "user", "content": prompt}],
         )
-        log_usage("story_clusterer.cluster", response, model=model)
+        log_usage(OPERATION, response, model=model)
 
         text = "".join(b.text for b in response.content if b.type == "text")
         clusters = _parse_clusters(text, len(articles))
