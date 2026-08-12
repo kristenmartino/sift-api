@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from app.config import settings
 from app.dependencies import limiter
 from app.models import CompareRequest, CompareResponse
+from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.daily_compare import refresh_daily_example
 from workflows.compare_workflow import (
@@ -35,11 +36,6 @@ router = APIRouter(prefix="/analyze", tags=["compare"])
 # (sift#122): backend 50s < proxy abort 55s < Vercel maxDuration 60s < client 65s.
 COMPARE_TIMEOUT = 50  # seconds
 
-# Conservative per-source cost estimate for the daily-budget pre-check
-# (sift-api#70): ~one web search per source (~$0.01) plus Claude tokens for
-# search + extraction. Deliberately on the high side so a compare is blocked
-# *before* it would cross the ceiling, not after.
-COMPARE_COST_ESTIMATE_PER_SOURCE_USD = 0.04
 
 compare_graph = build_compare_graph()
 
@@ -74,7 +70,7 @@ async def compare_sources(
     # Frontend topic-search is NOT covered yet — it stays a temporary D35
     # exception until sift-api#79 moves that fallback into sift-api.
     budget = await check_budget(
-        COMPARE_COST_ESTIMATE_PER_SOURCE_USD * len(body.sources)
+        estimate_cost("compare.search_sources", len(body.sources))
     )
     if not budget.allowed:
         logger.warning(
@@ -202,7 +198,7 @@ async def compare_sources_stream(
     # Same fail-closed budget pre-check as the JSON endpoint. Raising here
     # (before the stream opens) lets the proxy surface a normal HTTP error.
     budget = await check_budget(
-        COMPARE_COST_ESTIMATE_PER_SOURCE_USD * len(body.sources)
+        estimate_cost("compare.search_sources", len(body.sources))
     )
     if not budget.allowed:
         if budget.reason == "guard_unavailable":

@@ -91,8 +91,13 @@ def prices_for(model: str) -> ModelPrices:
 # upper-bound estimate, used only for the daily cost ledger.
 PRICE_VOYAGE_PER_M = 0.02
 
-# The Message Batches API bills at 50% of standard rates.
+# The Anthropic Message Batches API bills at 50% of standard rates.
 # https://docs.anthropic.com/en/docs/build-with-claude/batch-processing
+#
+# Kept as a named constant because it documents Anthropic's rate, but it is no
+# longer applied globally: log_batch_usage reads the multiplier off the model.
+# A discount is a property of the provider, and halving a cost that was never
+# discounted would under-report into the ledger the fail-closed ceiling reads.
 BATCH_DISCOUNT = 0.5
 
 
@@ -201,8 +206,10 @@ def log_batch_usage(
             cache_read += int(usage.get("cache_read_input_tokens") or 0)
             cache_creation += int(usage.get("cache_creation_input_tokens") or 0)
 
+        from services.model_registry import batch_price_multiplier_for
+
         p = prices_for(model)
-        cost_usd = BATCH_DISCOUNT * (
+        cost_usd = batch_price_multiplier_for(model) * (
             (input_tokens * p.input_per_m / 1_000_000)
             + (output_tokens * p.output_per_m / 1_000_000)
             + (cache_creation * p.cache_write_per_m / 1_000_000)
