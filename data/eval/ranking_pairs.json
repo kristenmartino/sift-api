@@ -558,5 +558,81 @@
       "disagreement": false,
       "margin": 0.0001
     }
-  ]
+  ],
+  "session": {
+    "number": 3,
+    "labeled_at": "2026-08-11",
+    "picks": [
+      "b",
+      "a",
+      "a",
+      "a",
+      "skip",
+      "b",
+      "b",
+      "b",
+      "b",
+      "skip",
+      "skip",
+      "b",
+      "a",
+      "b",
+      "a",
+      "b",
+      "b",
+      "b",
+      "a",
+      "b",
+      "b",
+      "b",
+      "a",
+      "a",
+      "b"
+    ],
+    "result": {
+      "scored": 22,
+      "skipped": 3,
+      "agreement": {
+        "pre_v2": 10,
+        "v2_stage5": 7,
+        "current": 14
+      },
+      "contested": {
+        "n": 13,
+        "pre_v2": 6,
+        "v2_stage5": 3,
+        "current": 10
+      },
+      "controls": {
+        "n": 9,
+        "pre_v2": 4,
+        "v2_stage5": 4,
+        "current": 4
+      },
+      "contested_by_kind": {
+        "story": {
+          "n": 6,
+          "current": 6
+        },
+        "article": {
+          "n": 7,
+          "current": 4
+        }
+      },
+      "contested_by_category": {
+        "top": {
+          "n": 5,
+          "current": 5
+        },
+        "politics": {
+          "n": 4,
+          "current": 4
+        },
+        "world": {
+          "n": 4,
+          "current": 1
+        }
+      }
+    }
+  }
 }
