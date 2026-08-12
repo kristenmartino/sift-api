@@ -659,6 +659,50 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
                 WHERE synthesis_status = 'failed'
         """)
 
+        # Funding edges between orgs, from 990 Schedule I / R (migrations/027).
+        # Populated only by scripts/ingest_funding_edges.py — deliberately not
+        # on the pipeline heartbeat, so an empty table is the normal state
+        # until someone runs the ingest. ein_name_agrees carries the verdict
+        # from services/funding_edges.py: an EIN is a join key a human typed,
+        # and one of the first 121 edges pulled had the wrong one.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS funding_edges (
+                id                   BIGSERIAL PRIMARY KEY,
+                source_ein           TEXT NOT NULL,
+                source_name          TEXT NOT NULL,
+                target_ein           TEXT,
+                target_name_as_filed TEXT,
+                target_name_irs      TEXT,
+                edge_kind            TEXT NOT NULL
+                                     CHECK (edge_kind IN ('grant', 'related_org')),
+                amount_usd           BIGINT,
+                purpose              TEXT,
+                exempt_code          TEXT,
+                fiscal_period        TEXT NOT NULL,
+                form                 TEXT NOT NULL,
+                reported_by          TEXT NOT NULL DEFAULT 'source',
+                match_method         TEXT NOT NULL DEFAULT 'ein',
+                ein_name_agrees      TEXT NOT NULL
+                                     CHECK (ein_name_agrees IN ('agrees', 'review', 'ein_absent')),
+                object_id            TEXT NOT NULL,
+                filing_url           TEXT NOT NULL,
+                retrieved_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        await conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_funding_edges_identity
+                ON funding_edges (source_ein, target_ein, fiscal_period, form,
+                                  COALESCE(amount_usd, -1))
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_funding_edges_publishable
+                ON funding_edges (ein_name_agrees, target_ein)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_funding_edges_source
+                ON funding_edges (source_ein, fiscal_period DESC)
+        """)
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

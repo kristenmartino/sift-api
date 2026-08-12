@@ -166,6 +166,31 @@ Runs `EXPLAIN (ANALYZE, BUFFERS)` across all 10 categories × 3 query shapes aga
 
 CI wires the same script into the **`feed-perf`** job (`.github/workflows/ci.yml`), triggered only on PRs that touch `app/db.py`, `migrations/`, or the script itself. Requires a `DATABASE_URL` repo secret set to the prod Neon URL.
 
+### Funding edges (990 Schedule I / R)
+
+```bash
+python scripts/ingest_funding_edges.py --year 2025 --dry-run   # parse + report
+python scripts/ingest_funding_edges.py --year 2025 --apply     # write funding_edges
+python scripts/ingest_funding_edges.py --year 2025 --dry-run --only 237327730
+```
+
+Builds edges *between* organizations — grants paid (Schedule I Part II) and
+declared related tax-exempt orgs (Schedule R Part II) — for the ten curated
+think tanks in `ORGS`. **Run on demand only; deliberately not on the pipeline
+heartbeat**, so an empty `funding_edges` table is the normal state.
+
+Every edge stores an `ein_name_agrees` verdict (`agrees` / `review` /
+`ein_absent`) computed at ingest by `services/funding_edges.py`, which compares
+the counterparty name *as filed* against the IRS's own name for that EIN. A
+counterparty EIN is a join key a human typed at the filing org, and in the
+first 121-edge pull one was wrong — Brookings listed "Urban League of
+Louisiana" under The Urban Institute's EIN. Only `agrees` edges are
+publishable; `review` means unadjudicated, not false.
+
+Requires `stream-unzip` (in `requirements-dev.txt`, not shipped to prod): the
+IRS bulk zips use Deflate64, which Python's `zipfile`, `bsdtar` and macOS
+`ditto` all refuse — and `bsdtar` fails by writing a zero-byte file.
+
 ## Environment variables
 
 | Variable | Required | Description |
