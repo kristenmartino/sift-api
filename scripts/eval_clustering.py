@@ -352,7 +352,17 @@ def review_sample(corpus_path: Path, out_path: Path, n_pairs: int = 40) -> None:
     negatives.sort(key=lambda r: -r[0])
     neg = negatives[: n_pairs - len(pos)]
 
-    rows = pos + neg
+    # Shuffle deterministically. Emitting positives first then negatives leaks
+    # the answer: a reviewer who notices the boundary has every remaining
+    # judgment contaminated. Ordering by a hash of the pair identity is
+    # reproducible (same corpus -> same order, so a review can be re-generated
+    # and compared) while being uncorrelated with the label.
+    rows = sorted(
+        pos + neg,
+        key=lambda r: hashlib.sha256(
+            f"{r[1]}:{r[2]['idx']}:{r[3]['idx']}".encode()
+        ).hexdigest(),
+    )
     with out_path.open("w", newline="", encoding=CSV_ENCODING) as f:
         w = csv.writer(f)
         w.writerow([
