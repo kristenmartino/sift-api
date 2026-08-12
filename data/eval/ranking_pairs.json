@@ -1,386 +1,452 @@
 {
-  "generated_at": "2026-08-11T13:09:08.884927+00:00",
+  "version": 3,
+  "formulas": [
+    "pre_v2",
+    "v2_stage5",
+    "current"
+  ],
+  "generated_at": "2026-08-12T13:28:03.113084+00:00",
   "hours": 48,
   "pairs": [
     {
-      "pair_id": "12d0f4dba9",
+      "pair_id": "03eca203cc",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "93okj6",
+        "title": "Officials Reveal a Secret Ruse to Evacuate Trump, and the F.D.A. Takes On a Food Safety Loophole",
+        "summary": "The article appears to be a news briefing covering multiple unrelated stories including an unnamed evacuation ruse involving Trump, an FDA food safety matter, and a Harry Potter fan incident."
+      },
+      "b": {
+        "id": "7v8n4z",
+        "title": "Kevin Dowdell\u2019s Last Fire",
+        "summary": "A veteran firefighter disappeared on 9/11, and his teenage sons later searched for answers about what happened to him. The article explores the personal impact of that day on his family."
+      },
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "b"
+      },
+      "disagreement": true,
+      "margin": 0.0758
+    },
+    {
+      "pair_id": "004a4b6134",
+      "kind": "story",
+      "category": "politics",
+      "a": {
+        "id": "3c9b11230de9d4fd",
+        "title": "Congressional Democrats Launch Investigation Into Immigration Enforcement Actions Affecting Military Families",
+        "summary": "More than 60 Democratic lawmakers, led by Senators Elizabeth Warren, Richard Blumenthal, and Tammy Duckworth, have launched an investigation into the Trump administration's immigration enforcement actions involving military families. Accord"
+      },
+      "b": {
+        "id": "f16ba6cd233f457f",
+        "title": "Cambridge University to conduct independent review of Jason Arday's professorship appointment",
+        "summary": "Jason Arday has resigned from his Cambridge professorship, prompting the university to announce an independent review of his appointment. Vice-Chancellor Deborah Prentice has expressed concerns about the hiring process. The resignation rais"
+      },
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "a"
+      },
+      "disagreement": true,
+      "margin": 0.3821
+    },
+    {
+      "pair_id": "02082fa34f",
+      "kind": "story",
+      "category": "politics",
+      "a": {
+        "id": "3e00e570b5d2fb98",
+        "title": "Massachusetts Governor Signs Law Removing Abortion Gestational Age Limits",
+        "summary": "Massachusetts Governor Maura Healey signed legislation eliminating the state's gestational age restrictions on abortion, allowing the procedure through all weeks of pregnancy. Massachusetts becomes the 10th state and the District of Columbi"
+      },
+      "b": {
+        "id": "c6c84cf28536c35e",
+        "title": "Aircraft intercepted during Trump events in Ohio and New Jersey",
+        "summary": "Fighter jets and NORAD intercepted civilian aircraft that violated temporary flight restrictions while President Trump attended events in two separate locations: the Patriot Games in Geneva, Ohio, and a LIV Golf tournament in Bedminster, Ne"
+      },
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "b",
+        "current": "a"
+      },
+      "disagreement": true,
+      "margin": 0.522
+    },
+    {
+      "pair_id": "4854220c59",
+      "kind": "story",
+      "category": "world",
+      "a": {
+        "id": "8b69125953d1a817",
+        "title": "Syrian court sentences former President Assad to death in absentia for war crimes and crimes against humanity",
+        "summary": "A Syrian court has sentenced former President Bashar al-Assad and his brother Maher to death in absentia for war crimes and crimes against humanity committed during Syria's 14-year civil war. Assad, who fled the country as rebels seized Dam"
+      },
+      "b": {
+        "id": "eaf232345d1c48ff",
+        "title": "North Korea launches ballistic missile as U.S. and South Korea prepare military drills",
+        "summary": "North Korea launched a ballistic missile toward the sea, according to Japan's Defense Ministry. This launch occurred amid U.S. and South Korean military exercises and marks the second such launch within a week."
+      },
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "b"
+      },
+      "disagreement": false,
+      "margin": 0.0004
+    },
+    {
+      "pair_id": "0f608a85c0",
+      "kind": "story",
+      "category": "world",
+      "a": {
+        "id": "3090de5e691e3423",
+        "title": "Houthi Attack on Red Sea Vessel Results in Multiple Casualties",
+        "summary": "A Houthi attack on a ship in the Red Sea resulted in deaths, though sources disagree on the casualty count, ranging from three to six people killed. The incident marks a significant escalation in attacks on commercial shipping in the region"
+      },
+      "b": {
+        "id": "df259751a99606ed",
+        "title": "Ferry capsizes on Zimbabwe's Lake Kariba; at least 15 dead and 27 missing",
+        "summary": "A ferry capsized on Zimbabwe's Lake Kariba on Tuesday, killing at least 15 people and leaving 27 missing, with 77 survivors rescued. The sources describe the boat as overloaded or carrying 95-119+ people, depending on the account, and attri"
+      },
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "a"
+      },
+      "disagreement": true,
+      "margin": 0.1511
+    },
+    {
+      "pair_id": "0481dc414c",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "oi3b0a",
+        "title": "5 teens die after car plunges off steep Colorado cliff: \u2018Unimaginable grief\u2019",
+        "summary": "Five teenagers died after their car plunged off a steep Colorado cliff, with two of the 17-year-old boys ejected from the vehicle after not wearing seat belts."
+      },
+      "b": {
+        "id": "q9cwsu",
+        "title": "Trump Hardens Stance on Iran, Nvidia Taps Wall Street for $500B | The Opening Trade 8/11/2026",
+        "summary": "President Trump hardened his negotiating stance on Iran by demanding reparations for past attacks, while major investment firms partnered with Nvidia to source $500 billion in financing for AI infrastructure. The developments reflect shifti"
+      },
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "a",
+        "current": "b"
+      },
+      "disagreement": true,
+      "margin": 0.1495
+    },
+    {
+      "pair_id": "002fdb60ec",
       "kind": "article",
       "category": "politics",
       "a": {
-        "id": "wtiahv",
-        "title": "Markwayne Mullin has strong deportation numbers at DHS. MAGA distrusts him anyway",
-        "summary": "Department of Homeland Security Secretary Markwayne Mullin has overseen record deportation rates since taking over in spring, but faces criticism from Trump supporters despite his alignment with the administration's mass deportation agenda."
+        "id": "hcutu1",
+        "title": "Operation Edgelord",
+        "summary": "The article outlines four common arguments used to deny what proponents call the 'Myth of the Good War.' It appears to be a political or historical analysis piece."
       },
       "b": {
-        "id": "8pualr",
-        "title": "Chris Murphy\u2019s 2028 ambitions face an early test in Connecticut House race",
-        "summary": "Sen. Chris Murphy's political influence will be tested in Connecticut's Democratic House primary, where he has endorsed Rep. John Larson against former Hartford Mayor Luke Bronin, amid speculation about Murphy's 2028 presidential ambitions."
+        "id": "1yu4nq",
+        "title": "Trump\u2019s losing trifecta solved: Dump NATO and buy Greenland",
+        "summary": "An emerging political consensus across the American spectrum is advocating for prioritizing 'America First' by reconsidering traditional foreign commitments, including NATO membership and territorial acquisitions."
       },
-      "old_pick": "b",
-      "new_pick": "b",
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "b"
+      },
+      "disagreement": true,
+      "margin": 0.0091
+    },
+    {
+      "pair_id": "00ace5300b",
+      "kind": "article",
+      "category": "world",
+      "a": {
+        "id": "y3qnfm",
+        "title": "High-flying landowner who said he\u2019d shoot beach \u2018trespassers\u2019 finally snared \u2014 as he blows up at judge",
+        "summary": "A San Francisco man who allegedly threatened to shoot beach trespassers has been arrested and clashed with a judge over his arrest, bond, and claims he was not notified of the hearing."
+      },
+      "b": {
+        "id": "5xtyik",
+        "title": "The forgotten 20 million: why is the world neglecting Afghanistan\u2019s girls and women?",
+        "summary": "Afghanistan's 20 million girls and women continue to be neglected by the international community, according to a Nature editorial. The publication calls the oversight of half the country's population shameful."
+      },
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "a"
+      },
+      "disagreement": true,
+      "margin": 0.0998
+    },
+    {
+      "pair_id": "7b5fba9ddd",
+      "kind": "story",
+      "category": "top",
+      "a": {
+        "id": "39014ba7930e9c70",
+        "title": "Trump secretly transferred from Air Force One to military aircraft in Turkey amid reported Iranian threat",
+        "summary": "According to multiple news reports citing the Washington Post and New York Times, President Trump was secretly moved from Air Force One to a military aircraft during his departure from a NATO summit in Turkey last month, using a catering tr"
+      },
+      "b": {
+        "id": "19eb2e705be3ea0b",
+        "title": "7.4-magnitude earthquake strikes Colombia; death toll reported between 20 and 180, with thousands missing",
+        "summary": "A 7.4-magnitude earthquake struck western Colombia on Monday, causing widespread building collapses and casualties across multiple regions including Cali and Pereira. Reports of deaths range from at least 20 to 180 people, with over 2,700 t"
+      },
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "b"
+      },
+      "disagreement": true,
+      "margin": 0.1877
+    },
+    {
+      "pair_id": "0043e043aa",
+      "kind": "article",
+      "category": "politics",
+      "a": {
+        "id": "mj856b",
+        "title": "\"In Its 870 Paragraphs, 269 Pages, and 63 Causes of Action,\" the Complaint",
+        "summary": "A legal complaint is criticized for being excessively long at 269 pages with 63 causes of action, requiring repleading due to extraordinary extraneous detail."
+      },
+      "b": {
+        "id": "32o8od",
+        "title": "The American Munitions Shortage",
+        "summary": "A newsletter roundup covering multiple topics including David Crowley's narrow victory in the Wisconsin governor primary, Russia's release of a former U.S. Marine, and a fashion trend involving socks and flip-flops."
+      },
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "a"
+      },
+      "disagreement": true,
+      "margin": 0.0467
+    },
+    {
+      "pair_id": "0047ebe20e",
+      "kind": "article",
+      "category": "politics",
+      "a": {
+        "id": "eb0hvn",
+        "title": "\u2018That is third worldism\u2019: Tiana Lowe Doescher slams Abdul el Sayed\u2019s leaked ayatollah comments",
+        "summary": "Washington Examiner columnist Tiana Lowe Doescher criticized Republican attacks on Michigan Democratic Senate nominee Abdul el Sayed, attributing them to comments he made during the primary campaign regarding his name and Arab American supp"
+      },
+      "b": {
+        "id": "7pem18",
+        "title": "In Maine, the new politics meets the old",
+        "summary": "Maine's political landscape is shifting toward a model where national political dynamics increasingly influence local politics, moving away from traditional state-focused politics."
+      },
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "a"
+      },
+      "disagreement": true,
+      "margin": 0.0801
+    },
+    {
+      "pair_id": "021e07a1ff",
+      "kind": "article",
+      "category": "politics",
+      "a": {
+        "id": "mf4ktb",
+        "title": "ICE slams Long Island judge who let once-deported illegal immigrant walk out of court after 4th DWI conviction",
+        "summary": "ICE officials criticized a Long Island judge's decision to release an illegal immigrant with a fourth DWI conviction from court, saying the individual should not have been released. The incident raises concerns about judicial discretion in "
+      },
+      "b": {
+        "id": "eok7jy",
+        "title": "How \u2018pro-union conservatism\u2019 is a win for the radical Left",
+        "summary": "Sen. Josh Hawley's Faster Labor Contracts Act would allow government arbitrators to impose labor terms on newly unionized private-sector businesses, a process critics argue would benefit unions at the expense of conservative values."
+      },
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "b"
+      },
       "disagreement": false,
       "margin": 0.0
     },
     {
-      "pair_id": "2f10426f90",
+      "pair_id": "4888023e72",
       "kind": "article",
-      "category": "politics",
+      "category": "top",
       "a": {
-        "id": "dtlhzk",
-        "title": "GOP senators rally behind Thune in response to Trump jabs at leader",
-        "summary": "Senate Republicans are rallying behind Senate Majority Leader John Thune after President Trump declined to support his re-election, with GOP senators citing their confidence in his leadership."
+        "id": "ngiem",
+        "title": "Bessent Bets Big on the Japanese Yen",
+        "summary": "Treasury official Bessent is betting on the Japanese yen; separately, a 7.4-magnitude earthquake struck Colombia and Iran linked Strait of Hormuz reopening to U.S. concessions."
       },
       "b": {
-        "id": "2m2qve",
-        "title": "\u2018We have to smash the state\u2019: The Left prepares for war",
-        "summary": "An opinion piece claims left-wing activists are preparing for conflict with the state, referencing the 2020 Black Lives Matter protests. The article's full argument is not provided in the excerpt."
+        "id": "oi3b0a",
+        "title": "5 teens die after car plunges off steep Colorado cliff: \u2018Unimaginable grief\u2019",
+        "summary": "Five teenagers died after their car plunged off a steep Colorado cliff, with two of the 17-year-old boys ejected from the vehicle after not wearing seat belts."
       },
-      "old_pick": "b",
-      "new_pick": "b",
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "a"
+      },
       "disagreement": false,
-      "margin": 0.0
+      "margin": 0.0002
     },
     {
-      "pair_id": "04a874a7cf",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "3f12b71e1f497040",
-        "title": "Psychiatrist testifies in Lindsay Clancy trial as defense questions her prescribing practices",
-        "summary": "Dr. Jennifer Tufts, psychiatrist for Lindsay Clancy, returned to testify during the third week of the Massachusetts murder trial. The defense lawyer cross-examined Tufts regarding her prescription decisions and expertise, questioning her ps"
-      },
-      "b": {
-        "id": "4c05ff4f199b4fff",
-        "title": "National Guard deployment in Washington, D.C. faces mixed public reactions and proposed extension through 2029",
-        "summary": "President Trump's National Guard deployment in Washington, D.C. has remained in place for one year, with sources reporting mixed public reactions and debate over its effectiveness and cost. A proposed $1.4 billion extension through 2029 has"
-      },
-      "old_pick": "a",
-      "new_pick": "b",
-      "disagreement": true,
-      "margin": 0.1866
-    },
-    {
-      "pair_id": "0e54e4285c",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "86de1eb6f6bd7123",
-        "title": "U.S. military munition stockpiles depleted after Iran conflict, raising questions about readiness",
-        "summary": "The Trump administration disputes reports that U.S. munition stockpiles have been significantly depleted following more than five months of airstrikes against Iran. Experts and analysts question whether the military's current stockpile leve"
-      },
-      "b": {
-        "id": "f182f80dbab04650",
-        "title": "Democratic Socialist Politicians and Party Positions Draw Scrutiny Over Ideological Consistency",
-        "summary": "Coverage of democratic socialist politicians and their positions reveals disagreement about the relationship between their stated ideology and their actions in office. National Review reports that some Democratic Socialist politicians are d"
-      },
-      "old_pick": "b",
-      "new_pick": "a",
-      "disagreement": true,
-      "margin": 0.023
-    },
-    {
-      "pair_id": "0063a9ec56",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "d8e172fb9fc3eca7",
-        "title": "Florida AG Uthmeier announces investigation into Anthony Fauci",
-        "summary": "Florida Attorney General James Uthmeier announced his office is investigating former NIAID director Anthony Fauci, examining potential fraud, deceptive trade practices, and public nuisance claims. Uthmeier stated the probe could uncover gro"
-      },
-      "b": {
-        "id": "0b472690c1812ddf",
-        "title": "Bernie Sanders calls on Democratic leaders to ban super PACs from primary elections",
-        "summary": "Sen. Bernie Sanders urged Democratic Party leaders to ban super PACs from Democratic primary elections in a letter to Chuck Schumer, Hakeem Jeffries, and DNC Chair Ken Martin. Sanders characterized super PAC spending as corrupt and cited co"
-      },
-      "old_pick": "a",
-      "new_pick": "b",
-      "disagreement": true,
-      "margin": 0.0581
-    },
-    {
-      "pair_id": "004700d947",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "76d9666a00707cdd",
-        "title": "Opinion writers critique Trump's second-term performance and decision-making approach",
-        "summary": "Two opinion pieces argue that President Trump has failed to deliver on his promises during his second term. The Hill criticizes supporters who blame previous administrations for current problems, while the Financial Times contends that Trum"
-      },
-      "b": {
-        "id": "6713e38c7d57ed8c",
-        "title": "NYC Mayor Mamdani addresses Democratic socialism's role in party, with outlets emphasizing different aspects",
-        "summary": "New York City Mayor Zohran Mamdani has made public statements about democratic socialism within the Democratic Party, characterizing it as consistent with FDR's vision and saying socialists are 'going back to what the party used to be.' Acc"
-      },
-      "old_pick": "b",
-      "new_pick": "a",
-      "disagreement": true,
-      "margin": 0.2153
-    },
-    {
-      "pair_id": "22f248d40f",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "b06a8fc508e5b32b",
-        "title": "Mike Lindell runs in Minnesota GOP gubernatorial primary with Trump endorsement",
-        "summary": "MyPillow CEO Mike Lindell is running in Minnesota's Republican gubernatorial primary with an endorsement from Trump, though the state convention backed a different candidate. Lindell is facing financial strain and litigation from voting mac"
-      },
-      "b": {
-        "id": "6713e38c7d57ed8c",
-        "title": "NYC Mayor Mamdani addresses Democratic socialism's role in party, with outlets emphasizing different aspects",
-        "summary": "New York City Mayor Zohran Mamdani has made public statements about democratic socialism within the Democratic Party, characterizing it as consistent with FDR's vision and saying socialists are 'going back to what the party used to be.' Acc"
-      },
-      "old_pick": "b",
-      "new_pick": "a",
-      "disagreement": true,
-      "margin": 0.0572
-    },
-    {
-      "pair_id": "1ef5e2f5b4",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "b163194fafd5c2e3",
-        "title": "Trump Names Staff Secretary Will Scharf as New White House Counsel",
-        "summary": "President Trump announced that Will Scharf, the current White House staff secretary, will become White House counsel effective September 1, replacing David Warrington who is departing for the private sector. Scharf is a conservative lawyer "
-      },
-      "b": {
-        "id": "605b58ecf17f1e36",
-        "title": "Trump acknowledges contractor error in Reflecting Pool damage while maintaining vandalism allegations against ex-Olympian",
-        "summary": "President Trump acknowledged that contractor error, not vandalism, caused some damage to the Lincoln Memorial Reflecting Pool during renovations, but continues to claim that former Olympian David Hearn vandalized the pool, citing a National"
-      },
-      "old_pick": "b",
-      "new_pick": "a",
-      "disagreement": true,
-      "margin": 0.0
-    },
-    {
-      "pair_id": "0698ea6985",
+      "pair_id": "01ce5e1c85",
       "kind": "article",
-      "category": "politics",
+      "category": "world",
       "a": {
-        "id": "jv6fyl",
-        "title": "Trump doubles up on under-the-radar campaign strategy",
-        "summary": "President Trump is intensifying a campaign strategy of calling into tele-rallies to support Republican downballot candidates, which he has employed across multiple election cycles. He has conducted dozens of impromptu interviews with report"
+        "id": "j0rpfm",
+        "title": "Stray cat covered in red dye sparks concern as Texas officials urge public to keep distance",
+        "summary": "Texas animal welfare officials are urging the public to keep distance from a stray cat covered in red dye or paint while they work to help the animal."
       },
       "b": {
-        "id": "2m2qve",
-        "title": "\u2018We have to smash the state\u2019: The Left prepares for war",
-        "summary": "An opinion piece claims left-wing activists are preparing for conflict with the state, referencing the 2020 Black Lives Matter protests. The article's full argument is not provided in the excerpt."
+        "id": "dzlvki",
+        "title": "Ukrainians Are Trying to Help a Traumatized Generation",
+        "summary": "Ukraine is addressing trauma among its young population affected by the war, including refugees and children abducted by Russia."
       },
-      "old_pick": "b",
-      "new_pick": "b",
-      "disagreement": false,
-      "margin": 0.0
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "a"
+      },
+      "disagreement": true,
+      "margin": 0.0864
     },
     {
-      "pair_id": "296a5d0eb0",
+      "pair_id": "022675353b",
       "kind": "article",
-      "category": "politics",
+      "category": "world",
       "a": {
-        "id": "xy3qye",
-        "title": "To protect national security, Trump should ensure the FCC retains landlines",
-        "summary": "An opinion piece argues that Trump should protect landline infrastructure as a national security measure, citing cyberattacks from Iran and military threats from China and Russia. The article presents worst-case scenarios involving foreign "
+        "id": "etx9hw",
+        "title": "How Ra\u00fal Castro\u2019s Grandson, Ra\u00fal G. Rodr\u00edguez Castro, Became a Power Broker",
+        "summary": "Ra\u00fal G. Rodr\u00edguez Castro, grandson of former Cuban leader Ra\u00fal Castro, has emerged as a power broker in talks with the Trump administration, though he was once named in a case targeting a Cuban smuggling ring."
       },
       "b": {
-        "id": "dtlhzk",
-        "title": "GOP senators rally behind Thune in response to Trump jabs at leader",
-        "summary": "Senate Republicans are rallying behind Senate Majority Leader John Thune after President Trump declined to support his re-election, with GOP senators citing their confidence in his leadership."
+        "id": "nef0pu",
+        "title": "2 custodians dead in possible murder-suicide at Chicago elementary school",
+        "summary": "Two custodians were found dead from gunshot wounds at a Chicago elementary school when no students were present. Police are investigating the deaths as a possible murder-suicide."
       },
-      "old_pick": "b",
-      "new_pick": "b",
-      "disagreement": false,
-      "margin": 0.0
-    },
-    {
-      "pair_id": "1541bbfae7",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "686e1fc79a7975aa",
-        "title": "GOP senators release text messages from Fauci's government phone about COVID-19 vaccines and pregnancy",
-        "summary": "Republican senators Rand Paul and Ron Johnson released over 34,000 text messages from Dr. Anthony Fauci's government cellphone, including communications from 2021 about COVID-19 vaccine safety and pregnancy. The release is part of Republica"
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "b"
       },
-      "b": {
-        "id": "5d7b6866dd6e21f5",
-        "title": "Federal agent posted outside Omar's Minnesota town hall meeting",
-        "summary": "Democratic U.S. Rep. Ilhan Omar reported that a Homeland Security Investigations agent was stationed outside her monthly town hall meeting in Richfield, Minnesota on Thursday. Omar has demanded answers from the Department of Homeland Securi"
-      },
-      "old_pick": "a",
-      "new_pick": "b",
       "disagreement": true,
-      "margin": 0.0736
+      "margin": 0.235
     },
     {
-      "pair_id": "147f370b73",
+      "pair_id": "01bb827224",
       "kind": "story",
       "category": "politics",
       "a": {
-        "id": "47a009d0cb410df6",
-        "title": "Ocasio-Cortez Characterizes Past 'Woke' Positions as 'Crazy,' Urges Focus on Current Stances",
-        "summary": "Rep. Alexandria Ocasio-Cortez described what she called 'Woke 1' as 'crazy' during an ABC News interview, urging Wisconsin voters to evaluate candidates based on their current positions rather than past advocacy. Conservative outlets critic"
-      },
-      "b": {
-        "id": "f53c9027cba67f21",
-        "title": "Former Clinton ally criticizes media coverage of Democratic Party internal divisions",
-        "summary": "A former Clinton ally, identified as Democratic lawyer Julian Epstein, has criticized media outlets for downplaying internal divisions within the Democratic Party. Epstein characterized these divisions as a 'civil war' and made critical com"
-      },
-      "old_pick": "a",
-      "new_pick": "b",
-      "disagreement": true,
-      "margin": 0.0454
-    },
-    {
-      "pair_id": "1831f85217",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "709562c6abcdd3f5",
-        "title": "Lauren Boebert's son arrested on child sexual exploitation charges",
-        "summary": "Tyler Boebert, 21-year-old son of Rep. Lauren Boebert (R-CO), was arrested on child sexual exploitation charges related to an explicit video of a 17-year-old and released on a $10,000 bond. According to the Garfield County Sheriff's Office,"
-      },
-      "b": {
-        "id": "f2bb3066821fca81",
-        "title": "Descendant of slaves criticizes Smithsonian's approach to history education",
-        "summary": "Earl Walker Jackson, great-grandson of slaves, has criticized Smithsonian Director Anthea Hartig's use of history as what he characterizes as a 'tool of social justice,' according to his statement. Jackson has expressed concerns that this a"
-      },
-      "old_pick": "b",
-      "new_pick": "a",
-      "disagreement": true,
-      "margin": 0.0117
-    },
-    {
-      "pair_id": "0ad2797b23",
-      "kind": "article",
-      "category": "politics",
-      "a": {
-        "id": "n1oxev",
-        "title": "In rural Texas, data center opposition is scrambling conservative tradition",
-        "summary": "Rural Texas Republican voters are breaking with small-government tradition by pressing local leaders to block large data center projects in their communities. The shift shows how local opposition to massive development is reshaping conserva"
-      },
-      "b": {
-        "id": "67yhap",
-        "title": "Todd Blanche wins praise from anti-abortion groups but faces calls for action",
-        "summary": "Newly confirmed Attorney General Todd Blanche has gained praise from anti-abortion groups by reportedly telling faith leaders that the Trump administration is working on a national abortion ban, though movement leaders are pushing for concr"
-      },
-      "old_pick": "b",
-      "new_pick": "b",
-      "disagreement": false,
-      "margin": 0.0
-    },
-    {
-      "pair_id": "2d77ea20c1",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "632e087d506e00bd",
-        "title": "Democratic socialist Francesca Hong leads Wisconsin gubernatorial primary as party wrestles with progressive direction",
-        "summary": "Democratic socialist state lawmaker Francesca Hong is the frontrunner in Wisconsin's Democratic gubernatorial primary scheduled for Tuesday, testing the strength of progressive candidates in a key swing state. The race has exposed tensions "
-      },
-      "b": {
-        "id": "de59c1f155a9ad76",
-        "title": "Minnesota Democrats to Vote in Senate Primary Between Craig and Flanagan",
-        "summary": "Minnesota's Democratic Senate primary on Tuesday features a contest between U.S. Rep. Angie Craig and Lt. Gov. Peggy Flanagan, with Sen. Bernie Sanders endorsing Flanagan and describing the race as competitive. The primary is taking place a"
-      },
-      "old_pick": "b",
-      "new_pick": "a",
-      "disagreement": true,
-      "margin": 0.0909
-    },
-    {
-      "pair_id": "2b6859f1e2",
-      "kind": "article",
-      "category": "politics",
-      "a": {
-        "id": "gstmpf",
-        "title": "Lisa Murkowski got the SAVE America Act wrong",
-        "summary": "The author disputes Senator Lisa Murkowski's criticisms of the SAVE America Act, claiming she has misrepresented the bill's requirements and overlooked safeguards in the legislation. The piece defends the bill against what the author charac"
-      },
-      "b": {
-        "id": "xy3qye",
-        "title": "To protect national security, Trump should ensure the FCC retains landlines",
-        "summary": "An opinion piece argues that Trump should protect landline infrastructure as a national security measure, citing cyberattacks from Iran and military threats from China and Russia. The article presents worst-case scenarios involving foreign "
-      },
-      "old_pick": "a",
-      "new_pick": "a",
-      "disagreement": false,
-      "margin": 0.0
-    },
-    {
-      "pair_id": "2af4f31418",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "55d7a3abd62f3d0e",
-        "title": "Montana Democratic Senate Nominee Refuses to Exit Race, Complicating Party Strategy",
-        "summary": "Montana Democratic Senate nominee Alani Bankhead has declined to withdraw from the race ahead of Monday's deadline. Democrats had sought to clear the field for independent candidate Seth Bodnar, whom they believed could be more competitive "
-      },
-      "b": {
-        "id": "4c05ff4f199b4fff",
-        "title": "National Guard deployment in Washington, D.C. faces mixed public reactions and proposed extension through 2029",
-        "summary": "President Trump's National Guard deployment in Washington, D.C. has remained in place for one year, with sources reporting mixed public reactions and debate over its effectiveness and cost. A proposed $1.4 billion extension through 2029 has"
-      },
-      "old_pick": "a",
-      "new_pick": "b",
-      "disagreement": true,
-      "margin": 0.0287
-    },
-    {
-      "pair_id": "3ad2bee43d",
-      "kind": "article",
-      "category": "politics",
-      "a": {
-        "id": "w87so9",
-        "title": "Big Tech spent $40 million to convince you saving kids is \u2018censorship\u2019",
-        "summary": "The Kids Online Safety Act advanced out of committee this week as a significant procedural step toward a Senate floor vote, while the article alleges Big Tech spent $40 million characterizing the child safety legislation as censorship. The "
-      },
-      "b": {
-        "id": "2jpvew",
-        "title": "Over 70% of people hate local AI data centers. Politicians just learned the hard way",
-        "summary": "A Gallup poll showing 71% of voters oppose AI data center expansion influenced primary election outcomes across the country this week, catching politicians off guard despite warning signs. The results demonstrate public concern about unchec"
-      },
-      "old_pick": "b",
-      "new_pick": "b",
-      "disagreement": false,
-      "margin": 0.0
-    },
-    {
-      "pair_id": "2657f6a3e0",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "605b58ecf17f1e36",
-        "title": "Trump acknowledges contractor error in Reflecting Pool damage while maintaining vandalism allegations against ex-Olympian",
-        "summary": "President Trump acknowledged that contractor error, not vandalism, caused some damage to the Lincoln Memorial Reflecting Pool during renovations, but continues to claim that former Olympian David Hearn vandalized the pool, citing a National"
-      },
-      "b": {
-        "id": "686e1fc79a7975aa",
-        "title": "GOP senators release text messages from Fauci's government phone about COVID-19 vaccines and pregnancy",
-        "summary": "Republican senators Rand Paul and Ron Johnson released over 34,000 text messages from Dr. Anthony Fauci's government cellphone, including communications from 2021 about COVID-19 vaccine safety and pregnancy. The release is part of Republica"
-      },
-      "old_pick": "a",
-      "new_pick": "b",
-      "disagreement": true,
-      "margin": 0.2969
-    },
-    {
-      "pair_id": "1fcbd2ef0b",
-      "kind": "story",
-      "category": "politics",
-      "a": {
-        "id": "7d94754f3f34e124",
-        "title": "DOJ sues New York, Connecticut, and Vermont over in-state tuition benefits for undocumented immigrants",
-        "summary": "The Department of Justice has filed lawsuits against New York, Connecticut, and Vermont, alleging that state laws providing in-state college tuition rates and financial aid to undocumented immigrants violate federal law and unconstitutional"
+        "id": "6f22c020fe758143",
+        "title": "Todd Blanche sworn in as attorney general following Senate confirmation",
+        "summary": "Todd Blanche, President Trump's former personal attorney, was sworn in as attorney general after Senate confirmation. He is Trump's second attorney general during his second term and had previously served as acting attorney general since Ap"
       },
       "b": {
         "id": "625441d2802a2bfc",
-        "title": "Trump administration revokes over 175,000 visas",
-        "summary": "The Trump State Department announced it has revoked more than 175,000 visas during the second Trump administration. According to the State Department, most revocations resulted from criminal activity and law enforcement encounters, with som"
+        "title": "Trump administration revokes over 175,000 visas citing violations and criminal activity",
+        "summary": "The U.S. State Department announced that more than 175,000 visas have been revoked under the Trump administration, with officials citing violations including criminal activity and security concerns. According to The Guardian, this represent"
       },
-      "old_pick": "a",
-      "new_pick": "b",
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "b"
+      },
       "disagreement": true,
-      "margin": 0.0793
+      "margin": 0.2806
+    },
+    {
+      "pair_id": "cfdbb6077a",
+      "kind": "story",
+      "category": "top",
+      "a": {
+        "id": "35dac4f3cf66d15e",
+        "title": "American Airlines flight makes emergency landing in South Carolina after bird strike causes engine flames",
+        "summary": "American Airlines Flight 1760 experienced flames erupting from its engine following a bird strike and made an emergency landing in South Carolina. Both sources confirm the incident occurred and that the landing was completed, though neither"
+      },
+      "b": {
+        "id": "4de38341daa44ce1",
+        "title": "Bodies found buried in Arizona backyard; police seek man in connection with deaths",
+        "summary": "Two decomposing bodies were discovered buried in a backyard in Litchfield Park, Arizona. Police have launched an international manhunt for Matthew Flores in connection with the discovery. According to police, evidence at the scene suggests "
+      },
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "a"
+      },
+      "disagreement": false,
+      "margin": 0.4198
+    },
+    {
+      "pair_id": "86f9fcf25f",
+      "kind": "story",
+      "category": "top",
+      "a": {
+        "id": "35dac4f3cf66d15e",
+        "title": "American Airlines flight makes emergency landing in South Carolina after bird strike causes engine flames",
+        "summary": "American Airlines Flight 1760 experienced flames erupting from its engine following a bird strike and made an emergency landing in South Carolina. Both sources confirm the incident occurred and that the landing was completed, though neither"
+      },
+      "b": {
+        "id": "19eb2e705be3ea0b",
+        "title": "7.4-magnitude earthquake strikes Colombia; death toll reported between 20 and 180, with thousands missing",
+        "summary": "A 7.4-magnitude earthquake struck western Colombia on Monday, causing widespread building collapses and casualties across multiple regions including Cali and Pereira. Reports of deaths range from at least 20 to 180 people, with over 2,700 t"
+      },
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "b"
+      },
+      "disagreement": true,
+      "margin": 0.8792
+    },
+    {
+      "pair_id": "1ae1a9922e",
+      "kind": "article",
+      "category": "top",
+      "a": {
+        "id": "7rhd3w",
+        "title": "The Evening: An Earthquake Shakes Colombia",
+        "summary": "A news briefing covering an earthquake in Colombia and Trump's call for fewer childhood vaccines."
+      },
+      "b": {
+        "id": "nf9ocj",
+        "title": "Naked woman allegedly steals fire truck for bizarre late-night joyride",
+        "summary": "Emily Fair, 36, was arrested after allegedly stealing a fire truck from a Wisconsin station for a naked joyride in the early morning hours."
+      },
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "b",
+        "current": "a"
+      },
+      "disagreement": true,
+      "margin": 0.0885
+    },
+    {
+      "pair_id": "c4e87f3c1b",
+      "kind": "story",
+      "category": "politics",
+      "a": {
+        "id": "6109426d910a60e9",
+        "title": "6-year-old with autism suspended for biting sandwich into gun shape",
+        "summary": "A 6-year-old boy with autism was suspended from school for biting a sandwich into the shape of a gun. His parents argue the suspension has harmed his self-esteem and social relationships, and contend that his autism makes understanding soci"
+      },
+      "b": {
+        "id": "3146268d63b7f1ad",
+        "title": "Lawsuit challenges California parole board policy affecting life sentences for convicted killers",
+        "summary": "A lawsuit has been filed challenging a California parole board policy that could potentially lead to resentencing or clemency recommendations for individuals convicted of serial killings or mass shootings who are serving life sentences with"
+      },
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "a"
+      },
+      "disagreement": false,
+      "margin": 0.0008
     },
     {
       "pair_id": "01f0e1ce75",
@@ -396,86 +462,177 @@
         "title": "Lisa Murkowski got the SAVE America Act wrong",
         "summary": "The author disputes Senator Lisa Murkowski's criticisms of the SAVE America Act, claiming she has misrepresented the bill's requirements and overlooked safeguards in the legislation. The piece defends the bill against what the author charac"
       },
-      "old_pick": "a",
-      "new_pick": "a",
+      "picks": {
+        "pre_v2": "a",
+        "v2_stage5": "a",
+        "current": "a"
+      },
       "disagreement": false,
       "margin": 0.0
     },
     {
-      "pair_id": "377c4b3357",
+      "pair_id": "bfbd8703ef",
       "kind": "article",
-      "category": "politics",
+      "category": "world",
       "a": {
-        "id": "7b7p67",
-        "title": "Vulnerable battleground Dem embraces 'no tax on tips' after voting against Trump bill",
-        "summary": "Democratic congressman Gabriel Vasquez voted against a Republican bill's no-tax-on-tips provision, then introduced his own permanent no-tax-on-tips bill weeks later in a battleground district. The move suggests a shift in his political posi"
+        "id": "e2x4mo",
+        "title": "How a road could change West Africa's urban future",
+        "summary": "A 600-mile coastal road project across Nigeria, Togo, Ghana, and Ivory Coast represents a major transformation for West African urban development and connectivity."
       },
       "b": {
-        "id": "8pualr",
-        "title": "Chris Murphy\u2019s 2028 ambitions face an early test in Connecticut House race",
-        "summary": "Sen. Chris Murphy's political influence will be tested in Connecticut's Democratic House primary, where he has endorsed Rep. John Larson against former Hartford Mayor Luke Bronin, amid speculation about Murphy's 2028 presidential ambitions."
+        "id": "4ucgfd",
+        "title": "Trump says ceasefire in Lebanon is working. For residents, it\u2019s a \u2018prison.\u2019",
+        "summary": "Israeli forces maintain a buffer zone occupation in Lebanon following a ceasefire, with residents describing severe movement restrictions similar to those imposed in the West Bank. The arrangement raises questions about whether the ceasefir"
       },
-      "old_pick": "a",
-      "new_pick": "a",
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "b"
+      },
       "disagreement": false,
       "margin": 0.0
     },
     {
-      "pair_id": "170fa4bf22",
+      "pair_id": "157a044cf7",
       "kind": "story",
-      "category": "politics",
+      "category": "world",
       "a": {
-        "id": "3c9b11230de9d4fd",
-        "title": "Congressional Democrats Launch Investigation Into Immigration Enforcement Actions Affecting Military Families",
-        "summary": "More than 60 Democratic lawmakers, led by Senators Elizabeth Warren, Richard Blumenthal, and Tammy Duckworth, have launched an investigation into the Trump administration's immigration enforcement actions involving military families. Accord"
+        "id": "0f69ea2487fdba45",
+        "title": "UNESCO reports 2.4 million Afghan girls excluded from secondary school under Taliban rule",
+        "summary": "According to UNESCO, 2.4 million Afghan girls have been shut out of secondary and higher education during five years of Taliban rule following a ban on female education beyond primary level. The UN agency characterizes this as a grave viola"
       },
       "b": {
-        "id": "4af30e5dc2cb8415",
-        "title": "Joint Base Charleston renamed Joint Base Lindsey Graham in honor of late senator",
-        "summary": "The Pentagon renamed Joint Base Charleston in South Carolina to Joint Base Lindsey Graham on Monday, honoring the late Republican senator. Defense Secretary Pete Hegseth spoke at the ceremony. Sources differ on who presided over the dedicat"
+        "id": "eaf232345d1c48ff",
+        "title": "North Korea launches ballistic missile as U.S. and South Korea prepare military drills",
+        "summary": "North Korea launched a ballistic missile toward the sea, according to Japan's Defense Ministry. This launch occurred amid U.S. and South Korean military exercises and marks the second such launch within a week."
       },
-      "old_pick": "b",
-      "new_pick": "a",
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "a"
+      },
       "disagreement": true,
-      "margin": 0.1246
+      "margin": 1.0822
     },
     {
-      "pair_id": "2336d2de43",
-      "kind": "story",
-      "category": "politics",
+      "pair_id": "1836a366e1",
+      "kind": "article",
+      "category": "top",
       "a": {
-        "id": "b06a8fc508e5b32b",
-        "title": "Mike Lindell runs in Minnesota GOP gubernatorial primary with Trump endorsement",
-        "summary": "MyPillow CEO Mike Lindell is running in Minnesota's Republican gubernatorial primary with an endorsement from Trump, though the state convention backed a different candidate. Lindell is facing financial strain and litigation from voting mac"
+        "id": "isb6f3",
+        "title": "Parents jailed after baby chokes to death on dirty diaper while living in trash-filled garage: police",
+        "summary": "A baby died from choking on a dirty diaper while living with his parents in a trash-filled garage, according to police. The couple kept the child in conditions that threatened his health before the fatal incident."
       },
       "b": {
-        "id": "f182f80dbab04650",
-        "title": "Democratic Socialist Politicians and Party Positions Draw Scrutiny Over Ideological Consistency",
-        "summary": "Coverage of democratic socialist politicians and their positions reveals disagreement about the relationship between their stated ideology and their actions in office. National Review reports that some Democratic Socialist politicians are d"
+        "id": "dqlm0y",
+        "title": "Elevator suddenly plummets in high-rise, leaving 4 men with gruesome injuries",
+        "summary": "An elevator in a high-rise building free fell from the fourth floor and struck the ground, injuring four men. The incident was captured on video."
       },
-      "old_pick": "b",
-      "new_pick": "a",
-      "disagreement": true,
-      "margin": 0.0868
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "b"
+      },
+      "disagreement": false,
+      "margin": 0.0002
     },
     {
-      "pair_id": "22d9fd8133",
-      "kind": "story",
-      "category": "politics",
+      "pair_id": "fa08974032",
+      "kind": "article",
+      "category": "world",
       "a": {
-        "id": "47a009d0cb410df6",
-        "title": "Ocasio-Cortez Characterizes Past 'Woke' Positions as 'Crazy,' Urges Focus on Current Stances",
-        "summary": "Rep. Alexandria Ocasio-Cortez described what she called 'Woke 1' as 'crazy' during an ABC News interview, urging Wisconsin voters to evaluate candidates based on their current positions rather than past advocacy. Conservative outlets critic"
+        "id": "knrwwh",
+        "title": "New Zealand Prime Minister Luxon Wins Party Confidence Vote",
+        "summary": "New Zealand Prime Minister Christopher Luxon won a confidence vote within the governing National Party, securing his position as party leader."
       },
       "b": {
-        "id": "5d7b6866dd6e21f5",
-        "title": "Federal agent posted outside Omar's Minnesota town hall meeting",
-        "summary": "Democratic U.S. Rep. Ilhan Omar reported that a Homeland Security Investigations agent was stationed outside her monthly town hall meeting in Richfield, Minnesota on Thursday. Omar has demanded answers from the Department of Homeland Securi"
+        "id": "ogb58r",
+        "title": "Thailand suspends new gun permits after mass shooting",
+        "summary": "Thailand has suspended new gun permits following a mass shooting and promises to enact stricter firearms laws in response to the country's high level of gun ownership. The policy shift reflects authorities' effort to address public safety c"
       },
-      "old_pick": "a",
-      "new_pick": "b",
-      "disagreement": true,
-      "margin": 0.4824
+      "picks": {
+        "pre_v2": "b",
+        "v2_stage5": "b",
+        "current": "b"
+      },
+      "disagreement": false,
+      "margin": 0.0001
     }
-  ]
+  ],
+  "session": {
+    "number": 3,
+    "labeled_at": "2026-08-11",
+    "picks": [
+      "b",
+      "a",
+      "a",
+      "a",
+      "skip",
+      "b",
+      "b",
+      "b",
+      "b",
+      "skip",
+      "skip",
+      "b",
+      "a",
+      "b",
+      "a",
+      "b",
+      "b",
+      "b",
+      "a",
+      "b",
+      "b",
+      "b",
+      "a",
+      "a",
+      "b"
+    ],
+    "result": {
+      "scored": 22,
+      "skipped": 3,
+      "agreement": {
+        "pre_v2": 10,
+        "v2_stage5": 7,
+        "current": 14
+      },
+      "contested": {
+        "n": 13,
+        "pre_v2": 6,
+        "v2_stage5": 3,
+        "current": 10
+      },
+      "controls": {
+        "n": 9,
+        "pre_v2": 4,
+        "v2_stage5": 4,
+        "current": 4
+      },
+      "contested_by_kind": {
+        "story": {
+          "n": 6,
+          "current": 6
+        },
+        "article": {
+          "n": 7,
+          "current": 4
+        }
+      },
+      "contested_by_category": {
+        "top": {
+          "n": 5,
+          "current": 5
+        },
+        "politics": {
+          "n": 4,
+          "current": 4
+        },
+        "world": {
+          "n": 4,
+          "current": 1
+        }
+      }
+    }
+  }
 }
