@@ -250,6 +250,12 @@ CREATE INDEX IF NOT EXISTS idx_primer_expand_events_article
 -- of budget (sift-api#70). Frontend topic-search paid calls are NOT covered
 -- here yet — they remain a temporary D35 exception until sift-api#79 moves
 -- that fallback into sift-api.
+-- Token columns (migrations/029) exist so spend can be re-priced against a
+-- different model's rates. A stored dollar figure cannot be: cost is one
+-- equation with two unknowns, so "what would this stage cost on model X" is
+-- unanswerable from dollars alone. The stages sit at opposite ends of the
+-- input:output ratio and Haiku prices output at 5x input, so the answer differs
+-- per stage rather than scaling uniformly.
 CREATE TABLE IF NOT EXISTS ai_usage_daily (
     usage_date          DATE NOT NULL,
     provider            TEXT NOT NULL,          -- 'anthropic' | 'voyage'
@@ -257,8 +263,39 @@ CREATE TABLE IF NOT EXISTS ai_usage_daily (
     operation           TEXT NOT NULL,          -- call-site id, e.g. 'compare.search'
     estimated_cost_usd  DOUBLE PRECISION NOT NULL DEFAULT 0,
     call_count          INTEGER NOT NULL DEFAULT 0,
+    input_tokens        BIGINT NOT NULL DEFAULT 0,
+    output_tokens       BIGINT NOT NULL DEFAULT 0,
+    cache_read_tokens   BIGINT NOT NULL DEFAULT 0,
+    cache_write_tokens  BIGINT NOT NULL DEFAULT 0,
+    web_search_calls    INTEGER NOT NULL DEFAULT 0,
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (usage_date, provider, model, operation)
+);
+
+-- How each Claude call ended, per day (migrations/021 + 029).
+-- Was only ever in app/db.py:_apply_migrations, so a fresh DB built from this
+-- file alone did not have it — added here 2026-08-12 to close that drift.
+--
+-- Splitting on `aligned` is the point: the question is not "do we ever hit the
+-- cap" but "are the misaligned ones the ones that did". `model` is in the key
+-- (029) because during a model A/B both arms otherwise collide on one row, and
+-- this split is the only stored signal for whether a model can produce
+-- parseable indexed JSON.
+CREATE TABLE IF NOT EXISTS llm_output_stops (
+    usage_date        DATE    NOT NULL,
+    operation         TEXT    NOT NULL,
+    model             TEXT    NOT NULL DEFAULT '',
+    stop_reason       TEXT    NOT NULL,
+    aligned           BOOLEAN NOT NULL,
+    -- Kept in the key so the data stays readable across a BATCH_SIZE change —
+    -- which is the decision this table exists to inform.
+    batch_size        INTEGER NOT NULL,
+    call_count        INTEGER NOT NULL DEFAULT 0,
+    -- High-water mark. Against the call's max_tokens this is the headroom
+    -- reading, and it stays meaningful even if nothing ever truncates.
+    max_output_tokens INTEGER NOT NULL DEFAULT 0,
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (usage_date, operation, model, stop_reason, aligned, batch_size)
 );
 
 -- Curated outlet provenance (migrations/006).

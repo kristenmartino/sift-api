@@ -318,6 +318,11 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
                 operation           TEXT NOT NULL,
                 estimated_cost_usd  DOUBLE PRECISION NOT NULL DEFAULT 0,
                 call_count          INTEGER NOT NULL DEFAULT 0,
+                input_tokens        BIGINT NOT NULL DEFAULT 0,
+                output_tokens       BIGINT NOT NULL DEFAULT 0,
+                cache_read_tokens   BIGINT NOT NULL DEFAULT 0,
+                cache_write_tokens  BIGINT NOT NULL DEFAULT 0,
+                web_search_calls    INTEGER NOT NULL DEFAULT 0,
                 updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (usage_date, provider, model, operation)
             )
@@ -541,13 +546,15 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             CREATE TABLE IF NOT EXISTS llm_output_stops (
                 usage_date        DATE    NOT NULL,
                 operation         TEXT    NOT NULL,
+                model             TEXT    NOT NULL DEFAULT '',
                 stop_reason       TEXT    NOT NULL,
                 aligned           BOOLEAN NOT NULL,
                 batch_size        INTEGER NOT NULL,
                 call_count        INTEGER NOT NULL DEFAULT 0,
                 max_output_tokens INTEGER NOT NULL DEFAULT 0,
                 updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                PRIMARY KEY (usage_date, operation, stop_reason, aligned, batch_size)
+                PRIMARY KEY (usage_date, operation, model, stop_reason, aligned,
+                             batch_size)
             )
         """)
 
@@ -731,6 +738,63 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             CREATE INDEX IF NOT EXISTS idx_funding_edges_decision
                 ON funding_edges (review_decision)
                 WHERE review_decision IS NOT NULL
+        """)
+
+        # Per-model token accounting (migrations/029).
+        #
+        # ai_usage_daily records dollars, so "what would this stage cost on
+        # model X" cannot be answered from stored data at all — cost is one
+        # equation with two unknowns, and you can only find out by spending.
+        # That is fine with one model and is the blocker with two: the stages
+        # sit at opposite ends of the input:output ratio (entity_linker_llm is
+        # input-heavy, story_synthesizer output-heavy) and Haiku prices output
+        # at 5x input, so a candidate's saving differs per stage rather than
+        # scaling uniformly.
+        #
+        # The CREATE TABLE above already carries these for a fresh DB; these
+        # ALTERs are the live-DB path. NOT NULL with a constant DEFAULT is
+        # metadata-only on PG11+, so no rewrite and no long lock.
+        for _col, _type in (
+            ("input_tokens", "BIGINT"),
+            ("output_tokens", "BIGINT"),
+            ("cache_read_tokens", "BIGINT"),
+            ("cache_write_tokens", "BIGINT"),
+            ("web_search_calls", "INTEGER"),
+        ):
+            await conn.execute(
+                f"ALTER TABLE ai_usage_daily "
+                f"ADD COLUMN IF NOT EXISTS {_col} {_type} NOT NULL DEFAULT 0"
+            )
+
+        # `model` on llm_output_stops, and in its key (migrations/029). Without
+        # it a model A/B pools both arms into one row, and the aligned/misaligned
+        # split — the only stored signal for whether a model can produce
+        # parseable indexed JSON — becomes unreadable exactly when it matters.
+        await conn.execute(
+            "ALTER TABLE llm_output_stops "
+            "ADD COLUMN IF NOT EXISTS model TEXT NOT NULL DEFAULT ''"
+        )
+        # Re-adding a primary key errors, so rebuild only when `model` is not
+        # already in it. Keeps this idempotent across restarts.
+        await conn.execute("""
+            DO $$
+            BEGIN
+                IF to_regclass('llm_output_stops') IS NOT NULL AND NOT EXISTS (
+                    SELECT 1
+                    FROM pg_index i
+                    JOIN pg_attribute a
+                      ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey)
+                    WHERE i.indrelid = 'llm_output_stops'::regclass
+                      AND i.indisprimary
+                      AND a.attname = 'model'
+                ) THEN
+                    ALTER TABLE llm_output_stops
+                        DROP CONSTRAINT IF EXISTS llm_output_stops_pkey;
+                    ALTER TABLE llm_output_stops ADD PRIMARY KEY
+                        (usage_date, operation, model, stop_reason, aligned,
+                         batch_size);
+                END IF;
+            END $$
         """)
 
 

@@ -88,6 +88,78 @@ class TestPriceTableParity:
         payload = log_usage("test", _response(), web_searches=1)
         assert payload["cost_usd"] == 0.010, "web search price drifted"
 
+    def test_the_model_table_agrees_with_the_pinned_constants(self):
+        """`PRICES` is keyed by model; the five constants above are what two
+        sibling repos are pinned to. If the default model's row and those
+        constants ever disagree, the golden 7.38 goes on asserting a number this
+        module no longer charges — green here, wrong in the ledger."""
+        haiku = usage_tracker.PRICES[usage_tracker.DEFAULT_MODEL]
+        assert haiku.input_per_m == usage_tracker.PRICE_INPUT_PER_M
+        assert haiku.output_per_m == usage_tracker.PRICE_OUTPUT_PER_M
+        assert haiku.cache_write_per_m == usage_tracker.PRICE_CACHE_WRITE_5M_PER_M
+        assert haiku.cache_read_per_m == usage_tracker.PRICE_CACHE_READ_PER_M
+
+
+class TestModelAwarePricing:
+    """`log_usage` took a `model` argument and ignored it for pricing.
+
+    Everything on the pipeline is Haiku, so that read as harmless — but
+    services/judge.py runs Sonnet, and every judge call was costed at Haiku's
+    $1/$5 instead of $3/$15: understated ~3x. Nothing in prod spends it today
+    (`why_it_matters_judge_enabled` defaults false), so the damage was confined
+    to eval scripts under-reporting their own cost — and to the ledger being
+    ready to record fiction the moment a second model ran anywhere.
+    """
+
+    def test_sonnet_is_not_billed_at_haiku_rates(self):
+        haiku = log_usage("op", _response(input_tokens=ONE_M, output_tokens=ONE_M))
+        sonnet = log_usage(
+            "op",
+            _response(input_tokens=ONE_M, output_tokens=ONE_M),
+            model="claude-sonnet-4-6",
+        )
+        assert haiku["cost_usd"] == 6.00  # $1 in + $5 out
+        assert sonnet["cost_usd"] == 18.00  # $3 in + $15 out
+        assert sonnet["cost_usd"] == haiku["cost_usd"] * 3
+
+    def test_the_dated_haiku_snapshot_prices_the_same_as_the_alias(self):
+        """services/ pins claude-haiku-4-5-20251001 while log_usage's default is
+        the alias. Both must price identically or the same call costs two
+        different amounts depending on which string reached the ledger."""
+        alias = log_usage("op", _response(input_tokens=ONE_M), model="claude-haiku-4-5")
+        dated = log_usage(
+            "op", _response(input_tokens=ONE_M), model="claude-haiku-4-5-20251001"
+        )
+        assert alias["cost_usd"] == dated["cost_usd"] == 1.00
+
+    def test_an_unpriced_model_falls_back_loudly_rather_than_to_zero(self):
+        """A zero looks like "this stage is free" and survives review; a wrong
+        number is visible and gets corrected. So the fallback bills at the
+        default model's rates and says so."""
+        usage_tracker._warned_models.discard("some-open-weight-model")
+        with patch.object(usage_tracker.logger, "warning") as warn:
+            payload = log_usage(
+                "op", _response(input_tokens=ONE_M), model="some-open-weight-model"
+            )
+        assert payload["cost_usd"] == 1.00  # Haiku's input rate, not $0
+        warn.assert_called_once()
+
+    def test_the_unpriced_warning_fires_once_per_model_not_once_per_call(self):
+        usage_tracker._warned_models.discard("noisy-model")
+        with patch.object(usage_tracker.logger, "warning") as warn:
+            for _ in range(5):
+                log_usage("op", _response(input_tokens=1), model="noisy-model")
+        warn.assert_called_once()
+
+    def test_batch_usage_is_model_aware_too(self):
+        """The three Batch API stages price through a different function; a fix
+        applied to only one of them is the same bug in half the pipeline."""
+        results = [_batch_result(input_tokens=ONE_M)]
+        haiku = usage_tracker.log_batch_usage("op", results)
+        sonnet = usage_tracker.log_batch_usage("op", results, model="claude-sonnet-4-6")
+        assert haiku["cost_usd"] == 0.50  # $1/M x 1M x 50% batch discount
+        assert sonnet["cost_usd"] == 1.50
+
 
 class TestLogUsage:
     def test_returns_a_payload_rather_than_a_swallowed_empty_dict(self):
@@ -134,6 +206,25 @@ class TestLogUsage:
             log_usage("op", _response(input_tokens=ONE_M))
         rec.assert_called_once()
         assert rec.call_args.args[2] == 1.0  # $1.00/M input
+
+    def test_token_counts_reach_the_ledger_not_just_the_log_line(self):
+        """These four numbers were computed and thrown away — the log line had
+        them, the ledger did not, so the stored dollars could not be re-priced
+        onto another model (migrations/029)."""
+        with patch.object(usage_tracker, "_record_to_ledger") as rec:
+            log_usage(
+                "op",
+                _response(
+                    input_tokens=11, output_tokens=22, cache_read=33, cache_creation=44
+                ),
+                web_searches=5,
+            )
+        kw = rec.call_args.kwargs
+        assert kw["input_tokens"] == 11
+        assert kw["output_tokens"] == 22
+        assert kw["cache_read_tokens"] == 33
+        assert kw["cache_write_tokens"] == 44
+        assert kw["web_search_calls"] == 5
 
     def test_recording_cannot_be_gated_on_a_setting(self):
         """The structural guard for the 20x-stale cost figure.

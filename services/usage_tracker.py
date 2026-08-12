@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 # Deliberately no `settings` import. This module records what things cost; it
@@ -13,6 +14,13 @@ logger = logging.getLogger("sift-api.usage")
 
 # Claude Haiku 4.5 pricing (USD per 1M tokens)
 # Source: https://docs.anthropic.com/en/docs/about-claude/pricing
+#
+# These stay module constants because two sibling repos are pinned to them:
+# sift/lib/usage-tracker.ts and sift-mcp/src/sift_mcp/usage.py carry the same
+# five numbers, and a golden cost of 7.38 is asserted against them in both
+# sift-api/tests/test_usage_tracker.py and sift/__tests__/usage-tracker.test.ts.
+# One number, three repos, two languages, no shared source — so moving them
+# would break a test only sift's CI runs. PRICES below pins itself to them.
 PRICE_INPUT_PER_M = 1.0
 PRICE_OUTPUT_PER_M = 5.0
 PRICE_CACHE_WRITE_5M_PER_M = 1.25  # 1.25x base input for 5-min ephemeral cache writes
@@ -20,6 +28,63 @@ PRICE_CACHE_READ_PER_M = 0.10  # 0.1x base input for cache hits
 
 # Web search tool pricing: $10 per 1,000 searches
 PRICE_WEB_SEARCH_PER_CALL = 0.010
+
+
+@dataclass(frozen=True)
+class ModelPrices:
+    """USD per 1M tokens for one model."""
+
+    input_per_m: float
+    output_per_m: float
+    cache_write_per_m: float
+    cache_read_per_m: float
+
+
+# Priced per model, because `log_usage` took a `model` argument and ignored it.
+#
+# Everything on the pipeline is Haiku, so that read as harmless — but
+# `services/judge.py` runs Sonnet, and every judge call has been costed at
+# Haiku's $1/$5 instead of Sonnet's $3/$15: understated ~3x. Nothing in prod
+# spends it today (`why_it_matters_judge_enabled` defaults false), but every
+# eval script that uses the judge under-reports its own cost, and the moment a
+# second model runs anywhere the ledger starts recording fiction that
+# scripts/verify_cost_baseline.py then reports as fact.
+#
+# An unknown model falls back to Haiku's rates rather than to zero: a wrong
+# number is visible and gets corrected, a zero looks like "this stage is free".
+PRICES: dict[str, ModelPrices] = {
+    "claude-haiku-4-5": ModelPrices(1.0, 5.0, 1.25, 0.10),
+    "claude-haiku-4-5-20251001": ModelPrices(1.0, 5.0, 1.25, 0.10),
+    "claude-sonnet-4-6": ModelPrices(3.0, 15.0, 3.75, 0.30),
+}
+
+DEFAULT_MODEL = "claude-haiku-4-5"
+
+# Unknown model ids we have already warned about, so the warning fires once per
+# id per process rather than once per call.
+_warned_models: set[str] = set()
+
+
+def prices_for(model: str) -> ModelPrices:
+    """Rates for `model`, falling back to the default model's rates.
+
+    The fallback is logged once per unknown id: silently pricing an unrecognized
+    model at Haiku rates is how the judge bug survived, so the mis-pricing has
+    to announce itself.
+    """
+    found = PRICES.get(model or "")
+    if found is not None:
+        return found
+    if model and model not in _warned_models:
+        _warned_models.add(model)
+        logger.warning(
+            "usage: no price row for model %r — costing it at %s rates; "
+            "add it to usage_tracker.PRICES",
+            model,
+            DEFAULT_MODEL,
+        )
+    return PRICES[DEFAULT_MODEL]
+
 
 # Voyage AI voyage-3-lite embeddings (USD per 1M tokens). Voyage bills a small
 # per-token rate above a generous free monthly tier; this is a conservative
@@ -57,11 +122,12 @@ def log_usage(
         cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0) if usage else 0
         cache_creation = int(getattr(usage, "cache_creation_input_tokens", 0) or 0) if usage else 0
 
+        p = prices_for(model)
         cost_usd = (
-            (input_tokens * PRICE_INPUT_PER_M / 1_000_000)
-            + (output_tokens * PRICE_OUTPUT_PER_M / 1_000_000)
-            + (cache_creation * PRICE_CACHE_WRITE_5M_PER_M / 1_000_000)
-            + (cache_read * PRICE_CACHE_READ_PER_M / 1_000_000)
+            (input_tokens * p.input_per_m / 1_000_000)
+            + (output_tokens * p.output_per_m / 1_000_000)
+            + (cache_creation * p.cache_write_per_m / 1_000_000)
+            + (cache_read * p.cache_read_per_m / 1_000_000)
             + (web_searches * PRICE_WEB_SEARCH_PER_CALL)
         )
 
@@ -77,7 +143,16 @@ def log_usage(
             "cost_usd": round(cost_usd, 6),
         }
         logger.info(json.dumps(payload))
-        _record_to_ledger(operation, model, round(cost_usd, 6))
+        _record_to_ledger(
+            operation,
+            model,
+            round(cost_usd, 6),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_creation,
+            web_search_calls=web_searches,
+        )
         return payload
     except Exception as e:
         # Never let telemetry break the pipeline
@@ -126,11 +201,12 @@ def log_batch_usage(
             cache_read += int(usage.get("cache_read_input_tokens") or 0)
             cache_creation += int(usage.get("cache_creation_input_tokens") or 0)
 
+        p = prices_for(model)
         cost_usd = BATCH_DISCOUNT * (
-            (input_tokens * PRICE_INPUT_PER_M / 1_000_000)
-            + (output_tokens * PRICE_OUTPUT_PER_M / 1_000_000)
-            + (cache_creation * PRICE_CACHE_WRITE_5M_PER_M / 1_000_000)
-            + (cache_read * PRICE_CACHE_READ_PER_M / 1_000_000)
+            (input_tokens * p.input_per_m / 1_000_000)
+            + (output_tokens * p.output_per_m / 1_000_000)
+            + (cache_creation * p.cache_write_per_m / 1_000_000)
+            + (cache_read * p.cache_read_per_m / 1_000_000)
         )
 
         payload = {
@@ -148,7 +224,16 @@ def log_batch_usage(
             "cost_usd": round(cost_usd, 6),
         }
         logger.info(json.dumps(payload))
-        _record_to_ledger(operation, model, round(cost_usd, 6), call_count=ok)
+        _record_to_ledger(
+            operation,
+            model,
+            round(cost_usd, 6),
+            call_count=ok,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_creation,
+        )
         return payload
     except Exception as e:
         logger.debug("batch usage logging failed for %s: %s", operation, e)
@@ -181,7 +266,16 @@ def voyage_cost(total_tokens: int) -> float:
 
 
 def _record_to_ledger(
-    operation: str, model: str, cost_usd: float, call_count: int = 1
+    operation: str,
+    model: str,
+    cost_usd: float,
+    call_count: int = 1,
+    *,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    web_search_calls: int = 0,
 ) -> None:
     """Best-effort: persist a Claude call's cost to the daily ledger without
     blocking the caller. No-op when there's no running event loop (sync
@@ -209,7 +303,18 @@ def _record_to_ledger(
         from services.cost_guard import record_usage
 
         task = loop.create_task(
-            record_usage("anthropic", model, operation, cost_usd, call_count=call_count)
+            record_usage(
+                "anthropic",
+                model,
+                operation,
+                cost_usd,
+                call_count=call_count,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+                web_search_calls=web_search_calls,
+            )
         )
         _pending_records.add(task)
         task.add_done_callback(_pending_records.discard)
@@ -223,6 +328,7 @@ def log_output_stop(
     *,
     aligned: bool,
     batch_size: int,
+    model: str = "",
 ) -> None:
     """Record how a call ended, without blocking the caller.
 
@@ -239,6 +345,12 @@ def log_output_stop(
         usage = getattr(response, "usage", None)
         output_tokens = int(getattr(usage, "output_tokens", 0) or 0) if usage else 0
         stop_reason = getattr(response, "stop_reason", None) or "unknown"
+        # Read from the response, not from what we asked for: the response says
+        # which model actually served the call, so a provider that silently
+        # routes elsewhere shows up here instead of being recorded as the model
+        # we intended. Falls back to the caller's value, then to '' — a blank is
+        # honest about not knowing, a guess is not.
+        served_model = str(getattr(response, "model", "") or model or "")
 
         loop = asyncio.get_running_loop()
         from services.cost_guard import record_output_stop
@@ -250,6 +362,7 @@ def log_output_stop(
                 aligned=aligned,
                 batch_size=batch_size,
                 output_tokens=output_tokens,
+                model=served_model,
             )
         )
         _pending_records.add(task)
