@@ -703,6 +703,36 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
                 ON funding_edges (source_ein, fiscal_period DESC)
         """)
 
+        # Human adjudication of held edges (migrations/028). A separate layer
+        # from ein_name_agrees on purpose: the machine verdict stays as
+        # evidence, and these record what a person concluded on top of it.
+        # Without this, a legitimately-held edge (Harvard Law School under
+        # President and Fellows of Harvard College) stays withheld forever.
+        await conn.execute(
+            "ALTER TABLE funding_edges ADD COLUMN IF NOT EXISTS review_decision TEXT"
+        )
+        await conn.execute("""
+            DO $$ BEGIN
+                ALTER TABLE funding_edges ADD CONSTRAINT funding_edges_review_decision_check
+                    CHECK (review_decision IN ('confirmed', 'rejected'));
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$
+        """)
+        await conn.execute(
+            "ALTER TABLE funding_edges ADD COLUMN IF NOT EXISTS review_note TEXT"
+        )
+        await conn.execute(
+            "ALTER TABLE funding_edges ADD COLUMN IF NOT EXISTS reviewed_by TEXT"
+        )
+        await conn.execute(
+            "ALTER TABLE funding_edges ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ"
+        )
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_funding_edges_decision
+                ON funding_edges (review_decision)
+                WHERE review_decision IS NOT NULL
+        """)
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
