@@ -9,6 +9,7 @@ import anthropic
 
 from app.config import settings
 from app.models import RSSArticle
+from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.model_registry import resolve
 from services.quality_gate import gate_summary
@@ -41,11 +42,6 @@ VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world
 # coercing to "top" — funneled exactly the least-classifiable content into the
 # most visible tab. Misfiling by policy is worse than not filing.
 FALLBACK_CATEGORY = "general"
-
-# Pre-call cost estimate for the budget check, per BATCH_SIZE-article call.
-# Measured from `ai_usage_daily` over 7 days to 2026-08-11: $7.91 across 2,969
-# calls. See docs/SOURCE_SCALING.md.
-SUMMARY_COST_PER_BATCH_USD = 0.0027
 
 
 def _batch_count(items: list) -> int:
@@ -98,7 +94,7 @@ async def summarize_articles(
     # budget-stopped day. Truncated RSS text is worse than a real summary and
     # far better than that; same reasoning as `_raw_content_fallback`'s own
     # docstring.
-    budget = await check_budget(SUMMARY_COST_PER_BATCH_USD * _batch_count(summarizable))
+    budget = await check_budget(estimate_cost(OPERATION, _batch_count(summarizable)))
     if not budget.allowed:
         logger.warning(
             "Summarization skipped for %d articles (cost guard: %s); storing "

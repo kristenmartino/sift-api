@@ -70,6 +70,7 @@ import json
 import logging
 from datetime import datetime
 
+from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 
 logger = logging.getLogger("sift-api.incremental_threading")
@@ -79,14 +80,6 @@ logger = logging.getLogger("sift-api.incremental_threading")
 # outlets covered this", so a single-outlet story misrepresents itself.
 MIN_UNIQUE_OUTLETS = 2
 
-# Pre-call cost estimates for the budget check, measured from `ai_usage_daily`
-# over 7 days to 2026-08-11 (docs/SOURCE_SCALING.md): the confirmer ran $1.45
-# across 230 calls, the synthesizer $10.14 across 4,564. The synthesis figure is
-# an upper bound per relevant candidate — most attaches skip synthesis entirely
-# because the outlet set did not change — so the guard trips slightly early,
-# which is the right direction for a ceiling.
-CONFIRM_COST_PER_CALL_USD = 0.0063
-SYNTHESIS_COST_PER_CALL_USD = 0.0022
 
 # Mirrors `services.story_confirmer.BATCH_SIZE`; imported lazily elsewhere in
 # this module, so it is restated rather than imported at module scope.
@@ -329,7 +322,7 @@ async def _sweep_failed(pool, synthesize) -> dict:
     if not targets:
         return counts
 
-    budget = await check_budget(SYNTHESIS_COST_PER_CALL_USD * len(targets))
+    budget = await check_budget(estimate_cost("story_synthesizer.synthesize", len(targets)))
     if not budget.allowed:
         # Nothing is written, so every row stays eligible next run. Repair is
         # deliberately lower priority than the main pass: it has already been
@@ -450,8 +443,8 @@ async def run_incremental_threading(
     # at the source — both now honour the `_failed` flag — so that reason is
     # gone and the two above are what keep it here.
     budget = await check_budget(
-        CONFIRM_COST_PER_CALL_USD * _confirm_batches(relevant)
-        + SYNTHESIS_COST_PER_CALL_USD * len(relevant)
+        estimate_cost("story_confirmer.confirm", _confirm_batches(relevant))
+        + estimate_cost("story_synthesizer.synthesize", len(relevant))
     )
     if not budget.allowed:
         logger.warning(json.dumps({

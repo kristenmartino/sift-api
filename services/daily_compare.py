@@ -24,15 +24,12 @@ import re
 import time
 
 from app.db import get_pool
+from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from workflows.compare_workflow import CompareState, build_compare_graph
 
 logger = logging.getLogger("sift-api.daily-compare")
 
-# Mirrors COMPARE_COST_ESTIMATE_PER_SOURCE_USD in app/routers/compare.py —
-# deliberately high so the example is blocked before it would cross the
-# ceiling, not after.
-COST_ESTIMATE_PER_SOURCE_USD = 0.04
 
 # A fixed cross-spectrum set, all present in the compare allowlist. Fixed on
 # purpose: the example demonstrates the feature's spread, and a stable set
@@ -143,7 +140,7 @@ async def _refresh(force: bool) -> bool:
             return False
 
     budget = await check_budget(
-        COST_ESTIMATE_PER_SOURCE_USD * len(DAILY_COMPARE_SOURCES)
+        estimate_cost("compare.search_sources", len(DAILY_COMPARE_SOURCES))
     )
     if not budget.allowed:
         logger.warning(

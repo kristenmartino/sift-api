@@ -59,9 +59,27 @@ class ModelSpec:
     catalog_id: str  # repo-local alias used in LLM_MODEL_OVERRIDES
     provider: str  # "anthropic"
     model: str  # the id sent on the wire, and written to ai_usage_daily
+    # No defaults on the capability flags: a new catalog entry must state what
+    # it can do. Defaulting them to True would let a candidate silently claim a
+    # batch API it does not have, which is precisely the refusal below exists
+    # to prevent.
     supports_batch: bool  # a Message Batches-style async API at a discount
     supports_prompt_cache: bool
     supports_server_web_search: bool
+    # Other wire ids meaning the same physical model — the undated alias, and
+    # any older snapshot. Needed because both forms already exist in
+    # `ai_usage_daily` (the batch paths logged the alias while the realtime
+    # paths logged the snapshot, until 2026-08-12) and because `log_usage`'s
+    # own default is still the alias. A lookup that only matched `model` would
+    # quietly treat the alias as an unknown model and drop the batch discount.
+    aliases: tuple[str, ...] = ()
+    # What a batched call costs relative to list price. 0.5 on Anthropic; 1.0
+    # means the provider bills batches at full rate. A property of the model,
+    # not a global constant — applying Anthropic's 0.5 to a provider that has
+    # no batch discount would halve a cost that was never discounted, and the
+    # under-reported figure feeds the fail-closed ceiling that is supposed to
+    # catch exactly that class of error.
+    batch_price_multiplier: float = 1.0
 
 
 # Both entries are Anthropic today. The catalog exists so a candidate can be
@@ -74,6 +92,8 @@ MODELS: dict[str, ModelSpec] = {
         supports_batch=True,
         supports_prompt_cache=True,
         supports_server_web_search=True,
+        aliases=("claude-haiku-4-5",),
+        batch_price_multiplier=0.5,
     ),
     "sonnet-4-6": ModelSpec(
         catalog_id="sonnet-4-6",
@@ -82,6 +102,7 @@ MODELS: dict[str, ModelSpec] = {
         supports_batch=True,
         supports_prompt_cache=True,
         supports_server_web_search=True,
+        batch_price_multiplier=0.5,
     ),
 }
 
@@ -233,6 +254,29 @@ def _supports(spec: ModelSpec, capability: str) -> bool:
         BATCH: spec.supports_batch,
         SERVER_WEB_SEARCH: spec.supports_server_web_search,
     }.get(capability, False)
+
+
+def batch_price_multiplier_for(model: str) -> float:
+    """Batch-price multiplier for a wire model id.
+
+    Matches aliases too: both the dated snapshot and the undated alias appear in
+    `ai_usage_daily`, and `log_usage`'s own default is the alias.
+
+    Defaults to 1.0 (no discount) for an unrecognized model. That overstates
+    cost, which is the safe direction: the ledger feeds a fail-closed ceiling,
+    so an over-reported figure trips the guard early while an under-reported one
+    lets a run past it.
+    """
+    spec = spec_for_wire_model(model)
+    return spec.batch_price_multiplier if spec else 1.0
+
+
+def spec_for_wire_model(model: str) -> ModelSpec | None:
+    """The spec for a wire model id, matching its aliases as well."""
+    for spec in MODELS.values():
+        if model == spec.model or model in spec.aliases:
+            return spec
+    return None
 
 
 def assignments() -> dict[str, str]:

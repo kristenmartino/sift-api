@@ -9,6 +9,7 @@ import anthropic
 from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
+from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.model_registry import resolve
 from services.index_alignment import (
@@ -29,12 +30,10 @@ def _model() -> str:
     """Resolved per call, never cached at import — an override must not need a
     restart to take effect, and a module constant would lie in tests."""
     return resolve(OPERATION).model
+
+
 BATCH_SIZE = 15  # More articles per call since extraction is lighter than summarization
 
-# Pre-call cost estimate for the budget check, per BATCH_SIZE-article request.
-# Measured from `ai_usage_daily` over 7 days to 2026-08-11: $1.74 across 872 calls
-# (already net of the 50% Batch API discount). See docs/SOURCE_SCALING.md.
-ENTITY_COST_PER_CALL_USD = 0.0020
 
 
 def _batch_count(articles: list) -> int:
@@ -239,7 +238,7 @@ async def submit_entity_batch(articles: list[dict]) -> str | None:
     # without entity extraction for now and are backfillable. Cheap to degrade,
     # which is why the guard sits at submit time rather than in the result
     # handler — by then the money is spent.
-    budget = await check_budget(ENTITY_COST_PER_CALL_USD * _batch_count(articles))
+    budget = await check_budget(estimate_cost(OPERATION, _batch_count(articles)))
     if not budget.allowed:
         logger.warning(
             "entity extraction: batch of %d articles not submitted (cost guard: %s)",

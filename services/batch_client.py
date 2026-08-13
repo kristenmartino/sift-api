@@ -43,6 +43,36 @@ async def submit_batch(kind: str, requests: list[dict], metadata: dict | None = 
     if not requests:
         return None
 
+    # This endpoint is Anthropic's. Posting another provider's model id to it
+    # fails, submit_batch returns None, and the caller's contract — "the
+    # articles simply go without context for now" — swallows it as a normal
+    # degrade. That is a silent quality regression indistinguishable from a
+    # routine miss, so refuse loudly at the door instead.
+    #
+    # model_registry.resolve already refuses to move these stages onto a model
+    # without a batch API; this catches a request body assembled some other way.
+    # Matched through spec_for_wire_model so the undated alias is accepted as
+    # well as the dated snapshot — both are real forms, and refusing the alias
+    # would break the very stages this protects.
+    from services.model_registry import spec_for_wire_model
+
+    def _is_foreign(model: str) -> bool:
+        spec = spec_for_wire_model(model)
+        return spec is None or spec.provider != "anthropic"
+
+    foreign = sorted({
+        m for r in requests
+        if (m := (r.get("params") or {}).get("model")) and _is_foreign(m)
+    })
+    if foreign:
+        logger.error(
+            "submit_batch(%s) refused: %s is not an Anthropic model, and this "
+            "is the Anthropic Message Batches endpoint. Nothing was submitted.",
+            kind,
+            ", ".join(foreign),
+        )
+        return None
+
     client = _client()
     try:
         batch = await client.messages.batches.create(requests=requests)

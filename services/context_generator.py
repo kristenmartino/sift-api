@@ -9,6 +9,7 @@ import anthropic
 from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
+from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.model_registry import resolve
 from services.index_alignment import (
@@ -31,12 +32,9 @@ def _model() -> str:
     """Resolved per call, never cached at import — an override must not need a
     restart to take effect, and a module constant would lie in tests."""
     return resolve(OPERATION).model
-BATCH_SIZE = 10
 
-# Pre-call cost estimate for the budget check, per BATCH_SIZE-article request.
-# Measured from `ai_usage_daily` over 7 days to 2026-08-11: $1.55 across 1,231 calls
-# (already net of the 50% Batch API discount). See docs/SOURCE_SCALING.md.
-CONTEXT_COST_PER_CALL_USD = 0.0013
+
+BATCH_SIZE = 10
 
 
 def _batch_count(articles: list) -> int:
@@ -96,10 +94,6 @@ matter how disturbing the details, unless the article itself states \
 consequences beyond those involved (a new law or policy, a mass recall, \
 charges against a major public figure). A house fire that kills a family \
 is a 2; a wildfire forcing mass evacuations is a 4."""
-
-# Rough Sonnet judge cost per line (input title+summary+line + short output),
-# used only to pre-check the cost guard before the optional runtime judge.
-JUDGE_COST_PER_LINE_USD = 0.003
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +355,7 @@ async def submit_context_batch(articles: list[dict]) -> str | None:
     # without context for now and are backfillable. Cheap to degrade,
     # which is why the guard sits at submit time rather than in the result
     # handler — by then the money is spent.
-    budget = await check_budget(CONTEXT_COST_PER_CALL_USD * _batch_count(articles))
+    budget = await check_budget(estimate_cost(OPERATION, _batch_count(articles)))
     if not budget.allowed:
         logger.warning(
             "context: batch of %d articles not submitted (cost guard: %s)",
@@ -521,7 +515,7 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
         if settings.why_it_matters_judge_enabled:
             kept = [p for p in pending if p["line"]]
             if kept:
-                budget = await check_budget(JUDGE_COST_PER_LINE_USD * len(kept))
+                budget = await check_budget(estimate_cost("judge.batch", len(kept)))
                 if budget.allowed:
                     verdicts = await judge_lines([
                         {"id": p["url"], "title": p["title"], "summary": p["summary"], "line": p["line"]}

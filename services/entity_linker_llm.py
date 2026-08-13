@@ -50,6 +50,7 @@ from typing import TypedDict
 import anthropic
 
 from app.config import settings
+from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.model_registry import resolve
 from services.usage_tracker import log_usage
@@ -59,27 +60,22 @@ logger = logging.getLogger("sift-api.entity_linker_llm")
 OPERATION = "entity_linker_llm.link_text"
 MAX_OUTPUT_TOKENS = 500
 
-# Pre-call cost estimates for the budget check. Measured averages rather than
-# token-count guesses — the guard only needs to be right enough to stop a run
-# near the ceiling, and a per-call estimate that tracks reality beats one that
-# is defensibly derived and 5x off.
-#
-# FULL: $22.38 across 5,409 calls, `ai_usage_daily` over 7 days to 2026-08-11.
-# NARROWED: $0.000857/call observed end to end once roster narrowing landed —
-# the roster went from ~7,000 tokens to ~600, so the same call is 80% cheaper.
-# Using the full-roster figure while narrowing is live would trip the ceiling
-# at a fifth of the real spend.
-LINK_COST_PER_CALL_FULL_USD = 0.0042
-LINK_COST_PER_CALL_NARROWED_USD = 0.00086
-
 
 def _link_cost_per_call() -> float:
-    """Which estimate applies depends on the roster the caller will send."""
-    return (
-        LINK_COST_PER_CALL_NARROWED_USD
+    """Which baseline applies depends on the roster the caller will send.
+
+    The two differ by 5x — the narrowed roster is ~600 input tokens against
+    ~7,000 — so using the full-roster figure while narrowing is live would
+    trip the ceiling at a fifth of the real spend. Both baselines, and their
+    provenance, live in services/cost_estimates.py.
+    """
+    return estimate_cost(
+        "entity_linker_llm.link_text.narrowed"
         if settings.entity_linker_roster_narrowing_enabled
-        else LINK_COST_PER_CALL_FULL_USD
+        else "entity_linker_llm.link_text"
     )
+
+
 # Per-article timeout — the LLM is fast (Haiku, small output) but if it
 # stalls we fall back to regex rather than block the pipeline.
 LLM_TIMEOUT_SECONDS = 8.0
