@@ -105,6 +105,28 @@ class Settings(BaseSettings):
     # rather than merely the same topic. Turn it on for a day before cutover.
     incremental_threading_confirm_dryrun: bool = False
 
+    # Per-stage model overrides, as "operation=catalog_id,operation=catalog_id"
+    # against services/model_registry.py — e.g.
+    #   LLM_MODEL_OVERRIDES=summarizer.batch=sonnet-4-6
+    #
+    # Empty means every stage runs the model it hardcoded before the registry
+    # existed, so the default reproduces prior behaviour exactly. This is the
+    # inverse of the flags above: they gate a new behaviour, this one is a
+    # deliberate deviation from a known-good default, and the safe value is the
+    # empty one.
+    #
+    # A malformed entry, an unknown operation, an unknown model, or a model
+    # lacking a capability the operation needs is dropped with an ERROR and the
+    # stage stays on its incumbent — never a hard failure at import, and never
+    # silent. A silently-ignored override is the worst outcome available here:
+    # the experiment runs, reports a number, and the number describes the
+    # incumbent. `/health` echoes the resolved assignments so this is checkable
+    # from outside the process rather than inferred.
+    #
+    # Changing it on Railway restarts the service (~30-60s, no CI, no build) —
+    # which is what "without a deploy" buys, and what every flag above costs.
+    llm_model_overrides: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

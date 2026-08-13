@@ -30,11 +30,12 @@ import anthropic
 
 from app.config import settings
 from services.index_alignment import AlignmentError, aligned_entries
+from services.model_registry import resolve
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.judge")
 
-JUDGE_MODEL = "claude-sonnet-4-6"
+OPERATION = "judge.batch"
 JUDGE_BATCH_SIZE = 10
 
 # Per-field framing. why_it_matters is judged on all three axes; background is a
@@ -192,7 +193,9 @@ async def judge_lines(
     *,
     field: str = "why_it_matters",
     client: anthropic.AsyncAnthropic | None = None,
-    model: str = JUDGE_MODEL,
+    # None, not a default of JUDGE_MODEL — a default argument is evaluated once
+    # at import, which froze the model for the life of the process.
+    model: str | None = None,
 ) -> list[dict]:
     """Judge a list of {title, summary, line, [id]} items.
 
@@ -201,6 +204,8 @@ async def judge_lines(
     """
     if not items:
         return []
+
+    model = model or resolve(OPERATION).model
 
     own_client = client is None
     if own_client:
@@ -216,7 +221,7 @@ async def judge_lines(
                 max_tokens=1200,
                 messages=[{"role": "user", "content": build_judge_prompt(sub, field)}],
             )
-            log_usage("judge.batch", response, model=model)
+            log_usage(OPERATION, response, model=model)
             text = "".join(b.text for b in response.content if b.type == "text")
             axes_by_idx = _parse_judge(text, len(sub))
         except Exception as e:

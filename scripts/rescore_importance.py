@@ -27,7 +27,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import anthropic
 import asyncpg
 from app.config import settings
-from services.context_generator import IMPORTANCE_RUBRIC, MODEL, _extract_json_array
+from services.context_generator import IMPORTANCE_RUBRIC, OPERATION, _extract_json_array
+from services.model_registry import resolve
 from services.index_alignment import AlignmentError, aligned_entries
 
 BATCH_SIZE = 20
@@ -61,7 +62,7 @@ def _clamp_score(raw: object) -> int:
 
 async def rescore_batch(client: anthropic.AsyncAnthropic, batch: list[dict]) -> dict[str, int]:
     response = await client.messages.create(
-        model=MODEL,
+        model=resolve(OPERATION).model,
         max_tokens=400,
         messages=[{"role": "user", "content": _build_prompt(batch)}],
     )

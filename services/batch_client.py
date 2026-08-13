@@ -24,7 +24,10 @@ from app.db import get_pool
 
 logger = logging.getLogger("sift-api.batch_client")
 
-MODEL = "claude-haiku-4-5-20251001"
+# No MODEL constant here. This module submits whatever `requests` carries, and
+# every caller builds its own body from services/model_registry.resolve(). The
+# constant that used to sit here was never read by anything — a second, silent
+# answer to "which model do batches use" that could drift from the real one.
 
 
 def _client() -> anthropic.AsyncAnthropic:

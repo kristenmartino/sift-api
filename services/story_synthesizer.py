@@ -6,18 +6,23 @@ import logging
 import anthropic
 
 from app.config import settings
+from services.model_registry import resolve
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_synthesizer")
 
-MODEL = "claude-haiku-4-5-20251001"
+OPERATION = "story_synthesizer.synthesize"
 
 
 async def synthesize_story(
     articles: list[dict],
     *,
     client: anthropic.AsyncAnthropic | None = None,
-    model: str = MODEL,
+    # None, not a default of MODEL: a default argument is evaluated once at
+    # import, so the old form froze the model for the life of the process and
+    # an override could not take effect without a restart. Callers passing an
+    # explicit model (eval scripts) still win.
+    model: str | None = None,
 ) -> dict:
     """
     Generate unified headline, summary, and per-source framings for a story cluster.
@@ -30,6 +35,8 @@ async def synthesize_story(
     """
     if len(articles) < 2:
         return _fallback(articles)
+
+    model = model or resolve(OPERATION).model
 
     if client is None:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -76,7 +83,7 @@ Return ONLY a JSON object:
             max_tokens=_max_tokens_for(len(articles)),
             messages=[{"role": "user", "content": prompt}],
         )
-        log_usage("story_synthesizer.synthesize", response, model=model)
+        log_usage(OPERATION, response, model=model)
 
         text = "".join(b.text for b in response.content if b.type == "text")
         result = _extract_json_object(text)

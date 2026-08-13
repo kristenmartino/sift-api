@@ -10,6 +10,7 @@ from app.config import settings
 from app.db import get_pool
 from services.batch_client import submit_batch
 from services.cost_guard import check_budget
+from services.model_registry import resolve
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
     AlignmentError,
@@ -23,7 +24,13 @@ from services.usage_tracker import log_batch_usage, log_usage
 
 logger = logging.getLogger("sift-api.context_generator")
 
-MODEL = "claude-haiku-4-5-20251001"
+OPERATION = "context_generator.batch"
+
+
+def _model() -> str:
+    """Resolved per call, never cached at import — an override must not need a
+    restart to take effect, and a module constant would lie in tests."""
+    return resolve(OPERATION).model
 BATCH_SIZE = 10
 
 # Pre-call cost estimate for the budget check, per BATCH_SIZE-article request.
@@ -256,11 +263,11 @@ async def _generate_batch(
 ) -> dict[str, dict]:
     """Send a batch of articles to Claude Haiku for context + importance generation."""
     response = await client.messages.create(
-        model=MODEL,
+        model=_model(),
         max_tokens=850,  # +tone (stage 3) and +genre (stage 6) keys
         messages=[{"role": "user", "content": _build_context_prompt(batch)}],
     )
-    log_usage("context_generator.batch", response, model=MODEL)
+    log_usage(OPERATION, response, model=_model())
 
     text = "".join(b.text for b in response.content if b.type == "text")
     return _parse_context(text, batch)
@@ -369,7 +376,7 @@ async def submit_context_batch(articles: list[dict]) -> str | None:
         requests.append({
             "custom_id": custom_id,
             "params": {
-                "model": MODEL,
+                "model": _model(),
                 "max_tokens": 850,  # matches _generate_batch
                 "messages": [{"role": "user", "content": _build_context_prompt(sub)}],
             },
@@ -396,7 +403,11 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
     """
     # Batch spend was invisible until 2026-08-05 — this path recorded
     # nothing, leaving ~$1/day unattributed between the ledger and the bill.
-    log_batch_usage("context_generator.batch", results)
+    # Pass the resolved model: without it this defaults to the alias
+    # "claude-haiku-4-5" while the realtime path above logs the dated snapshot,
+    # so one stage wrote two model ids into ai_usage_daily for the same
+    # physical model — and priced them apart the moment PRICES was keyed.
+    log_batch_usage(OPERATION, results, model=_model())
     pool = await get_pool()
     row = await pool.fetchrow(
         "SELECT metadata FROM api_batches WHERE batch_id = $1", batch_id,

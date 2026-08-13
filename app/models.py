@@ -71,6 +71,13 @@ class HealthResponse(BaseModel):
     db_connected: bool
     last_pipeline_run: str | None
     scheduler_running: bool | None = None
+    # operation -> wire model id. Present only when LLM_MODEL_OVERRIDES has
+    # moved something off its incumbent, so the normal payload is unchanged and
+    # a non-empty value is itself the signal. Without this, "which model is
+    # this stage actually on" can only be inferred from the env var, and
+    # CLAUDE.md's rule about deploys applies just as well here: read it, do not
+    # infer it.
+    model_overrides: dict[str, str] | None = None
 
 
 # --- Errors ---

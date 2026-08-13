@@ -27,7 +27,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import anthropic
 import asyncpg
 from app.config import settings
-from services.context_generator import MODEL, _clamp_tone, _extract_json_array
+from services.context_generator import OPERATION, _clamp_tone, _extract_json_array
+from services.model_registry import resolve
 from services.index_alignment import AlignmentError, aligned_entries
 
 BATCH_SIZE = 20
@@ -63,7 +64,7 @@ Return ONLY the JSON array, no other text."""
 
 async def classify_batch(client: anthropic.AsyncAnthropic, batch: list[dict]) -> dict[str, str]:
     response = await client.messages.create(
-        model=MODEL,
+        model=resolve(OPERATION).model,
         max_tokens=400,
         messages=[{"role": "user", "content": _build_prompt(batch)}],
     )

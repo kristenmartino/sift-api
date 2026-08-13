@@ -51,11 +51,12 @@ import anthropic
 
 from app.config import settings
 from services.cost_guard import check_budget
+from services.model_registry import resolve
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.entity_linker_llm")
 
-MODEL = "claude-haiku-4-5-20251001"
+OPERATION = "entity_linker_llm.link_text"
 MAX_OUTPUT_TOKENS = 500
 
 # Pre-call cost estimates for the budget check. Measured averages rather than
@@ -415,7 +416,7 @@ async def link_text_llm(
     try:
         response = await asyncio.wait_for(
             client.messages.create(
-                model=MODEL,
+                model=resolve(OPERATION).model,
                 max_tokens=MAX_OUTPUT_TOKENS,
                 # Cache the catalog block so we only pay full price for it
                 # the first call in each 5-min window.
@@ -437,7 +438,7 @@ async def link_text_llm(
         logger.warning("entity_linker_llm: API error: %s", e)
         return None
 
-    log_usage("entity_linker_llm.link_text", response, model=MODEL)
+    log_usage(OPERATION, response, model=resolve(OPERATION).model)
 
     text = "".join(b.text for b in response.content if b.type == "text")
     # A response we can't parse is a failure, not "no entities" — same

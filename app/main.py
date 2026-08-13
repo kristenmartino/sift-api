@@ -62,6 +62,21 @@ async def lifespan(app: FastAPI):
             "SECURITY: PIPELINE_API_KEY is set to a default/empty value. "
             "Set a strong, unique key via the PIPELINE_API_KEY environment variable."
         )
+
+    # Name any stage not on its incumbent model, at WARNING so it stands out in
+    # the log. A model override is a deliberate, temporary deviation and every
+    # cost or quality number taken while one is live has to be read knowing
+    # that — the alternative is discovering it while explaining a metric.
+    from services.model_registry import non_default_assignments
+
+    overrides = non_default_assignments()
+    if overrides:
+        logger.warning(
+            "LLM model overrides active: %s",
+            ", ".join(f"{op}={cid}" for op, cid in sorted(overrides.items())),
+        )
+    else:
+        logger.info("LLM models: all stages on their incumbent")
     try:
         await init_pool()
         logger.info("Database pool initialized")
@@ -226,10 +241,15 @@ async def health():
         settings.environment == "production" or None
     )
 
+    from services.model_registry import non_default_assignments
+
+    overrides = non_default_assignments()
+
     return HealthResponse(
         status="healthy" if db_connected else "degraded",
         version=API_VERSION,
         db_connected=db_connected,
         last_pipeline_run=last_run,
         scheduler_running=scheduler_running if scheduler_running else None,
+        model_overrides=overrides or None,
     )
