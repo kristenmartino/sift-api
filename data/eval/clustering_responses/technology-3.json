@@ -1,0 +1,6 @@
+{
+  "batch_id": "technology-3",
+  "model": "claude-haiku-4-5-20251001",
+  "prompt_sha256": "3c4fc273fa1869431e81a1639febec6c498273f79f3c279c54fe425d766e8657",
+  "response_text": "[{\"group_id\": 1, \"article_indices\": [5, 29], \"event\": \"AI robot deployment in educational settings faces public backlash and cancellation\"}, {\"group_id\": 2, \"article_indices\": [8, 21], \"event\": \"AI technology used to harm individuals without consent through autonomous systems and deepfakes\"}, {\"group_id\": 3, \"article_indices\": [2, 45], \"event\": \"Tech companies acquiring or poaching talent from traditional media and entertainment companies\"}, {\"group_id\": 4, \"article_indices\": [6, 34], \"event\": \"Major AI companies taking divergent positions on open-source AI policy\"}, {\"group_id\": 5, \"article_indices\": [20, 34], \"event\": \"OpenAI and other AI companies signing or debating open weights letter on AI development\"}, {\"group_id\": 6, \"article_indices\": [37, 33], \"event\": \"Regional opposition and regulatory calls for guardrails on AI data center development\"}]"
+}

@@ -1,0 +1,6 @@
+{
+  "batch_id": "business-4",
+  "model": "claude-haiku-4-5-20251001",
+  "prompt_sha256": "db249bc2e14df4e057b9d7f82a55b57f4253dddb8db69dc08d9012b18e92c443",
+  "response_text": "[{\"group_id\": 1, \"article_indices\": [1, 45], \"event\": \"Warner Bros. Discovery sues Amazon for allegedly poaching HBO Max marketing executive Pia Barlow and other employees\"}, {\"group_id\": 2, \"article_indices\": [5, 7, 11, 31, 39, 40, 41, 47, 49], \"event\": \"Trump announces and implements new tariffs on multiple trading partners citing forced labor concerns\"}, {\"group_id\": 3, \"article_indices\": [35, 36, 38, 41], \"event\": \"Trump launches trade investigation into EU and threatens tariffs in response to EU's $1 billion fine on Google\"}, {\"group_id\": 4, \"article_indices\": [10, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26], \"event\": \"Paramount agrees to delay its merger with Warner Bros. Discovery until June 2027 amid state antitrust lawsuits\"}]"
+}
