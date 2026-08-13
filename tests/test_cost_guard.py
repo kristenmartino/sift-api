@@ -171,3 +171,95 @@ class TestRecordUsage:
         # this, the test would still pass if record_usage short-circuited before
         # the write and never attempted anything at all.
         fake_pool.assert_called_once()
+
+    def test_token_counts_reach_the_ledger(self):
+        """migrations/029. Dollars alone cannot be re-priced onto another
+        model's rates — one equation, two unknowns — so a model comparison
+        without these means paying to find out."""
+        pool = _mock_pool()
+        with patch.object(cost_guard, "get_pool", AsyncMock(return_value=pool)):
+            asyncio.run(
+                cost_guard.record_usage(
+                    "anthropic",
+                    "claude-haiku-4-5",
+                    "summarizer.batch",
+                    0.5,
+                    input_tokens=1200,
+                    output_tokens=340,
+                    cache_read_tokens=90,
+                    cache_write_tokens=17,
+                    web_search_calls=2,
+                )
+            )
+        # args[0] is the SQL; binds start at 1 —
+        # (date, provider, model, operation, cost, call_count, *tokens)
+        args = pool.execute.call_args.args
+        assert args[7:12] == (1200, 340, 90, 17, 2)
+
+    def test_existing_positional_callers_still_work(self):
+        """The new params are keyword-only after call_count so services/
+        embedder.py's positional call keeps compiling. A token-less caller
+        records zeros, not garbage."""
+        pool = _mock_pool()
+        with patch.object(cost_guard, "get_pool", AsyncMock(return_value=pool)):
+            asyncio.run(
+                cost_guard.record_usage("voyage", "voyage-3-lite", "embedder", 0.25, 3)
+            )
+        args = pool.execute.call_args.args
+        assert args[6] == 3  # call_count still lands positionally
+        assert args[7:12] == (0, 0, 0, 0, 0)
+
+
+class TestCheckBudgetReadQuery:
+    def test_the_ledger_read_is_unchanged_by_the_token_columns(self):
+        """`check_budget` sits on the fail-closed path: if this read fails, every
+        paid call is blocked. migrations/029 added columns to the same table, so
+        pin the query shape — it must stay a bare SUM over one column with no
+        join and no reference to anything 029 introduced."""
+        pool = _mock_pool(spent=1.0)
+        with patch.object(cost_guard.settings, "ai_cost_guard_enabled", True):
+            with patch.object(cost_guard, "get_pool", AsyncMock(return_value=pool)):
+                asyncio.run(cost_guard.check_budget())
+
+        sql = " ".join(pool.fetchval.call_args.args[0].split())
+        assert sql == (
+            "SELECT COALESCE(SUM(estimated_cost_usd), 0) "
+            "FROM ai_usage_daily WHERE usage_date = $1"
+        )
+
+
+class TestRecordOutputStop:
+    def test_model_is_written_into_the_key(self):
+        """029 puts `model` in the primary key. Without it both arms of a model
+        A/B collide on one row and the aligned/misaligned split — the only
+        stored signal for whether a model emits parseable indexed JSON —
+        becomes unreadable."""
+        pool = _mock_pool()
+        with patch.object(cost_guard, "get_pool", AsyncMock(return_value=pool)):
+            asyncio.run(
+                cost_guard.record_output_stop(
+                    "summarizer.batch",
+                    "max_tokens",
+                    aligned=False,
+                    batch_size=5,
+                    output_tokens=700,
+                    model="claude-haiku-4-5",
+                )
+            )
+        # args[0] is the SQL; binds are (date, operation, model, ...)
+        args = pool.execute.call_args.args
+        assert args[3] == "claude-haiku-4-5"
+
+    def test_an_unknown_model_records_blank_not_a_guess(self):
+        pool = _mock_pool()
+        with patch.object(cost_guard, "get_pool", AsyncMock(return_value=pool)):
+            asyncio.run(
+                cost_guard.record_output_stop(
+                    "summarizer.batch",
+                    "end_turn",
+                    aligned=True,
+                    batch_size=5,
+                    output_tokens=120,
+                )
+            )
+        assert pool.execute.call_args.args[3] == ""

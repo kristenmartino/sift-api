@@ -85,8 +85,14 @@ async def record_usage(
     operation: str,
     cost_usd: float,
     call_count: int = 1,
+    *,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    web_search_calls: int = 0,
 ) -> None:
-    """Add a paid call's estimated cost to today's ledger row.
+    """Add a paid call's estimated cost and token counts to today's ledger row.
 
     Records unconditionally — `ai_cost_guard_enabled` gates *enforcement*
     (`check_budget`), not measurement. It used to gate this function too, which
@@ -94,6 +100,12 @@ async def record_usage(
     STATUS.md quoted a figure ~20x below the real spend. A ledger you have to
     opt into is a ledger nobody knows is missing, and you need it populated
     *before* you can pick a sensible ceiling.
+
+    The token counts (migrations/029) are what make the dollars re-pricable. A
+    stored cost cannot be projected onto another model's rates — one equation,
+    two unknowns — so without these, comparing models means paying to find out.
+    They are keyword-only and default to 0 so existing positional callers
+    (services/embedder.py) keep working unchanged.
 
     Never raises: lost telemetry must not break the pipeline or a request.
     """
@@ -106,13 +118,24 @@ async def record_usage(
             """
             INSERT INTO ai_usage_daily
                 (usage_date, provider, model, operation, estimated_cost_usd,
-                 call_count, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                 call_count, input_tokens, output_tokens, cache_read_tokens,
+                 cache_write_tokens, web_search_calls, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
             ON CONFLICT (usage_date, provider, model, operation)
             DO UPDATE SET
                 estimated_cost_usd =
                     ai_usage_daily.estimated_cost_usd + EXCLUDED.estimated_cost_usd,
                 call_count = ai_usage_daily.call_count + EXCLUDED.call_count,
+                input_tokens =
+                    ai_usage_daily.input_tokens + EXCLUDED.input_tokens,
+                output_tokens =
+                    ai_usage_daily.output_tokens + EXCLUDED.output_tokens,
+                cache_read_tokens =
+                    ai_usage_daily.cache_read_tokens + EXCLUDED.cache_read_tokens,
+                cache_write_tokens =
+                    ai_usage_daily.cache_write_tokens + EXCLUDED.cache_write_tokens,
+                web_search_calls =
+                    ai_usage_daily.web_search_calls + EXCLUDED.web_search_calls,
                 updated_at = NOW()
             """,
             _utc_today(),
@@ -121,6 +144,11 @@ async def record_usage(
             operation,
             float(cost_usd),
             int(call_count),
+            int(input_tokens or 0),
+            int(output_tokens or 0),
+            int(cache_read_tokens or 0),
+            int(cache_write_tokens or 0),
+            int(web_search_calls or 0),
         )
     except Exception as e:
         logger.debug(
@@ -161,13 +189,20 @@ async def record_output_stop(
     aligned: bool,
     batch_size: int,
     output_tokens: int,
+    model: str = "",
 ) -> None:
-    """Count how one Claude call ended, in `llm_output_stops` (migration 021).
+    """Count how one Claude call ended, in `llm_output_stops` (migrations 021+029).
 
     Separate from `record_usage` on purpose: that table answers "what did we
     spend", this one answers "why are we re-asking". Splitting on `aligned` is
     the point — the question is not whether calls ever hit `max_tokens` but
     whether the *misaligned* ones are the ones that did.
+
+    `model` joins the key in 029 because that split is also the only stored
+    signal for whether a *candidate* model can produce parseable indexed JSON,
+    and without it both arms of an A/B collide on one row. It defaults to ''
+    rather than to a model name so a caller that cannot say stays honest about
+    not knowing; rows written before 029 carry '' for the same reason.
 
     Never raises, for the same reason as everything else in this module: lost
     telemetry must not break ingest.
@@ -177,10 +212,11 @@ async def record_output_stop(
         await pool.execute(
             """
             INSERT INTO llm_output_stops
-                (usage_date, operation, stop_reason, aligned, batch_size,
+                (usage_date, operation, model, stop_reason, aligned, batch_size,
                  call_count, max_output_tokens, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 1, $6, NOW())
-            ON CONFLICT (usage_date, operation, stop_reason, aligned, batch_size)
+            VALUES ($1, $2, $3, $4, $5, $6, 1, $7, NOW())
+            ON CONFLICT (usage_date, operation, model, stop_reason, aligned,
+                         batch_size)
             DO UPDATE SET
                 call_count = llm_output_stops.call_count + 1,
                 max_output_tokens = GREATEST(
@@ -190,6 +226,7 @@ async def record_output_stop(
             """,
             _utc_today(),
             operation,
+            str(model or ""),
             str(stop_reason or "unknown"),
             bool(aligned),
             int(batch_size),
