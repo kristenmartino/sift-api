@@ -1,0 +1,6 @@
+{
+  "batch_id": "world-2",
+  "model": "claude-haiku-4-5-20251001",
+  "prompt_sha256": "03bce59e64b556c7c6f8dfde86ed00de9a624d1bd35eefe0d33f296fc0656913",
+  "response_text": "[{\"group_id\": 1, \"article_indices\": [2, 9, 30], \"event\": \"Wildfires spreading across Spain and France\"}, {\"group_id\": 2, \"article_indices\": [4, 7], \"event\": \"Wildfires in France near Bordeaux threatening evacuation\"}, {\"group_id\": 3, \"article_indices\": [15, 18, 19, 43], \"event\": \"Iran launches missile attack on US forces\"}, {\"group_id\": 4, \"article_indices\": [21, 22], \"event\": \"Major earthquake in Kumamoto, Japan destroys Aeon Mall\"}, {\"group_id\": 5, \"article_indices\": [34, 36, 37, 38], \"event\": \"Trump meets with Netanyahu and Zelenskyy\"}, {\"group_id\": 6, \"article_indices\": [35, 45, 47], \"event\": \"Netanyahu and Zelenskyy meet Trump at Lindsey Graham's funeral in Washington\"}, {\"group_id\": 7, \"article_indices\": [8, 35, 45, 47], \"event\": \"Trump meets with leaders during Lindsey Graham's funeral in Washington\"}]"
+}

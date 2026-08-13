@@ -1,0 +1,6 @@
+{
+  "batch_id": "sports-6",
+  "model": "claude-haiku-4-5-20251001",
+  "prompt_sha256": "154f2db546d6dc12d8a99a764d5d833176e4300dd15305468ce702f8b6e79f4e",
+  "response_text": "[{\"group_id\": 1, \"article_indices\": [4, 8, 12, 13, 14, 22, 43, 46], \"event\": \"Spain defeats Argentina in 2026 FIFA World Cup Final\"}, {\"group_id\": 2, \"article_indices\": [13, 14], \"event\": \"FIFA investigation into brawl after Spain vs Argentina 2026 World Cup Final\"}, {\"group_id\": 3, \"article_indices\": [5, 27], \"event\": \"MLB injury updates and player returns\"}]"
+}

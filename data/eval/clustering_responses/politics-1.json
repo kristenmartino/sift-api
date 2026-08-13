@@ -1,0 +1,6 @@
+{
+  "batch_id": "politics-1",
+  "model": "claude-haiku-4-5-20251001",
+  "prompt_sha256": "547a5bcba61aaea0e9bf1f66e4cd347a8452380f5553fe64492a9d241f57eaa7",
+  "response_text": "[{\"group_id\": 1, \"article_indices\": [9, 10, 37, 39, 43, 50], \"event\": \"Todd Blanche's stalled attorney general nomination opposed by Republican senators Cornyn and Tillis\"}, {\"group_id\": 2, \"article_indices\": [34, 35, 36], \"event\": \"Seattle Police Chief Shon Barnes resigns following deadly food festival shooting\"}, {\"group_id\": 3, \"article_indices\": [19, 33], \"event\": \"Mandela Barnes drops out of Wisconsin Democratic gubernatorial primary\"}]"
+}

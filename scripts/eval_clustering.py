@@ -31,11 +31,44 @@ TYPICAL WORKFLOW
     # 2. label it by hand: fill in "event_id" for each article
     #    (leave null for singletons), mark distractors with "hard": true
 
-    # 3. record fixtures + baseline (costs ~$0.024)
-    python scripts/eval_clustering.py --live --repeats 3 --record
+    # 3. record fixtures + baseline (~$0.024 per repeat)
+    python scripts/eval_clustering.py --live --repeats 15 --record
 
     # 4. from then on, CI runs the free deterministic replay
     python scripts/eval_clustering.py --replay
+
+REPEATS: WHY 15 AND NOT 3
+-------------------------
+This said `--repeats 3` until the first honest recording run, on 2026-08-13.
+Clustering at temperature 1.0 is far noisier than the linker, which agrees with
+itself 97.3% (docs/SOURCE_SCALING.md). Over 15 repeats of the same 300 articles:
+
+    ari                     0.452 - 0.648   sd 0.068
+    multi_outlet_precision  0.498 - 0.787   sd 0.096
+
+The `--live` tolerance is derived from the standard error of the MEAN
+(sd / sqrt(repeats)), because both the baseline and any future live run are
+means. Two things follow, and both were learned by getting them wrong first:
+
+  * Deriving from the raw RANGE instead gives multi_outlet_precision an
+    allowance of 0.59 against a value of 0.62 — a gate that can only fire below
+    0.11, which is not a gate.
+
+  * n=5 underestimates sd by 25-60% (it read 0.051/0.060 against the 15-run
+    0.068/0.096), and the give-away was two consecutive 5-run sets whose means
+    differed by more than the tolerance either of them produced. Estimating a
+    standard deviation from 5 samples is chi-square with 4 df; it is not
+    stable. Use 15.
+
+TWO MODES, TWO GATES
+--------------------
+`--replay` re-scores committed fixtures and is DETERMINISTIC, so it is judged
+against the recorded run's own numbers at REPLAY_TOLERANCE (1e-6). Only a
+parser, metric, or corpus change can move it — all deliberate.
+
+`--live` re-asks the model and is not, so it is judged against the mean at
+3x SE. Do not collapse these into one tolerance: a stochastic-sized allowance
+on the replay path would let a real parser regression through unnoticed.
 """
 from __future__ import annotations
 
@@ -65,6 +98,20 @@ REPO = Path(__file__).resolve().parent.parent
 DEFAULT_CORPUS = REPO / "data" / "eval" / "clustering_corpus.jsonl"
 DEFAULT_FIXTURES = REPO / "data" / "eval" / "clustering_responses"
 DEFAULT_BASELINE = REPO / "data" / "eval" / "clustering_baseline.json"
+
+# --replay re-scores committed fixtures, so its numbers are deterministic: the
+# only things that can move one are the parser, the metrics, or the corpus.
+# This absorbs float noise and nothing else — a stochastic-sized allowance here
+# would let a real parser regression pass unnoticed.
+REPLAY_TOLERANCE = 1e-6
+
+# Floor for a derived --live tolerance, so a metric that happened to be stable
+# across one repeat set does not get a tolerance so tight it flaps on the next.
+TOLERANCE_FLOOR = 0.05
+
+# How many standard errors of the mean a --live run may fall below baseline
+# before it counts as a regression. 3 is ~99.7% one-sided under normality.
+SE_MULTIPLIER = 3.0
 
 # Mirrors ALL_CATEGORIES in scripts/eval_why_it_matters.py. Sports is included
 # deliberately: it is where the single-outlet clustering failure concentrates.
@@ -996,14 +1043,43 @@ async def run_live(corpus: list[dict], repeats: int, record_to: Path | None) -> 
 
     # cluster_articles sets no temperature, so it runs at 1.0. Report the spread
     # and use the MIN when arguing about thresholds.
+    #
+    # EVERY rate metric is averaged, not just two. This read
+    # `out = dict(runs[0])` plus a mean over `ari` and `pairwise_f1` only, so
+    # the other seven came from run 1 while the output claimed to be a
+    # 5-repeat result — including `multi_outlet_precision`, which the
+    # regression gate below checks, and which measures a 0.23-wide spread
+    # across repeats. Baselining a gate on one draw of that is the exact trap
+    # docs/SOURCE_SCALING.md records for the linker: the noise floor has to be
+    # measured before any number taken against it means anything.
+    #
+    # Counts (n_articles, n_clusters_*) are deliberately NOT averaged — they
+    # are properties of the corpus or integers where a mean is meaningless.
     out = dict(runs[0])
     if repeats > 1:
+        averaged = [
+            k for k, v in runs[0].items()
+            if isinstance(v, float) and not isinstance(v, bool)
+        ]
         out["metric_spread"] = {
-            k: [min(r[k] for r in runs), max(r[k] for r in runs)]
-            for k in ("ari", "pairwise_f1", "multi_outlet_precision")
+            k: [min(r[k] for r in runs), max(r[k] for r in runs)] for k in averaged
         }
-        for k in ("ari", "pairwise_f1"):
+        # Standard deviation across repeats, kept so a tolerance can be derived
+        # from the standard error of the MEAN rather than from the raw range.
+        # The distinction decides whether the gate works at all: the range on
+        # multi_outlet_precision is ~0.30, and 2x that is a wider allowance than
+        # the metric's own value — a gate that can never fire.
+        out["metric_stdev"] = {
+            k: statistics.stdev([r[k] for r in runs]) if len(runs) > 1 else 0.0
+            for k in averaged
+        }
+        for k in averaged:
             out[k] = statistics.fmean(r[k] for r in runs)
+        # What --replay will reproduce exactly: fixtures are recorded from
+        # attempt 0, so replay re-scores run 1 and nothing else. Keeping it
+        # separate is what lets the two modes be gated differently — replay is
+        # deterministic and should be held to a tight tolerance, live is not.
+        out["replay_metrics"] = {k: runs[0][k] for k in averaged}
     out["live_repeats"] = repeats
     return out
 
@@ -1019,6 +1095,20 @@ def print_report(agg: dict, baseline: dict | None) -> int:
     print(f"  batches {agg['n_batches']}   articles {agg['n_articles']}")
     print(f"  clusters: true {agg['n_clusters_true']}  predicted {agg['n_clusters_pred']}")
     print()
+    # Deltas must be shown against the SAME basis the gate judges on, or the
+    # report reads as a near-miss while passing (or vice versa). --replay is
+    # judged against run 1's own recorded values, not against the live mean.
+    replay_mode = "metric_spread" not in agg
+    if baseline:
+        if replay_mode and baseline.get("replay_metrics"):
+            compare_to = baseline["replay_metrics"]
+            basis_label = "recorded run"
+        else:
+            compare_to = baseline.get("metrics", {})
+            basis_label = f"live mean of {baseline.get('live_repeats', '?')}"
+    else:
+        compare_to, basis_label = {}, ""
+
     rows = [
         ("ARI (chance-corrected)", "ari"),
         ("V-measure", "v_measure"),
@@ -1035,9 +1125,9 @@ def print_report(agg: dict, baseline: dict | None) -> int:
         if val is None:
             continue
         line = f"  {label:26} {val:.3f}"
-        if baseline and key in baseline.get("metrics", {}):
-            delta = val - baseline["metrics"][key]
-            line += f"   ({delta:+.3f} vs baseline)"
+        if key in compare_to:
+            delta = val - compare_to[key]
+            line += f"   ({delta:+.3f} vs {basis_label})"
         print(line)
 
     if spread := agg.get("metric_spread"):
@@ -1047,14 +1137,42 @@ def print_report(agg: dict, baseline: dict | None) -> int:
             print(f"    {k:24} {lo:.3f} – {hi:.3f}")
 
     # Regression gate, only meaningful against a recorded baseline.
+    #
+    # Replay and live are different tests and cannot share a tolerance.
+    #
+    #   --replay re-scores committed fixtures, so it is DETERMINISTIC. The only
+    #     things that can move a number are the parser, the metrics, or the
+    #     corpus — all deliberate edits. It is gated against run 1's own
+    #     recorded values at a tolerance that only absorbs float noise, so a
+    #     real change cannot hide inside a stochastic allowance.
+    #
+    #   --live re-asks the model at temperature 1.0, so it is NOT. Its gate has
+    #     to clear the measured run-to-run spread or it fires on noise: the
+    #     first --repeats 5 run measured ari 0.537-0.646 and
+    #     multi_outlet_precision 0.567-0.793, against a tolerance hardcoded at
+    #     0.05. That is 2x too tight on one metric and 4x on the other, so the
+    #     gate would have failed CI for no reason on its first honest use.
     exit_code = 0
     if baseline:
-        tol = baseline.get("tolerance", 0.05)
+        if replay_mode and baseline.get("replay_metrics"):
+            basis, tolerances = compare_to, {}
+            default_tol = REPLAY_TOLERANCE
+            label = "replay"
+        else:
+            basis = compare_to
+            tolerances = baseline.get("tolerances", {})
+            default_tol = baseline.get("tolerance", 0.05)
+            label = "live"
+
         for key in ("ari", "multi_outlet_precision"):
-            base = baseline.get("metrics", {}).get(key)
+            base = basis.get(key)
             cur = agg.get(key)
+            tol = tolerances.get(key, default_tol)
             if base is not None and cur is not None and cur < base - tol:
-                print(f"\n  REGRESSION: {key} {cur:.3f} is more than {tol} below baseline {base:.3f}")
+                print(
+                    f"\n  REGRESSION ({label}): {key} {cur:.3f} is more than "
+                    f"{tol:.3f} below baseline {base:.3f}"
+                )
                 exit_code = 1
     return exit_code
 
@@ -1140,15 +1258,62 @@ def main() -> None:
 
     if args.live and args.record:
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
+        spread = agg.get("metric_spread") or {}
+        stdev = agg.get("metric_stdev") or {}
+        # Derived, not chosen — and derived from the standard error of the mean,
+        # not from the raw range.
+        #
+        # The baseline is a mean of `repeats` runs, and a future --live run of
+        # the same protocol is also a mean, so what has to be cleared is the
+        # variability OF THE MEAN: SE = stdev / sqrt(n). Using the raw range
+        # instead conflates single-draw noise with mean noise and produces a
+        # tolerance wider than the metric itself — on the first honest run,
+        # 2 x range gave multi_outlet_precision an allowance of 0.591 against a
+        # value of 0.704, a gate that could only fire below 0.113.
+        #
+        # k=3 is ~99.7% one-sided under normality, so a passing run is genuinely
+        # unlikely to be noise. The floor stops a metric that happened to be
+        # stable across one repeat set from getting an allowance so tight it
+        # flaps on the next.
+        n = max(1, args.repeats)
+        tolerances = {
+            k: round(max(TOLERANCE_FLOOR, SE_MULTIPLIER * sd / math.sqrt(n)), 4)
+            for k, sd in stdev.items()
+        }
         args.baseline.write_text(json.dumps({
             "model": _resolved_clusterer_model(),
             "corpus_sha256": hashlib.sha256(args.corpus.read_bytes()).hexdigest(),
             "live_repeats": args.repeats,
-            # Set from ~2x the observed spread after the first --repeats 5 run.
+            # Fallback for a metric with no measured spread (--repeats 1).
             "tolerance": 0.05,
+            "tolerances": tolerances,
+            "metric_spread": spread,
+            "metric_stdev": {k: round(v, 6) for k, v in stdev.items()},
+            # Mean across repeats — the basis a --live run is judged against.
             "metrics": {k: v for k, v in agg.items() if isinstance(v, (int, float))},
+            # Run 1 alone, which is what the committed fixtures reproduce, so
+            # --replay is judged against its own draw at REPLAY_TOLERANCE.
+            "replay_metrics": agg.get("replay_metrics", {}),
         }, indent=2) + "\n")
         print(f"  wrote baseline -> {args.baseline}")
+        if tolerances:
+            print(
+                f"\n  --live tolerances, {SE_MULTIPLIER:.0f} x SE of the mean "
+                f"over {n} repeats:"
+            )
+            for k in ("ari", "multi_outlet_precision"):
+                if k not in tolerances:
+                    continue
+                lo, hi = spread[k]
+                se = stdev[k] / math.sqrt(n)
+                print(
+                    f"    {k:24} {tolerances[k]:.3f}   "
+                    f"(range {lo:.3f}-{hi:.3f}, sd {stdev[k]:.3f}, se {se:.3f})"
+                )
+            print(
+                "    ^ only these two are gated; the rest are recorded as "
+                "diagnostics."
+            )
 
     sys.exit(exit_code)
 
