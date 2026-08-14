@@ -43,6 +43,15 @@ Caveat: changing a setting in the Neon console also restarts the compute. Do
 not take a reading immediately after flipping scale-to-zero or autoscale
 bounds — wait out one quiet window first.
 
+**Do not put --probe in a loop tighter than the scale-to-zero window.** The
+probe is itself a query, so polling every minute — or every five — holds the
+compute open and the measurement reports "never suspends" no matter what the
+code does. That is the same defect this script exists to find, committed by
+the tool looking for it. Take ONE reading, well after a quiet period. `--watch`
+samples at 7-minute intervals for exactly this reason: long enough that the
+compute can suspend between samples, which is what produces the cold-start
+sawtooth it looks for.
+
 `--api` is authoritative: it pulls the same consumption history the invoice is
 computed from. Needs NEON_API_KEY (Neon console -> Account settings -> API
 keys; read-only is sufficient) and NEON_PROJECT_ID.
