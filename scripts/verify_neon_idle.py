@@ -4,16 +4,27 @@ WHY THIS EXISTS
 ---------------
 Neon compute was billed as if it ran 24/7 and nobody noticed for months.
 `docs/DECISIONS.md` in the `sift` repo still said "Neon = $0 (free tier)" long
-after the project had moved to Launch ($19/mo, 300 CU-hours, 10 GiB), and the
-storage post-mortem in `docs/NEON_RETENTION.md` was written about a bill that
-storage was not actually driving.
+after the project had moved to Launch, and the storage post-mortem in
+`docs/NEON_RETENTION.md` was written about a bill that storage was not
+actually driving.
 
 Measured 2026-08-14: `pg_postmaster_start_time()` reported **26 days of
 unbroken uptime**. The compute had never once suspended. Cause: the batch
 poller ran a SELECT against `api_batches` every 60 seconds forever, and
 `/health` ran two more every 30 minutes from the GitHub heartbeat — all inside
-Neon's 300s scale-to-zero window, resetting it 1,440+ times a day. At 1 CU
-that is ~730 CU-hours/month against a 300 CU-hour allowance.
+Neon's 300s scale-to-zero window, resetting it 1,440+ times a day.
+
+**Scale-to-zero was enabled the whole time, and the autoscale floor was
+already 0.25 CU.** Both were checked in the console on 2026-08-14 and needed no
+change. That is what makes the diagnosis conclusive rather than plausible: with
+suspension enabled, 26 days of unbroken uptime can only mean a query arrived
+inside every single 5-minute window.
+
+**On the billing model:** Launch bills compute usage-based from the first
+hour — there is no included-CU-hour allowance to get under, so savings are
+linear and every avoided wake is money. Observed rate 2026-08-14: 312.8 CU-h →
+$33.08, i.e. ~$0.106/CU-hour. Rates change; re-read them from the billing page
+rather than trusting COMPUTE_RATE_USD below.
 
 Same lesson as `verify_cost_baseline.py`: the fix for a number going stale is
 not to write a better number, it is to make re-deriving it a one-liner.
@@ -36,7 +47,7 @@ bounds — wait out one quiet window first.
 computed from. Needs NEON_API_KEY (Neon console -> Account settings -> API
 keys; read-only is sufficient) and NEON_PROJECT_ID.
 
-Exit codes: 0 ok, 1 projected over the CU-hour allowance, 2 could not measure.
+Exit codes: 0 ok, 1 projected over --budget CU-hours, 2 could not measure.
 
 Usage (from sift-api root):
 
@@ -63,9 +74,22 @@ import httpx  # noqa: E402
 
 from app.config import settings  # noqa: E402
 
-# Launch plan allowance. Overage is billed per extra CU-hour, so crossing this
-# is the difference between a flat $19 and a variable bill.
-INCLUDED_CU_HOURS = 300
+# Launch bills compute from the first hour — there is no free allowance, so
+# this is a self-imposed budget, not a plan limit. Default is roughly what this
+# project should cost once the compute suspends between pipeline runs: ~5.4
+# CU-h/day. Override with --budget.
+#
+# NOTE: the org's CU-hours are shared across every project in it (4 as of
+# 2026-08-14, of which sift was 139 of 313 CU-h). This script measures ONE
+# project. A green result here does not mean the invoice is green.
+DEFAULT_BUDGET_CU_HOURS = 175
+
+# This script deliberately reports CU-hours and never dollars. A rate constant
+# here would be one more written-down number with no owner — the exact defect
+# this whole exercise was about — and tests/test_cost_estimates.py already
+# forbids `*_USD` constants outside services/cost_estimates.py for that reason.
+# For dollars, read the billing page, which is authoritative and always current:
+BILLING_URL = "https://console.neon.tech/app/billing"
 
 NEON_API = "https://console.neon.tech/api/v2"
 
@@ -125,11 +149,14 @@ def _render_probe(result: dict) -> int:
             f"NOT SUSPENDING: {hours:.1f}h of unbroken uptime. Something is querying "
             "inside the 300s scale-to-zero window."
         )
-        print("  Check, in order:")
-        print("   1. Scale to Zero enabled on the branch's compute endpoint?")
+        print("  Check, in likelihood order:")
+        print("   1. A polling loop querying on a timer under 300s. This is what it")
+        print("      was in Aug 2026 (the batch poller, every 60s) and it is the")
+        print("      only cause that survives Scale to Zero being enabled.")
         print("   2. An uptime monitor hitting siftnews.io? Every page render runs")
         print("      sift/lib/db.ts against this same compute.")
-        print("   3. A new polling loop in this repo (the batch poller was one).")
+        print("   3. Scale to Zero disabled on the branch's compute endpoint. Least")
+        print("      likely — it was verified ON 2026-08-14 — but free to re-check.")
         return 1
 
     print(f"OK: {hours:.2f}h uptime — the compute is suspending and resuming.")
@@ -223,7 +250,7 @@ async def consumption(days: int) -> dict:
     }
 
 
-def _render_consumption(result: dict) -> int:
+def _render_consumption(result: dict, budget: int) -> int:
     projected = result["projected_cu_hours_per_month"]
     print(f"window            : {result['window_days']}d ({result['hours_observed']}h of data)")
     print(f"compute consumed  : {result['cu_hours']} CU-hours")
@@ -231,19 +258,23 @@ def _render_consumption(result: dict) -> int:
     if result["effective_cu"] is not None:
         print(f"effective size    : {result['effective_cu']} CU while awake")
     print()
-    print(f"projected/month   : {projected} CU-hours   (allowance {INCLUDED_CU_HOURS})")
+    print(f"projected/month   : {projected} CU-hours   budget {budget}")
+    print(f"                    for dollars: {BILLING_URL}")
+    print("                    (that bill covers every project in the org; this is one)")
 
-    if projected > INCLUDED_CU_HOURS:
-        over = projected - INCLUDED_CU_HOURS
+    if projected > budget:
+        over = projected - budget
         print()
-        print(f"OVER by {over:.0f} CU-hours/month.")
-        print("  Two independent levers, cheapest first:")
-        print("   1. Lower the autoscale minimum (0.25 CU bills a quarter as fast).")
-        print("   2. Cut the number of wakes — each one costs its work plus a 300s tail.")
+        print(f"OVER budget by {over:.0f} CU-hours/month.")
+        print("  Levers, in the order they usually pay off:")
+        print("   1. Is anything querying on a timer? Compute billed while idle is")
+        print("      the whole game — check the duty cycle above, not the total.")
+        print("   2. Cut the number of wakes. Each costs its work PLUS a fixed 300s")
+        print("      tail, so at short run times the tail is most of the bill.")
+        print("   3. Lower the autoscale minimum (0.25 CU bills a quarter as fast).")
         return 1
 
-    headroom = INCLUDED_CU_HOURS - projected
-    print(f"OK: {headroom:.0f} CU-hours/month of headroom. Flat $19.")
+    print(f"OK: {budget - projected:.0f} CU-hours/month under budget.")
     return 0
 
 
@@ -257,6 +288,10 @@ def main() -> int:
                         help="sample connect latency over a quiet window")
     parser.add_argument("--days", type=int, default=7,
                         help="lookback window for --api (default 7)")
+    parser.add_argument("--budget", type=int, default=DEFAULT_BUDGET_CU_HOURS,
+                        help=f"CU-hours/month this project should stay under "
+                             f"(default {DEFAULT_BUDGET_CU_HOURS}; self-imposed, "
+                             f"Launch has no free allowance)")
     parser.add_argument("--json", metavar="PATH", help="also write results as JSON")
     args = parser.parse_args()
 
@@ -277,7 +312,7 @@ def main() -> int:
             if out:
                 print()
             out["consumption"] = asyncio.run(consumption(args.days))
-            status = max(status, _render_consumption(out["consumption"]))
+            status = max(status, _render_consumption(out["consumption"], args.budget))
     except Exception as e:
         print(f"Could not measure: {e}", file=sys.stderr)
         return 2
