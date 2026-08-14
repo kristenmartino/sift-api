@@ -68,7 +68,16 @@ class EntitySet(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+    # "The last database operation this process attempted succeeded" — NOT a
+    # live probe. /health stopped querying Postgres so that a 30-minute
+    # heartbeat could not hold Neon's scale-to-zero timer open indefinitely
+    # (see app/pipeline_clock.py); the value is seeded at startup and refreshed
+    # by each pipeline run. This is a weaker claim than it used to be, and is
+    # written down here rather than left to be discovered. GET /health?deep=1
+    # still does the real SELECT 1 when a live answer is what you want.
     db_connected: bool
+    # Also served from memory. Goes stale exactly when the pipeline stops,
+    # which is what the heartbeat's staleness threshold is watching for.
     last_pipeline_run: str | None
     scheduler_running: bool | None = None
     # operation -> wire model id. Present only when LLM_MODEL_OVERRIDES has

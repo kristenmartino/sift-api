@@ -3,6 +3,27 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _reset_module_state():
+    """Clear the two modules that hold process-lifetime state between tests.
+
+    Both exist so that a long-running process can answer a question without
+    querying Postgres — batch_client's in-flight set and pipeline_clock's
+    last-run timestamp. Module-level state plus pytest-asyncio's function-scoped
+    event loops (pyproject.toml) is exactly the combination that produces
+    order-dependent failures, so reset both before and after every test rather
+    than leaving it to whoever writes the next one.
+    """
+    from app import pipeline_clock
+    from services import batch_client
+
+    batch_client._reset_for_tests()
+    pipeline_clock._reset_for_tests()
+    yield
+    batch_client._reset_for_tests()
+    pipeline_clock._reset_for_tests()
+
+
 @pytest.fixture
 def sample_rss_xml():
     """A minimal RSS 2.0 feed for testing."""
