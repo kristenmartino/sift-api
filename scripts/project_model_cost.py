@@ -5,13 +5,15 @@ WHY THIS EXISTS
 ---------------
 Haiku 4.5 is the cheapest Claude there is, so a cost-motivated model change
 means leaving Anthropic for some stages. That is a real experiment with a real
-quality risk, and evaluating a candidate properly — corpus, blind adjudication,
-judge-bias controls — costs more than most stages could ever save. Five of the
-eight stages have a maximum annual saving under $210.
+quality risk, and which candidates are worth paying to evaluate has to be
+settled by arithmetic first. This script is that shortlist step.
 
-So the evaluation order has to be decided by arithmetic first: shortlist on
-projected cost, then pay to evaluate only the candidates that could plausibly
-win. This script is that shortlist step.
+It also settles which STAGES are worth evaluating, and the first measured run
+overturned the prior guess. The plan this came from assumed a candidate saves
+some fraction and concluded five of eight stages could never repay their own
+eval, each capped under $210/yr. Measured against a 93%-cheaper candidate the
+floor is ~$103/yr and three stages clear $200 — synthesizer $440, summarizer
+$295, primer $203. Every stage is worth evaluating; none is written off.
 
 WHY IT COULD NOT EXIST UNTIL NOW
 --------------------------------
@@ -135,6 +137,20 @@ CANDIDATES: list[Candidate] = [
     # The cheapest credible output price found. Together lists a batch
     # discount for it.
     Candidate("DeepSeek V4 Flash (Together)", 0.14, 0.28, True,
+              source="together.ai/pricing"),
+
+    # ── Kimi, priced because it gets asked about ─────────────
+    # It is the counter-example that makes the output-price finding concrete.
+    # Kimi is a strong model with a reputation for being cheap, and on Sift's
+    # token shape it is not: K3's $15.00/M output is 3x Haiku's, so it comes
+    # out DEARER than the incumbent despite a cheaper cache-hit input rate.
+    # Cache-miss input is used here, since roster narrowing already put every
+    # prompt below the size where caching engages.
+    Candidate("Kimi K3 (Moonshot)", 3.00, 15.00, False,
+              source="platform.kimi.ai/docs/pricing/chat-k3"),
+    # The cheapest general-purpose Kimi with a published price. Still only 10%
+    # under Haiku on output, which is the axis that decides this pipeline.
+    Candidate("Kimi K2.6 (Together)", 1.20, 4.50, True,
               source="together.ai/pricing"),
 ]
 
