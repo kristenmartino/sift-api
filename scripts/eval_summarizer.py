@@ -471,6 +471,7 @@ def compare_to_incumbent(
 
 async def candidate_mode(
     corpus: list[RSSArticle], catalog_id: str, max_tokens: int, runs_path: Path,
+    save: Path | None = None,
 ) -> int:
     from services.model_registry import MODELS
 
@@ -515,6 +516,13 @@ async def candidate_mode(
           f"({stats['reasoning_tokens'] / out_tok:.0%} of output)")
     print(f"    measured $/1k articles {stats['cost_usd'] / max(n_articles, 1) * 1000:.4f}")
     print(f"    latency p50 / p95      {p50:.0f} / {p95:.0f} ms")
+
+    if save:
+        save.write_text(json.dumps({
+            "catalog_id": catalog_id, "model": spec.model,
+            "max_tokens": max_tokens, "results": results,
+        }, indent=2) + "\n")
+        print(f"\n  saved candidate output -> {save}")
     return 0
 
 
@@ -538,6 +546,8 @@ def main() -> None:
     p.add_argument("--runs", type=Path, default=DEFAULT_RUNS)
     p.add_argument("--save-runs", type=Path,
                    help="--self-agreement: write per-article labels for --candidate")
+    p.add_argument("--save", type=Path,
+                   help="--candidate: write the candidate's summaries for judging")
     p.add_argument("--json", dest="out_json", type=Path)
     a = p.parse_args()
 
@@ -546,7 +556,7 @@ def main() -> None:
         return
     if a.candidate:
         sys.exit(asyncio.run(candidate_mode(
-            load_corpus(a.corpus), a.candidate, a.max_tokens, a.runs)))
+            load_corpus(a.corpus), a.candidate, a.max_tokens, a.runs, a.save)))
     sys.exit(asyncio.run(self_agreement(
         load_corpus(a.corpus), a.repeats, a.out_json, a.save_runs)))
 
