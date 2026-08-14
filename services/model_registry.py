@@ -141,17 +141,25 @@ MODELS: dict[str, ModelSpec] = {
         api_key_setting="openai_api_key",
         batch_price_multiplier=0.5,
     ),
-    # Together lists no batch discount for this model, so it is priced and
-    # gated without one — the conservative direction.
+    # Together's pricing page lists a batch discount for this model, and a
+    # cached input rate ($0.03 against $0.14). This entry said the opposite for
+    # a day — "Together lists no batch discount" — while
+    # scripts/project_model_cost.py said the reverse, so two files disagreed
+    # about the same fetched page and the projection and the capability gate
+    # would have given different answers about the same swap.
+    #
+    # It matters: with the discount, the three Batch API stages stay eligible
+    # instead of being refused, and their projected saving roughly doubles.
     "deepseek-v4-flash": ModelSpec(
         catalog_id="deepseek-v4-flash",
         provider="openai_compatible",
         model="deepseek-ai/DeepSeek-V4-Flash-0731",
-        supports_batch=False,
-        supports_prompt_cache=False,
+        supports_batch=True,
+        supports_prompt_cache=True,
         supports_server_web_search=False,
         base_url="https://api.together.xyz/v1",
         api_key_setting="together_api_key",
+        batch_price_multiplier=0.5,
     ),
 }
 
