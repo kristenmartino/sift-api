@@ -817,6 +817,33 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             END $$
         """)
 
+        # Outlet dossier recent-articles index
+        # (migrations/030_articles_outlet_recent_index.sql).
+        #
+        # getRecentArticlesByOutletSlug in sift/lib/db.ts was the single most
+        # expensive statement in the database — 19.5% of all tracked execution
+        # time, 900ms mean, 53.5% buffer hit ratio (pg_stat_statements,
+        # 2026-08-14) — because nothing could serve it. It filters on
+        # LOWER(source_name) and sorts on COALESCE(published_date, created_at),
+        # both expressions with no matching index, so Postgres scanned ~283k
+        # rows and sorted them to return 20.
+        #
+        # The column order matters: equality predicate first, sort key second,
+        # so the plan is an index scan that stops at LIMIT with no sort node.
+        # The partial predicate mirrors the query's own constant filters, which
+        # is the same shape as idx_articles_feed above.
+        #
+        # CONCURRENTLY lives in the .sql file, not here — it cannot run inside
+        # a transaction, and IF NOT EXISTS makes repeat deploys a no-op anyway.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_outlet_recent "
+            "ON articles (LOWER(source_name), "
+            "             COALESCE(published_date, created_at) DESC) "
+            "WHERE from_search = false "
+            "AND summary IS NOT NULL "
+            "AND summary <> ''"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
