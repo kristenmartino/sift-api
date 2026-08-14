@@ -1,6 +1,6 @@
 # sift-api — STATUS
 
-**Updated:** 2026-08-11
+**Updated:** 2026-08-14
 **Tier:** v1.5 (civic-literacy pivot backend) — **feature work active**; the D46 pause was lifted 2026-08-05 ([`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md), amended). Android stays paused and the week-one evidence test is still the next action — what was withdrawn is the blanket prohibition on building, not those.
 **Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). **2026-07-31: 8 PRs merged** (#116, #117, #120, #121, #123, #124, #126, #127) — a burst, not a new baseline. This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
@@ -162,6 +162,14 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 - **Incremental threading cutover** (Next 3 #3) — blocked on the ivfflat recall@10 check and the entities-lag watermark fix, in that order. Neither is optional: the first decides whether the free candidate gate actually retrieves, the second is a data-loss bug the current rescan design accidentally prevents.
 
 ## Recent decisions
+
+- **2026-08-14** — **The batch poller was billing Neon 24/7 to ask a question this process already knew the answer to.** `pg_postmaster_start_time()` reported **26 days of unbroken uptime**: the compute had never once scaled to zero. `run_batch_poller` looped every 60s unconditionally and `poll_pending_batches` *opened* with a `SELECT` on `api_batches` before checking whether anything was pending — 1,440 queries/day landing inside Neon's 300s scale-to-zero window. `/health` added two more every 30 minutes from the GitHub heartbeat. Both now answer from memory: the in-flight batch set is recorded by `submit_batch` (every submitter runs in this process), `last_pipeline_run` is mirrored by `store_node` (the sole writer of `pipeline_state`), and the poller blocks on an event rather than a clock. Postgres is read once at startup for crash recovery and reconciled once per pipeline run — both already-awake windows. See `sift/docs/DECISIONS.md` D54.
+
+  **The console needed no changes**, and that is the point: scale-to-zero was already enabled and the autoscale floor already 0.25 CU, so 26 days of uptime could only mean a query per window. **The intuitive culprit was wrong** — `asyncpg`'s `min_size` is not a floor (`_minsize` is read only in `Pool._initialize`; nothing refills the pool) and Neon suspends on absence of *queries*, not connections.
+
+  **Also wrong: the pricing model.** Launch has no included-CU-hour allowance — compute bills from the first hour, so savings are linear. And the org's CU-hours are shared across four projects, where this one was not the largest. Expect ~$32/mo → ~$17/mo here; **verify at +48h with `scripts/verify_neon_idle.py`**, which exits non-zero while the compute is still pinned. Two smaller finds shipped alongside: `BATCH_GIVEUP_HOURS` bounds a batch Anthropic loses (the old path retried a failing download every 60s until the process died), and `_scheduled_refresh` now logs its duration — the HTTP path always did, so the cadence that runs 48×/day was the one with no timing data.
+
+  **Rule added to `CLAUDE.md`:** never add a polling loop that queries Postgres on a timer under 300s. A sweep found no others — the remaining loops are the 30-min pipeline and two daily monitors.
 
 - **2026-08-13** — **Clustering has a measured accuracy number for the first time, and recording it broke two things in the harness that recorded it.** `--replay` has been described in its own docstring as "what CI runs" since it was written; it never had, because the fixtures and baseline it replays did not exist. Recording them (`--live --repeats 15`, ~$0.36) and wiring the CI job made the claim true — and immediately falsified two others.
 
