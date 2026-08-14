@@ -146,7 +146,7 @@ MODELS: dict[str, ModelSpec] = {
     "deepseek-v4-flash": ModelSpec(
         catalog_id="deepseek-v4-flash",
         provider="openai_compatible",
-        model="deepseek-ai/DeepSeek-V4-Flash",
+        model="deepseek-ai/DeepSeek-V4-Flash-0731",
         supports_batch=False,
         supports_prompt_cache=False,
         supports_server_web_search=False,

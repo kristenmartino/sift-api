@@ -53,6 +53,24 @@ class LLMUsage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    # A SUBSET of output_tokens, not an addition to it — providers report
+    # reasoning inside the completion count, so adding it would double-count.
+    #
+    # It is reported because it is billed at the output rate and is invisible
+    # in the text. Measured 2026-08-13 on a task whose visible answer is 50
+    # characters: gpt-5-nano spent 256, DeepSeek V4 Flash 48, Haiku 0 (not a
+    # reasoning model). Output is ~56% of this pipeline's bill, so a candidate
+    # that reasons before answering costs materially more than its published
+    # output rate implies — and scripts/project_model_cost.py, which re-prices
+    # the INCUMBENT's measured token counts, cannot see that at all.
+    #
+    # The operational half is worse than the cost half: every max_tokens
+    # ceiling in this repo was fitted to Haiku's verbosity (summarizer 700,
+    # linker 500, synthesis 400+120n). Reasoning consumes that budget FIRST, so
+    # a ceiling that is generous for Haiku can leave a reasoning model with
+    # nothing left to answer with — which arrives as an empty string that fails
+    # index_alignment, not as an error.
+    reasoning_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -266,6 +284,9 @@ async def _complete_openai_compatible(
         cached = int(getattr(details, "cached_tokens", 0) or 0)
 
     prompt_tokens = int(getattr(u, "prompt_tokens", 0) or 0) if u else 0
+    completion_details = getattr(u, "completion_tokens_details", None) if u else None
+    reasoning = int(getattr(completion_details, "reasoning_tokens", 0) or 0) \
+        if completion_details else 0
     return {
         "text": (getattr(choice.message, "content", "") or "") if choice else "",
         "usage": LLMUsage(
@@ -278,6 +299,7 @@ async def _complete_openai_compatible(
             # No OpenAI-compatible provider bills a cache WRITE premium, so
             # there is nothing to report. Left at 0 rather than guessed.
             cache_write_tokens=0,
+            reasoning_tokens=reasoning,
         ),
         "stop_reason": _normalize_stop_reason(
             getattr(choice, "finish_reason", None) if choice else None

@@ -71,7 +71,7 @@ PRICES: dict[str, ModelPrices] = {
     # developers.openai.com/api/docs/pricing — cached read not confirmed.
     "gpt-5-nano": ModelPrices(0.05, 0.40, 0.05, 0.05),
     # together.ai/pricing lists $0.14 input with $0.03 cached, $0.28 output.
-    "deepseek-ai/DeepSeek-V4-Flash": ModelPrices(0.14, 0.28, 0.14, 0.03),
+    "deepseek-ai/DeepSeek-V4-Flash-0731": ModelPrices(0.14, 0.28, 0.14, 0.03),
 }
 
 DEFAULT_MODEL = "claude-haiku-4-5"

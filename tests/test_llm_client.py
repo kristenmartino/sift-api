@@ -33,7 +33,8 @@ def _anthropic_response(*, text="[]", stop="end_turn", tin=100, tout=50,
     )
 
 
-def _openai_response(*, text="[]", finish="stop", prompt=100, completion=50, cached=0):
+def _openai_response(*, text="[]", finish="stop", prompt=100, completion=50,
+                     cached=0, reasoning=0):
     return SimpleNamespace(
         choices=[SimpleNamespace(
             message=SimpleNamespace(content=text), finish_reason=finish
@@ -41,6 +42,7 @@ def _openai_response(*, text="[]", finish="stop", prompt=100, completion=50, cac
         usage=SimpleNamespace(
             prompt_tokens=prompt, completion_tokens=completion,
             prompt_tokens_details=SimpleNamespace(cached_tokens=cached),
+            completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning),
         ),
     )
 
@@ -111,6 +113,43 @@ class TestUsageMeansTheSameThingOnBothProviders:
         r = await complete(operation="summarizer.batch", user="hi", max_tokens=10,
                            spec=NANO, client=client)
         assert r.usage.output_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_reasoning_tokens_are_captured_as_a_subset_of_output(self):
+        """Billed at the output rate and invisible in the text. Measured
+        2026-08-13 on a task whose visible answer is 50 characters: gpt-5-nano
+        spent 256 reasoning tokens, DeepSeek 48, Haiku 0. Output is ~56% of
+        this pipeline's bill, so a candidate that reasons before answering
+        costs more than its published output rate implies."""
+        client = _fake("openai", _openai_response(completion=300, reasoning=256))
+        r = await complete(operation="summarizer.batch", user="hi", max_tokens=400,
+                           spec=NANO, client=client)
+        assert r.usage.reasoning_tokens == 256
+        # A subset, not an addition — providers report reasoning INSIDE the
+        # completion count, so adding it would double-count the cost.
+        assert r.usage.output_tokens == 300
+
+    @pytest.mark.asyncio
+    async def test_a_non_reasoning_model_reports_zero(self):
+        client = _fake("anthropic", _anthropic_response())
+        r = await complete(operation="summarizer.batch", user="hi", max_tokens=10,
+                           spec=HAIKU, client=client)
+        assert r.usage.reasoning_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_reasoning_can_consume_the_whole_ceiling(self):
+        """The operational risk, reproduced. Every max_tokens ceiling here was
+        fitted to Haiku's verbosity; reasoning consumes that budget FIRST, so a
+        generous-for-Haiku ceiling can leave a reasoning model nothing to
+        answer with. It arrives as an empty string that fails index_alignment,
+        not as an error — which is why the adapter surfaces both numbers."""
+        client = _fake("openai", _openai_response(
+            text="", finish="length", completion=64, reasoning=64))
+        r = await complete(operation="summarizer.batch", user="hi", max_tokens=64,
+                           spec=NANO, client=client)
+        assert r.text == ""
+        assert r.stop_reason == "max_tokens"
+        assert r.usage.reasoning_tokens == r.usage.output_tokens
 
     @pytest.mark.asyncio
     async def test_cache_write_is_zero_not_guessed_on_openai(self):
