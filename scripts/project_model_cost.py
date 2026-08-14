@@ -80,7 +80,14 @@ class Candidate:
     input_per_m: float
     output_per_m: float
     has_batch_discount: bool
+    source: str = ""  # where the price came from, so it can be re-checked
     note: str = ""
+
+
+# Prices retrieved 2026-08-13 from each vendor's own pricing page. RE-CHECK
+# BEFORE QUOTING — these move, and a stale table here produces confident
+# arithmetic on numbers that are no longer real.
+PRICES_RETRIEVED = "2026-08-13"
 
 
 # Anthropic rows come from usage_tracker.PRICES so they cannot drift from what
@@ -92,20 +99,43 @@ class Candidate:
 # number in a table like this gets quoted, and this program's whole failure
 # mode is producing confident arithmetic on made-up inputs.
 def _anthropic(label: str, model: str) -> Candidate:
+    """Anthropic rows come from usage_tracker.PRICES so they cannot drift from
+    what the ledger is actually charged at."""
     p = usage_tracker.prices_for(model)
-    return Candidate(label, p.input_per_m, p.output_per_m, has_batch_discount=True)
+    return Candidate(
+        label, p.input_per_m, p.output_per_m, has_batch_discount=True,
+        source="services/usage_tracker.PRICES",
+    )
 
 
 CANDIDATES: list[Candidate] = [
     _anthropic("haiku-4-5 (incumbent)", "claude-haiku-4-5-20251001"),
     _anthropic("sonnet-4-6", "claude-sonnet-4-6"),
-    # Illustrative shapes, not vendor quotes — they exist to show how the
-    # ratio changes the answer, and are labelled so no one mistakes them for
-    # a price list. Replace with real quotes before making a decision.
-    Candidate("hypothetical 5x-cheaper, flat", 0.20, 1.00, False,
-              "no batch discount"),
-    Candidate("hypothetical cheap-in, dear-out", 0.10, 4.00, False,
-              "no batch discount"),
+
+    # ── closed budget tiers ──────────────────────────────────
+    # Both have a real Batch API at 50%, so unlike the open-weight rows below
+    # they do NOT surrender the discount on context/primer/entity_extractor.
+    # They would still need those three paths rewritten — their batch APIs are
+    # file-upload-plus-batch-object shaped, not `messages.batches` — but that
+    # is an engineering cost, not a price one.
+    Candidate("gpt-5-nano", 0.05, 0.40, True,
+              source="developers.openai.com/api/docs/pricing"),
+    Candidate("gemini-2.5-flash-lite", 0.10, 0.40, True,
+              source="ai.google.dev/gemini-api/docs/pricing"),
+
+    # ── open-weight, hosted ──────────────────────────────────
+    # gpt-oss-120b is quoted identically by Groq and Together ($0.15/$0.60).
+    # Together lists no batch discount for it; Groq's model docs do not state
+    # one either, so it is priced here WITHOUT a discount. If Groq's batch
+    # discount is confirmed, these three stages get cheaper, not dearer — the
+    # conservative direction.
+    Candidate("gpt-oss-120b (Groq/Together)", 0.15, 0.60, False,
+              source="console.groq.com/docs/models + together.ai/pricing",
+              note="no batch discount confirmed"),
+    # The cheapest credible output price found. Together lists a batch
+    # discount for it.
+    Candidate("DeepSeek V4 Flash (Together)", 0.14, 0.28, True,
+              source="together.ai/pricing"),
 ]
 
 
@@ -254,17 +284,19 @@ def main_report(rows: list[dict], arts_per_day: float, days: int) -> dict:
     out["totals_per_1k"] = {k: round(v, 4) for k, v in totals.items()}
 
     print(
-        "\n  ! = this stage needs a batch API (services/model_registry.CAPABILITIES)\n"
-        "      and the candidate has no batch discount. Those rows are shown at\n"
-        "      full price, which is correct — but moving them also changes the\n"
-        "      control flow, pulling three stages back in-band against the\n"
-        "      30-minute REFRESH_INTERVAL. That is a rewrite, not a model swap."
+        "\n  ! = this stage runs through the Batch API and the candidate has no\n"
+        "      confirmed batch discount, so it is priced at full rate here.\n"
+        "      Separately, and true of EVERY non-Anthropic candidate: those\n"
+        "      three stages would need their async-completion path rewritten,\n"
+        "      because no other provider offers `messages.batches`. That is an\n"
+        "      engineering cost this table does not price."
     )
     print(
-        "\n  Non-incumbent prices in CANDIDATES are ILLUSTRATIVE SHAPES, not\n"
-        "  vendor quotes. Replace them with real figures before deciding\n"
-        "  anything. They are here to show that the ranking depends on each\n"
-        "  stage's out:in ratio, not on a single headline discount."
+        f"\n  Prices retrieved {PRICES_RETRIEVED} from each vendor's own pricing\n"
+        "  page (see Candidate.source). They move — re-check before quoting.\n"
+        "  COST ONLY: this says nothing about output quality, latency, JSON\n"
+        "  reliability, or rate limits, and a cheaper model that fails index\n"
+        "  alignment more often costs more in retries than it saves per token."
     )
     return out
 
