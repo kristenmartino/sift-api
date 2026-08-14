@@ -358,3 +358,101 @@ class TestFeedStats:
         assert result.articles == []
         assert "ConnectTimeout" in result.error
         assert result.source_name == "Test"
+
+
+class TestBestContent:
+    """Which field the summarizer's input actually comes from.
+
+    `parse_feed` read `summary`, then `description`, then `content` — first
+    match wins. `summary` is present on nearly every entry, so
+    `content:encoded` was almost never reached. Measured across all 59 feeds on
+    2026-08-13: 26% of entries carry a content field more than twice as long as
+    the one being read, and Sift was fetching that text and discarding it —
+    ProPublica 20 words read against 3,186 available.
+
+    It matters beyond the summarizer: every later stage is derived from the
+    summary this text produces, so the whole pipeline's view of an article was
+    a 25-word teaser.
+    """
+
+    @staticmethod
+    def _entry(summary=None, description=None, content=None):
+        e = {}
+        if summary is not None:
+            e["summary"] = summary
+        if description is not None:
+            e["description"] = description
+        if content is not None:
+            e["content"] = [{"value": content}]
+        return e
+
+    def test_a_substantially_longer_content_field_wins(self):
+        from services.rss import _best_content
+
+        body = "word " * 400
+        got = _best_content(self._entry(summary="a short teaser", content=body))
+        assert got == body
+
+    def test_a_marginally_longer_content_field_does_not(self):
+        """Longest-wins would be wrong. The Atlantic's photo posts carry ~900
+        words of caption and photographer credits, and Ars Technica's content
+        opens with nav furniture — both would beat a real teaser on length
+        alone."""
+        from services.rss import _best_content
+
+        teaser = "word " * 60
+        got = _best_content(self._entry(summary=teaser, content="word " * 120))
+        assert got == teaser  # 120 < 60*3, so the teaser holds
+
+    def test_a_short_content_field_never_wins(self):
+        from services.rss import _best_content
+
+        got = _best_content(self._entry(summary="teaser", content="word " * 50))
+        assert got == "teaser"  # under the 100-word floor
+
+    def test_an_empty_content_field_leaves_the_teaser_alone(self):
+        """Politico ships a 68-word teaser and an EMPTY content element."""
+        from services.rss import _best_content
+
+        assert _best_content(self._entry(summary="real teaser", content="")) == "real teaser"
+
+    def test_boilerplate_teaser_loses_to_anything_real(self):
+        """ProPublica's `summary` is the WordPress footer — "The post <title>
+        appeared first on ProPublica." — 17 words standing in for a 5,000-word
+        investigation the same feed carries in full. Without this the ratio
+        rule still saves it, but a SHORT content field would not have."""
+        from services.rss import _best_content
+
+        boiler = "The post How Trump's Effort Fell Apart appeared first on ProPublica."
+        got = _best_content(self._entry(summary=boiler, content="the actual article"))
+        assert got == "the actual article"
+
+    def test_boilerplate_with_no_content_still_returns_something(self):
+        from services.rss import _best_content
+
+        boiler = "The post Something appeared first on Outlet."
+        assert _best_content(self._entry(summary=boiler)) == boiler
+
+    def test_description_is_used_when_summary_is_absent(self):
+        from services.rss import _best_content
+
+        assert _best_content(self._entry(description="from description")) == "from description"
+
+    def test_content_is_used_when_there_is_no_teaser_at_all(self):
+        from services.rss import _best_content
+
+        assert _best_content(self._entry(content="only content")) == "only content"
+
+    def test_html_tags_do_not_inflate_the_word_count(self):
+        """The ratio is computed on visible words. A teaser wrapped in markup
+        would otherwise look longer than it reads."""
+        from services.rss import _best_content
+
+        teaser = "<p><b>short</b></p>"
+        body = "word " * 200
+        assert _best_content(self._entry(summary=teaser, content=body)) == body
+
+    def test_an_entry_with_nothing_yields_empty(self):
+        from services.rss import _best_content
+
+        assert _best_content(self._entry()) == ""
