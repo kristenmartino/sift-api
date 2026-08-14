@@ -79,9 +79,21 @@ Answer three questions about the SUMMARY, using ONLY the ARTICLE above as the \
 source of truth. Do not use outside knowledge; if the article does not say it, \
 it is not supported.
 
-1. "supported" — Is every factual claim in the summary stated or directly \
-implied by the article? false if it adds a number, name, cause, motive, \
-outcome or consequence the article does not contain.
+1. "supported" — Does the summary FABRICATE? Answer false only if it states a \
+specific checkable thing the article does not contain or contradicts: a number, \
+date, name, title, quote, location, or a specific event or outcome.
+
+   Answer TRUE for ordinary summarization. A one-or-two sentence summary must \
+compress, generalize and connect, and none of that is fabrication:
+   - rewording, condensing, or combining several sentences into one
+   - naming the topic or category of what the article describes
+   - a reasonable characterization the article supports without stating in \
+those words ("criticized" for several paragraphs of criticism)
+   - omitting things, however important — this asks what was ADDED, not what \
+was left out
+   Calibration: this rubric was measured at a 41% false-positive rate on clean \
+production summaries when it asked for strict entailment. Reserve false for \
+something a reader could check against the article and find is not there.
 
 2. "legal_safe" — Does the summary avoid characterizing any legal matter \
 beyond what the article literally says? false if a charge becomes guilt, an \
