@@ -79,15 +79,18 @@ When adding a migration: write it in both places. The SQL file is documentation 
 | Job         | Trigger                                        | Needs                          |
 | ----------- | ---------------------------------------------- | ------------------------------ |
 | `lint-test` | every PR + push to main                        | none                           |
-| `feed-perf` | PRs touching `app/db.py`, `migrations/`, or `scripts/explain_feed_queries.py` | `DATABASE_URL` repo secret (prod Neon URL) |
+| `feed-perf` | PRs touching `migrations/`, `init.sql`, or `scripts/explain_feed_queries.py`; plus `workflow_dispatch` and the `feed-perf` label | `DATABASE_URL` repo secret (prod Neon URL) |
 
 `feed-perf` uses an **in-job git diff** rather than workflow-level `paths:`, so it still reports a status on every PR — important for branch protection's required-check semantics.
+
+**`app/db.py` was in that trigger list until 2026-08-14 and is not any more.** The job runs `EXPLAIN ANALYZE` against production, and most of `app/db.py` is pool wiring and helpers that cannot move a plan — so editing any of it woke the prod compute for nothing. Dropping it is safe because of a convention the file already documents (see the comments above the feed-index and entity-link `CREATE INDEX` calls in `_apply_migrations`): **every index created there is also mirrored into a `migrations/*.sql` file.** That convention is now load-bearing for CI — add plan-relevant DDL to `_apply_migrations` without a matching `migrations/` file and the gate will not fire. Use the `feed-perf` label or `workflow_dispatch` when you need it on an `app/db.py`-only change.
 
 ## Things I've tripped on
 
 - `sift-api` and `sift` commits are separate. A "push the branch" request is usually `sift-api` only; confirm before touching `sift/`.
 - `sift/docs/` has big product specs (FEATURE_SPECS.md is 2400+ lines). They're useful for product intent, not for where-does-X-live questions. Code reading is faster.
-- The pool in `sift/lib/db.ts` has `max: 5` — don't raise casually; Neon free/hobby tiers cap connections.
+- The pool in `sift/lib/db.ts` has `max: 5` — don't raise casually; Neon caps connections by compute size.
+- **Never add a polling loop that queries Postgres on a timer.** Neon scales to zero after 300s without a query, so any interval shorter than that pins the compute on 24/7 — invisibly: no error, no latency, no failing test, just an invoice. The batch poller did exactly this for months (see `docs/DECISIONS.md` D54 in `sift/`). If a loop needs to know something, check whether this process already knows it — the in-flight batch set and `last_pipeline_run` both turned out to be in memory. Verify **before** shipping with `scripts/verify_idle_locally.py` (starts the real background tasks against local Postgres and watches `pg_stat_activity`; ~100s) and **after** with `scripts/verify_neon_idle.py --probe` (reads prod's compute uptime).
 - When Railway logs show a healthcheck pass but the UI still times out, the queries are the problem, not the deploy. Look at the feed queries.
 
 ## Where to file new work (decision tree)

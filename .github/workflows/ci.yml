@@ -5,6 +5,10 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Escape hatch for the feed-perf job below, whose automatic trigger is
+  # deliberately narrow. Run it by hand against any branch when a change
+  # could move a query plan without touching migrations/.
+  workflow_dispatch: {}
 
 jobs:
   lint-test:
@@ -90,7 +94,7 @@ jobs:
     # Only runs when a PR touches the query surface or the diagnostic script.
     # Guards against plan regressions landing in main without being noticed.
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
 
     steps:
       - uses: actions/checkout@v4
@@ -100,12 +104,40 @@ jobs:
 
       - name: Detect relevant changes
         id: changes
+        # This step runs EXPLAIN ANALYZE against PRODUCTION Neon, so the
+        # trigger should be exactly the set of changes that can move a query
+        # plan — no wider.
+        #
+        # app/db.py used to be in this list and no longer is. It is a big
+        # file, most of it pool wiring and helper queries, and editing any of
+        # it woke the prod compute for a plan check it could not affect.
+        # Dropping it is safe because of a convention the file itself already
+        # states (app/db.py:52-58, :660-667): every index created in
+        # _apply_migrations is mirrored into a migrations/*.sql file, so any
+        # DDL that can change a plan lands under migrations/ too. That
+        # convention is now load-bearing for CI — see CLAUDE.md.
+        #
+        # If you need this on an app/db.py-only change, add the `feed-perf`
+        # label or use workflow_dispatch.
+        env:
+          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'feed-perf') }}
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual run — forcing the plan check."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$HAS_LABEL" = "true" ]; then
+            echo "feed-perf label present — forcing the plan check."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           if git diff --name-only "$base" "$head" -- \
-              app/db.py \
               migrations \
+              init.sql \
               scripts/explain_feed_queries.py \
               | grep -q .; then
             echo "run=true" >> "$GITHUB_OUTPUT"

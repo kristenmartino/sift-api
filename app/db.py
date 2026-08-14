@@ -9,10 +9,30 @@ _pool: asyncpg.Pool | None = None
 
 async def init_pool() -> None:
     global _pool
+    # min_size=0: asyncpg's min_size is the number of connections opened at
+    # init, not a floor. `_minsize` is read only in Pool._initialize and by
+    # get_min_size() (asyncpg/pool.py) — no maintenance task ever refills the
+    # pool, and PoolConnectionHolder._deactivate_inactive_connection terminates
+    # idle connections with no min_size check. So this does not change
+    # steady-state behaviour; it only stops create_pool() opening two
+    # connections a process with no traffic will never use.
+    #
+    # max_inactive_connection_lifetime is what actually drains the pool. 60s
+    # rather than the 300s default so a connection cannot outlive the work that
+    # opened it by more than a minute — Neon's scale-to-zero window is 300s,
+    # and holding a socket through 299s of it is pure downside here.
+    #
+    # Do NOT set this to 0: asyncpg treats a falsy value as "disable the
+    # mechanism", i.e. hold connections forever, which is the opposite of the
+    # intent.
+    #
+    # max_size=10 is unchanged. It is a ceiling, and asyncpg only connects on
+    # demand, so it costs nothing while idle.
     _pool = await asyncpg.create_pool(
         settings.database_url,
-        min_size=2,
+        min_size=0,
         max_size=10,
+        max_inactive_connection_lifetime=60.0,
     )
     await _apply_migrations(_pool)
 

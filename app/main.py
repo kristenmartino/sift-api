@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -43,10 +44,33 @@ async def _scheduled_refresh():
                 "total_skipped": 0,
                 "errors": [],
             }
+            # Time the run. The HTTP path has always reported duration_ms
+            # (app/routers/pipeline.py:64) but the scheduled path — the one
+            # that actually runs 48x/day — did not, so how long a cycle takes
+            # was recorded nowhere. It is the input that decides how much
+            # Neon compute time scale-to-zero can actually save: the compute
+            # stays awake for the run plus a 300s idle tail, so a 2-minute
+            # cycle and an 8-minute cycle are a 2x difference in the bill.
+            start = time.monotonic()
             result = await pl.ainvoke(initial_state)
+            duration_s = time.monotonic() - start
             errors = result.get("errors", [])
             results = result.get("results", {})
-            logger.info("Scheduled refresh done: %s categories, %d errors", len(results), len(errors))
+            logger.info(
+                "Scheduled refresh done: %s categories, %d errors, %.1fs",
+                len(results), len(errors), duration_s,
+            )
+            # Reconcile the batch poller's in-memory in-flight set against
+            # api_batches, once per cycle. Free — the run above already woke
+            # the compute — and it is the only thing standing between us and a
+            # batch submitted by some future out-of-process writer sitting
+            # unclaimed until the next restart. Deliberately not on its own
+            # timer; a timer here is the defect the poller change removed.
+            try:
+                from services import batch_client
+                await batch_client.sync_pending_from_db()
+            except Exception as e:
+                logger.warning("Batch reconcile failed: %s", e)
         except Exception as e:
             logger.error("Scheduled refresh failed: %s", e)
         await asyncio.sleep(REFRESH_INTERVAL)
@@ -77,11 +101,27 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("LLM models: all stages on their incumbent")
+    from app import pipeline_clock
+
     try:
         await init_pool()
         logger.info("Database pool initialized")
+        # Seed the in-memory pipeline clock from the one authoritative read we
+        # still make. Piggybacks on the awake window _apply_migrations just
+        # created, so it costs no additional wake. After this, /health never
+        # touches the database — see app/pipeline_clock.py.
+        try:
+            pool = await get_pool()
+            row = await pool.fetchrow(
+                "SELECT MAX(last_refreshed_at) AS last_run FROM pipeline_state"
+            )
+            pipeline_clock.seed(row["last_run"] if row else None, db_ok=True)
+        except Exception as e:
+            logger.warning("Could not seed pipeline clock: %s", e)
+            pipeline_clock.seed(None, db_ok=False)
     except Exception as e:
         logger.warning("Failed to connect to database: %s", e)
+        pipeline_clock.seed(None, db_ok=False)
 
     # Start background scheduler in production
     cron_task = None
@@ -220,22 +260,32 @@ async def root():
     "/health",
     response_model=HealthResponse,
     summary="Health check",
-    description="Returns service health, database connectivity, and last pipeline run timestamp.",
+    description=(
+        "Returns service health, database connectivity, and last pipeline run "
+        "timestamp. Makes no database query — the values are held in memory by "
+        "app/pipeline_clock.py. Pass ?deep=1 for a live connectivity probe, "
+        "which will wake a suspended Neon compute."
+    ),
 )
-async def health():
-    db_connected = False
-    last_run = None
-    try:
-        pool = await get_pool()
-        await pool.fetchval("SELECT 1")
-        db_connected = True
-        row = await pool.fetchrow(
-            "SELECT MAX(last_refreshed_at) as last_run FROM pipeline_state"
-        )
-        if row and row["last_run"]:
-            last_run = row["last_run"].isoformat()
-    except Exception:
-        pass
+async def health(deep: bool = False):
+    from app import pipeline_clock
+
+    db_connected = pipeline_clock.db_ok()
+
+    if deep:
+        # Opt-in only. Nothing on a schedule requests it: the GitHub heartbeat
+        # reads .last_pipeline_run, and Railway's deploy healthcheck cannot
+        # pass query parameters.
+        try:
+            pool = await get_pool()
+            await pool.fetchval("SELECT 1")
+            db_connected = True
+        except Exception:
+            db_connected = False
+            pipeline_clock.note_db_error()
+
+    run_at = pipeline_clock.last_pipeline_run()
+    last_run = run_at.isoformat() if run_at else None
 
     scheduler_running = (
         settings.environment == "production" or None

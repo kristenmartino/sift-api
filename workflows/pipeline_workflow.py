@@ -424,6 +424,15 @@ async def store_node(state: PipelineState) -> dict:
         except Exception as e:
             logger.error("Failed to update pipeline_state for %s: %s", cat, e)
 
+    # Mirror what we just wrote into the in-memory clock /health reads, so the
+    # heartbeat's freshness check costs zero queries. Updated here rather than
+    # in the caller because this is where pipeline_state actually changes, and
+    # both entry points — the scheduled loop and POST /pipeline/refresh, which
+    # is the heartbeat's own self-heal path — reach it through this node.
+    from app.pipeline_clock import note_pipeline_run
+
+    note_pipeline_run()
+
     logger.info("store: inserted %d articles", stored)
 
     # Phase 6b: submit entity extraction to Batch API (50% off). Results are
