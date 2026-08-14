@@ -71,6 +71,14 @@ Watch for:
 
 **Neon storage is a separate bill and was never costed until 2026-08-05: 2,272 MB**, of which `idx_articles_embedding` alone is **879 MB (39%)**. **228,689 of 282,943 articles (80.8%) are past the feed's own 30-day recency floor** ([sift#172](https://github.com/kristenmartino/sift/pull/172)) and cannot be displayed. Retention would take the DB to ~500 MB — design in [`docs/NEON_RETENTION.md`](./docs/NEON_RETENTION.md). Destructive, so archive-before-delete with explicit sign-off; and **do not drop the embedding index**, which Next 3 #3 makes load-bearing.
 
+> **Storage was the wrong half of this bill (2026-08-14).** The plan is **Launch**: $19/mo, 300 CU-hours, **10 GiB** storage. The database is **1,993 MB** — a fifth of the allowance, growing ~240 MB/month, so the cap is years out. Every remaining action in `NEON_RETENTION.md` is real work that **saves $0 on this plan**. Do not spend a day on it expecting money back.
+>
+> The bill was **compute**. `pg_postmaster_start_time()` reported **26 days of unbroken uptime** — the compute had never scaled to zero, billing ~730 CU-hours/month against the 300 CU-hour allowance. Cause was one 60-second timer: the batch poller opened each iteration with a `SELECT` on `api_batches` before checking whether anything was pending, plus `/health`'s two queries every 30 minutes from the GitHub heartbeat. Both now answer from memory, and the poller blocks on an event rather than a clock. See `sift/docs/DECISIONS.md` D54.
+>
+> **Re-derive, don't quote:** `scripts/verify_neon_idle.py --probe` (uptime + size, no API key needed) and `--api` (consumption history, needs `NEON_API_KEY`).
+>
+> **Still open — console settings, which no code change can reach:** scale-to-zero enabled on the branch's compute endpoint; autoscale minimum at 0.25 CU (730 CU-h is exactly `730 × 1`, so the floor is currently 1); no stray branches running their own billed compute; history retention at 1 day.
+
 ### 2. Is the LLM-based entity linker durable, or does it need a v2?
 
 Phase 3.G.2 shipped the LLM linker with disambiguation rules added since. It's working but it's a moving target — every dossier expansion changes its catalog, and the prompt keeps needing tweaks.

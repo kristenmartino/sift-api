@@ -1,9 +1,25 @@
 # Neon retention
 
-**Status:** designed 2026-08-05, not started. `effort-day`.
+> **Read this first (2026-08-14): storage is not the bill.** The plan is Neon
+> **Launch** — $19/mo, 300 CU-hours, **10 GiB** storage. The database is
+> **1,993 MB** and growing ~240 MB/month, so the cap is years out. Everything
+> below is correct and carefully measured, and on this plan it **saves $0**.
+>
+> The Neon bill was **compute**: the endpoint had run **26 days without once
+> scaling to zero** — ~730 CU-hours/month against a 300 CU-hour allowance —
+> because a 60-second poller queried `api_batches` whether or not anything was
+> pending. Fixed; see `sift/docs/DECISIONS.md` D54 and
+> `scripts/verify_neon_idle.py`.
+>
+> This document keeps its value as an operational record — the
+> VACUUM-reclaims-nothing / REINDEX-does-all-of-it finding below is worth more
+> than the megabytes it recovered — but treat it as **hygiene, not cost work**,
+> until the database is within a few GB of 10 GiB.
+
+**Status:** designed 2026-08-05, partially executed. Reclassified 2026-08-14 as hygiene rather than cost work. `effort-day`.
 **Companion:** [INCREMENTAL_THREADING.md](./INCREMENTAL_THREADING.md) — independent, but sequence retention *first* if both are happening.
 
-This is a **different bill** from the Anthropic work in `STATUS.md` Open-Q #1. Nothing here reduces model spend.
+This is a **different bill** from the Anthropic work in `STATUS.md` Open-Q #1. Nothing here reduces model spend — and, as of 2026-08-14, nothing here reduces the Neon bill either.
 
 ---
 
