@@ -307,6 +307,67 @@ async def _fetch_single_feed(
     return FeedResult(source_name, feed_url, parse_feed(resp.content, source_name))
 
 
+# WordPress and similar CMSs put a footer line in the RSS teaser instead of a
+# summary. ProPublica's `summary` field is literally "The post <title> appeared
+# first on ProPublica." — 17 words of boilerplate standing in for a 5,000-word
+# investigation that the same feed carries in full.
+_BOILERPLATE_TEASER = re.compile(
+    r"^\s*the post .{0,200}? appeared first on .{0,80}?\.?\s*$", re.I | re.S
+)
+
+# How much longer content:encoded must be before it displaces the teaser.
+# Not "always prefer the longest": measured across all 59 feeds on 2026-08-13,
+# some content fields are worse than the teaser they would replace —
+# The Atlantic's photo posts carry 896 words of caption and photographer
+# credits ("Lintao Zhang / Getty ..."), and Ars Technica's open with nav
+# furniture. A large margin keeps those cases from winning on length alone.
+_CONTENT_MIN_WORDS = 100
+_CONTENT_MIN_RATIO = 3.0
+
+
+def _words(html: str) -> int:
+    return len(re.sub(r"<[^>]+>", " ", html or "").split())
+
+
+def _best_content(entry) -> str:
+    """Pick the richest usable body text the feed actually handed us.
+
+    This used to read `summary`, then `description`, then `content` — first
+    match wins. `summary` is present on nearly every entry, so `content:encoded`
+    was almost never reached, and 26% of entries across all 59 feeds carry a
+    content field more than twice as long as the one that was being read.
+    Sift was fetching that text and discarding it: ProPublica 20 words read
+    against 3,186 available, Carbon Brief 40 against 2,411, Fox News 23
+    against 862.
+
+    That matters beyond the summarizer, because EVERY later stage — category,
+    importance, tone, why-it-matters, primer, entities, clustering, synthesis —
+    is derived from the summary this text produces. The whole pipeline's view
+    of an article was a 25-word teaser.
+
+    Deliberately conservative rather than "longest wins": a longer field is not
+    always a better one, and `_CONTENT_MIN_RATIO` documents the cases that
+    proved it.
+    """
+    teaser = entry.get("summary") or entry.get("description") or ""
+    # Dict-style access throughout: feedparser entries support both, and the
+    # attribute form the original code used breaks on any other mapping —
+    # including the plain dicts the tests build.
+    content = ""
+    blocks = entry.get("content") or []
+    if blocks:
+        content = (blocks[0] or {}).get("value", "") or ""
+
+    # A boilerplate teaser is worse than nothing, so anything real beats it.
+    if _BOILERPLATE_TEASER.match(re.sub(r"<[^>]+>", " ", teaser).strip()):
+        return content or teaser
+
+    cw, tw = _words(content), _words(teaser)
+    if cw >= _CONTENT_MIN_WORDS and cw >= tw * _CONTENT_MIN_RATIO:
+        return content
+    return teaser or content
+
+
 def parse_feed(data: bytes, source_name: str) -> list[RSSArticle]:
     """Parse RSS/Atom feed data into RSSArticle objects."""
     feed = feedparser.parse(data)
@@ -325,13 +386,7 @@ def parse_feed(data: bytes, source_name: str) -> list[RSSArticle]:
         image_url = _upgrade_image_url(_extract_image_url(entry))
 
         # Get raw content for summarization
-        raw_content = ""
-        if entry.get("summary"):
-            raw_content = entry.summary
-        elif entry.get("description"):
-            raw_content = entry.description
-        elif entry.get("content"):
-            raw_content = entry.content[0].get("value", "")
+        raw_content = _best_content(entry)
 
         articles.append(RSSArticle(
             title=title,
