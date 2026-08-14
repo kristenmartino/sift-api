@@ -403,26 +403,42 @@ async def store_node(state: PipelineState) -> dict:
             if category in results:
                 results[category].errors += 1
 
-    # Update pipeline_state for ALL categories
-    for cat in ALL_CATEGORIES:
-        try:
-            count = await pool.fetchval(
-                "SELECT COUNT(*) FROM articles WHERE category = $1 AND from_search = false", cat,
-            )
-            await pool.execute(
-                """
-                INSERT INTO pipeline_state (category, last_refreshed_at, article_count, error)
-                VALUES ($1, NOW(), $2, NULL)
-                ON CONFLICT (category) DO UPDATE SET
-                    last_refreshed_at = NOW(),
-                    article_count = $2,
-                    error = NULL
-                """,
-                cat,
-                count,
-            )
-        except Exception as e:
-            logger.error("Failed to update pipeline_state for %s: %s", cat, e)
+    # Update pipeline_state for ALL categories — one statement, and no COUNT.
+    #
+    # This used to issue 20 statements per cycle: a COUNT(*) and an UPSERT for
+    # each of the ten categories. The COUNT could not be served by any index.
+    # `idx_articles_category_date` carries (category, published_date) but not
+    # `from_search`, so it index-scans the category and then heap-checks every
+    # row; `idx_articles_feed` is partial on the summary conditions, narrower
+    # than this predicate, so it cannot produce an exact count either. The ten
+    # categories partition the table, so every cycle walked ~283k rows — 48
+    # times a day.
+    #
+    # All of it fed `pipeline_state.article_count`, which nothing reads. The
+    # only consumers of this table are app/main.py's startup seed
+    # (MAX(last_refreshed_at)) and sift/lib/db.ts's per-category
+    # last_refreshed_at. Written NULL rather than left at its last value, so
+    # the column reads as "not maintained" instead of silently stale — it is a
+    # drop candidate whenever a migration is next touching this table. A row
+    # count, if ever wanted, is a one-off query and not a per-cycle one.
+    #
+    # Behaviour note: this is now all-or-nothing where each category used to
+    # fail independently. They are identical statements against one table, so
+    # anything that breaks one breaks all ten regardless.
+    try:
+        await pool.execute(
+            """
+            INSERT INTO pipeline_state (category, last_refreshed_at, article_count, error)
+            SELECT unnest($1::text[]), NOW(), NULL, NULL
+            ON CONFLICT (category) DO UPDATE SET
+                last_refreshed_at = NOW(),
+                article_count = NULL,
+                error = NULL
+            """,
+            ALL_CATEGORIES,
+        )
+    except Exception as e:
+        logger.error("Failed to update pipeline_state: %s", e)
 
     # Mirror what we just wrote into the in-memory clock /health reads, so the
     # heartbeat's freshness check costs zero queries. Updated here rather than

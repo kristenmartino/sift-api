@@ -117,6 +117,83 @@ async def _connect() -> asyncpg.Connection:
     return await asyncpg.connect(url, ssl=ssl_mode)
 
 
+async def top_queries(limit: int = 15) -> list[dict]:
+    """Rank statements by total execution time, with their cache hit ratio.
+
+    Answers the question --probe cannot: once the compute IS awake, what is it
+    spending its time on? `total_exec_time` is the column that maps to the
+    bill — a cheap query run 40,000 times costs more than an expensive one run
+    twice, and only this ordering shows that.
+
+    `hit%` is the second half of the story. A low ratio on an expensive query
+    means it is reading from disk because the working set does not fit in
+    RAM (1 GB at 0.25 CU, against a ~2 GB database), which is the one case
+    where shrinking the database would cut the COMPUTE bill — storage itself
+    is under a dollar a month. A high ratio means it is CPU-bound and
+    retention would not help.
+    """
+    conn = await _connect()
+    try:
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT calls,
+                       total_exec_time,
+                       mean_exec_time,
+                       shared_blks_hit,
+                       shared_blks_read,
+                       query
+                FROM pg_stat_statements
+                WHERE query NOT LIKE '%pg_stat_statements%'
+                ORDER BY total_exec_time DESC
+                LIMIT $1
+                """,
+                limit,
+            )
+        except asyncpg.PostgresError as e:
+            raise RuntimeError(
+                "pg_stat_statements is unavailable "
+                f"({type(e).__name__}: {e}). On Neon: CREATE EXTENSION IF NOT "
+                "EXISTS pg_stat_statements; then let a few pipeline cycles run "
+                "before reading it — a freshly created view has nothing in it."
+            ) from e
+    finally:
+        await conn.close()
+
+    out = []
+    for r in rows:
+        hit, read = r["shared_blks_hit"] or 0, r["shared_blks_read"] or 0
+        total = hit + read
+        out.append({
+            "calls": r["calls"],
+            "total_s": round((r["total_exec_time"] or 0) / 1000, 1),
+            "mean_ms": round(r["mean_exec_time"] or 0, 2),
+            "hit_pct": round(100 * hit / total, 1) if total else None,
+            "query": " ".join((r["query"] or "").split())[:110],
+        })
+    return out
+
+
+def _render_queries(rows: list[dict]) -> int:
+    if not rows:
+        print("pg_stat_statements is empty — nothing has run since it was reset.")
+        return 2
+    total = sum(r["total_s"] for r in rows) or 1
+    print(f"{'total_s':>9} {'share':>6} {'calls':>8} {'mean_ms':>8} {'hit%':>6}  query")
+    print("-" * 118)
+    for r in rows:
+        hit = "n/a" if r["hit_pct"] is None else f"{r['hit_pct']:.1f}"
+        print(
+            f"{r['total_s']:>9.1f} {100 * r['total_s'] / total:>5.1f}% "
+            f"{r['calls']:>8} {r['mean_ms']:>8.2f} {hit:>6}  {r['query']}"
+        )
+    print()
+    print("Read total_s, not mean_ms: the bill is time summed over calls.")
+    print("A low hit% on an expensive row is the only argument for retention as")
+    print("a COMPUTE lever — storage itself is well under $1/month.")
+    return 0
+
+
 async def probe() -> dict:
     """One connect + one read. Returns connect latency and compute uptime."""
     started = time.monotonic()
@@ -295,6 +372,8 @@ def main() -> int:
                         help="pull consumption history from the Neon API (needs NEON_API_KEY)")
     parser.add_argument("--watch", type=int, metavar="MINUTES",
                         help="sample connect latency over a quiet window")
+    parser.add_argument("--queries", action="store_true",
+                        help="rank statements by total execution time (needs pg_stat_statements)")
     parser.add_argument("--days", type=int, default=7,
                         help="lookback window for --api (default 7)")
     parser.add_argument("--budget", type=int, default=DEFAULT_BUDGET_CU_HOURS,
@@ -304,7 +383,7 @@ def main() -> int:
     parser.add_argument("--json", metavar="PATH", help="also write results as JSON")
     args = parser.parse_args()
 
-    if not (args.probe or args.api or args.watch):
+    if not (args.probe or args.api or args.watch or args.queries):
         args.probe = True
 
     out: dict = {}
@@ -316,6 +395,12 @@ def main() -> int:
         elif args.probe:
             out["probe"] = asyncio.run(probe())
             status = max(status, _render_probe(out["probe"]))
+
+        if args.queries:
+            if out:
+                print()
+            out["queries"] = asyncio.run(top_queries())
+            status = max(status, _render_queries(out["queries"]))
 
         if args.api:
             if out:
