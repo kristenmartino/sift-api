@@ -84,6 +84,26 @@ class Candidate:
     has_batch_discount: bool
     source: str = ""  # where the price came from, so it can be re-checked
     note: str = ""
+    # How many output tokens this model emits per output token the INCUMBENT
+    # emits, for the same work. 1.0 means "same verbosity".
+    #
+    # This exists because the projection re-prices the incumbent's MEASURED
+    # token counts, and therefore cannot see that a reasoning model spends
+    # output tokens thinking before it answers. Left at 1.0, the first A/B
+    # was optimistic by 2.5-7.8x:
+    #
+    #     summarizer.batch, 30 batches, same corpus, 2026-08-13
+    #       haiku       ~9,900 output tokens   the baseline, 1.0x
+    #       deepseek     42,577                4.3x, 83% of it reasoning
+    #       gpt-5-nano   86,931                8.8x, 90% of it reasoning
+    #
+    # Reasoning bills at the OUTPUT rate and output is ~56% of this pipeline's
+    # cost, so this factor moves the answer more than the headline price does.
+    output_inflation: float = 1.0
+    # True once output_inflation comes from a real A/B rather than a guess.
+    # Unverified rows are flagged in the report — a projection that cannot tell
+    # a measurement from a default is how the last one was wrong.
+    inflation_measured: bool = False
 
 
 # Prices retrieved 2026-08-13 from each vendor's own pricing page. RE-CHECK
@@ -121,7 +141,8 @@ CANDIDATES: list[Candidate] = [
     # file-upload-plus-batch-object shaped, not `messages.batches` — but that
     # is an engineering cost, not a price one.
     Candidate("gpt-5-nano", 0.05, 0.40, True,
-              source="developers.openai.com/api/docs/pricing"),
+              source="developers.openai.com/api/docs/pricing",
+              output_inflation=8.8, inflation_measured=True),
     Candidate("gemini-2.5-flash-lite", 0.10, 0.40, True,
               source="ai.google.dev/gemini-api/docs/pricing"),
 
@@ -137,7 +158,8 @@ CANDIDATES: list[Candidate] = [
     # The cheapest credible output price found. Together lists a batch
     # discount for it.
     Candidate("DeepSeek V4 Flash (Together)", 0.14, 0.28, True,
-              source="together.ai/pricing"),
+              source="together.ai/pricing",
+              output_inflation=4.3, inflation_measured=True),
 
     # ── Kimi, priced because it gets asked about ─────────────
     # It is the counter-example that makes the output-price finding concrete.
@@ -209,6 +231,11 @@ def project(
     # caching semantics differ per provider and most OpenAI-compatible hosts
     # report nothing, so assuming the discount carries over would understate.
     tokens_in += int(row["cache_read"] or 0) + int(row["cache_write"] or 0)
+
+    # The candidate does not emit the incumbent's output token count. Measured
+    # on the summarizer A/B: DeepSeek 4.3x, gpt-5-nano 8.8x, because both reason
+    # before answering and reasoning bills at the output rate.
+    tokens_out = tokens_out * cand.output_inflation
 
     cost = tokens_in * cand.input_per_m / 1e6 + tokens_out * cand.output_per_m / 1e6
     if uses_batch and cand.has_batch_discount:
@@ -307,6 +334,22 @@ def main_report(rows: list[dict], arts_per_day: float, days: int) -> dict:
         "      because no other provider offers `messages.batches`. That is an\n"
         "      engineering cost this table does not price."
     )
+    print("\n  output inflation vs the incumbent, per candidate:")
+    for c in CANDIDATES:
+        mark = "measured" if c.inflation_measured else "ASSUMED 1.0x"
+        print(f"    {c.label[:34]:36s} {c.output_inflation:5.1f}x   {mark}")
+    unmeasured = [c.label for c in CANDIDATES
+                  if not c.inflation_measured and c.output_inflation == 1.0
+                  and c.source != "services/usage_tracker.PRICES"]
+    if unmeasured:
+        print(
+            "\n  ROWS ABOVE MARKED 'ASSUMED' ARE OPTIMISTIC BY AN UNKNOWN FACTOR.\n"
+            "  They assume the candidate emits the incumbent's output token count.\n"
+            f"  Both measured candidates emit 4.3x and 8.8x, so {', '.join(unmeasured)}\n"
+            "  should be read as a floor, not an estimate. Run the A/B to fix it:\n"
+            "    ./.venv/bin/python3 scripts/eval_summarizer.py --candidate <id> "
+            "--max-tokens 4000"
+        )
     print(
         f"\n  Prices retrieved {PRICES_RETRIEVED} from each vendor's own pricing\n"
         "  page (see Candidate.source). They move — re-check before quoting.\n"

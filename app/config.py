@@ -7,6 +7,14 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://sift:sift@localhost:5432/siftdb"
     anthropic_api_key: str = ""
     voyage_api_key: str = ""
+
+    # Candidate-model keys, for the model-swap evaluation. EVAL ONLY — set
+    # these in sift-api/.env, not on Railway. Production has no reason to hold
+    # a key for a provider it does not call, and a key present in prod is how a
+    # half-finished experiment reaches live traffic. services/llm_client.py
+    # raises a message saying so if one is missing.
+    openai_api_key: str = ""
+    together_api_key: str = ""
     pipeline_api_key: str = "dev-key"
     port: int = 8000
     environment: str = "development"

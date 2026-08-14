@@ -56,6 +56,22 @@ PRICES: dict[str, ModelPrices] = {
     "claude-haiku-4-5": ModelPrices(1.0, 5.0, 1.25, 0.10),
     "claude-haiku-4-5-20251001": ModelPrices(1.0, 5.0, 1.25, 0.10),
     "claude-sonnet-4-6": ModelPrices(3.0, 15.0, 3.75, 0.30),
+
+    # Candidate models, prices retrieved 2026-08-13 from each vendor's own
+    # pricing page. tests/test_model_registry.py requires a row here for every
+    # model the registry can select — a selectable model with no price row is
+    # silently billed at the default's rates, which is the bug this whole
+    # program opened by fixing.
+    #
+    # Cache columns: no OpenAI-compatible provider charges a WRITE premium, so
+    # those equal the input rate rather than a guessed multiple. Where a
+    # vendor's cached-READ rate is not confirmed it is also set to the full
+    # input rate — that OVERSTATES cost, which is the safe direction against a
+    # fail-closed ceiling and matches scripts/project_model_cost.py.
+    # developers.openai.com/api/docs/pricing — cached read not confirmed.
+    "gpt-5-nano": ModelPrices(0.05, 0.40, 0.05, 0.05),
+    # together.ai/pricing lists $0.14 input with $0.03 cached, $0.28 output.
+    "deepseek-ai/DeepSeek-V4-Flash-0731": ModelPrices(0.14, 0.28, 0.14, 0.03),
 }
 
 DEFAULT_MODEL = "claude-haiku-4-5"

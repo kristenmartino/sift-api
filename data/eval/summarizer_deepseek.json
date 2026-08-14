@@ -1,0 +1,607 @@
+{
+  "catalog_id": "deepseek-v4-flash",
+  "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "max_tokens": 4000,
+  "results": {
+    "https://abcnews.com/Politics/kennedy-center-board-votes-close-renovations-add-trumps/story?id=135621885": {
+      "summary": "The Kennedy Center board voted to close for two years for renovations and to add President Trump's name to the facade, according to Rep. Joyce Beatty. The decision reflects political influence on the cultural institution.",
+      "category": "politics"
+    },
+    "https://arstechnica.com/health/2026/08/us-wait-times-for-cancer-surgeries-are-getting-longer-and-longer/": {
+      "summary": "A study finds that wait times for cancer surgeries have reached a 10-year high, indicating worsening access to timely cancer care.",
+      "category": "health"
+    },
+    "https://www.axios.com/2026/08/13/marco-rubio-memes-birthday-gift": {
+      "summary": "Marco Rubio, who holds multiple Trump administration roles, received a gold-framed collage of 'Rubio Realizing' memes as a birthday gift from White House staff and Trump, highlighting how internet virality has boosted his popularity.",
+      "category": "politics"
+    },
+    "https://www.bbc.co.uk/news/articles/c04k20w7lr6o?at_medium=RSS&at_campaign=rss": {
+      "summary": "Multiple fires in the West Midlands caused devastation, with the fire chief describing it as one of the most significant incidents in the service's history, involving thousands of emergency calls.",
+      "category": "world"
+    },
+    "https://www.bbc.co.uk/sport/football/articles/cly8w7wm9v8o?at_medium=RSS&at_campaign=rss": {
+      "summary": "After Rangers' Europa League qualifying defeat to Jagellonia Bialystok, questions arise about what's going wrong for new manager Derek McInnes and his team this season.",
+      "category": "sports"
+    },
+    "https://www.bbc.co.uk/news/articles/cqlxpq5q799o?at_medium=RSS&at_campaign=rss": {
+      "summary": "Romania's only nuclear plant, Cernavod\u0103, which supplies 20% of the country's electricity, has been shut down due to a significant drop in the Danube River's water level caused by heat, and is not expected to restart within 10 days. This matters because it threatens Romania's power supply amid extreme heat conditions.",
+      "category": "energy"
+    },
+    "https://www.bloomberg.com/news/articles/2026-08-13/asian-stocks-set-for-gains-as-us-inflation-cools-markets-wrap": {
+      "summary": "Asian stocks rose as evidence of moderating US inflation strengthened expectations that the Federal Reserve will hold interest rates steady next month, with technology shares leading gains. This matters for global markets and investor sentiment.",
+      "category": "business"
+    },
+    "https://www.cbsnews.com/news/floodwaters-submerge-midwest-neighborhoods-bracing-more-severe-storms/": {
+      "summary": "Floodwaters from severe storms have submerged neighborhoods in Indiana and Ohio, with more rain expected in some areas. The story highlights ongoing extreme weather impacts in the Midwest.",
+      "category": "top"
+    },
+    "https://www.cbssports.com/nfl/news/terrion-arnold-plans-to-sign-with-seahawks/": {
+      "summary": "Former Lions first-round pick Terrion Arnold plans to sign with the Seahawks while still facing serious felony charges in Florida, and he remains subject to a potential suspension. This matters for the NFL and the player's legal situation.",
+      "category": "sports"
+    },
+    "https://www.cnbc.com/2026/08/14/us-iran-war-trump-hormuz-carrier-abraham-lincoln-george-washington.html": {
+      "summary": "US Treasury Secretary Bessent said the US will use unprecedented economic tactics against Iran, including economic isolation and a continued blockade in the Strait of Hormuz, while the Navy works to relieve the troubled carrier Abraham Lincoln. This signals escalating US pressure on Iran.",
+      "category": "world"
+    },
+    "https://www.canarymedia.com/articles/clean-aluminum/us-aluminum-comeback-barriers": {
+      "summary": "US aluminum production is growing again after years of decline, driven by tariffs and a push for domestic manufacturing, but smelters' high electricity needs and community pollution concerns pose major hurdles.",
+      "category": "business"
+    },
+    "https://www.carbonbrief.org/analysis-weaker-ev-targets-could-cost-uk-consumers-3bn-a-year-by-2030": {
+      "summary": "The UK government's consultation on weakening EV targets could cost consumers up to \u00a33bn per year by 2030, according to analysis.",
+      "category": "energy"
+    },
+    "https://deadline.com/2026/08/kevin-costner-field-of-dreams-game-video-1237033509/": {
+      "summary": "Kevin Costner provided narration for the intro to the Field of Dreams MLB game on Netflix, marking the third edition of the Hollywood-MLB event.",
+      "category": "entertainment"
+    },
+    "https://www.espn.com/nfl/game?gameId=401873640": {
+      "summary": "Mendoza scored their first NFL touchdown, according to a live update.",
+      "category": "sports"
+    },
+    "https://www.ft.com/content/9c9c948f-dc8b-4385-a9b9-4b98dc1eadd9?syn-25a6b1a6=1": {
+      "summary": "The US sold 30-year bonds at the highest borrowing costs since 2001, with yields rising due to concerns over public debt and inflation.",
+      "category": "business"
+    },
+    "https://www.forbes.com/sites/erikkain/2026/08/13/wordle-answer-friday-august-14/": {
+      "summary": "Provides hints and the answer for today's New York Times Wordle puzzle, along with commentary to help players.",
+      "category": "entertainment"
+    },
+    "https://foreignpolicy.com/2026/08/13/iran-war-us-stockpile-depleted-gulf/": {
+      "summary": "The article argues that the conflict with Iran has exposed U.S. military and strategic weaknesses to adversaries.",
+      "category": "world"
+    },
+    "https://www.foxnews.com/media/cnn-calls-out-patriot-games-participants-overwhelmingly-white-citing-outlet-analysis": {
+      "summary": "CNN's Audie Cornish cited an analysis finding that Patriot Games athletes are overwhelmingly White, drawing a response from the White House.",
+      "category": "politics"
+    },
+    "https://www.technologyreview.com/2026/08/13/1141399/roundtables-inside-the-censorship-industrial-complex-idea-shaping-us-policy/": {
+      "summary": "The piece explores how the 'censorship-industrial complex' idea, alleging a government-tech conspiracy to suppress conservative speech, has influenced U.S. policy.",
+      "category": "technology"
+    },
+    "https://www.npr.org/2026/08/13/nx-s1-5930349/kennedy-center-shut-down-board-vote-trump": {
+      "summary": "The Kennedy Center board voted to close its main building for a $250 million renovation and to add Trump's name back, three months after a federal judge blocked a similar move.",
+      "category": "politics"
+    },
+    "https://www.npr.org/2026/08/12/nx-s1-5927479/boston-area-trial-draws-attention-to-post-partum-psychosis": {
+      "summary": "A mother's trial for killing her children highlights post-partum psychosis, with psychiatrists hoping the case draws attention to better diagnosis and treatment.",
+      "category": "health"
+    },
+    "https://www.npr.org/2026/08/13/nx-s1-5930275/u-s-ambassador-slams-israeli-settlers-besieging-home-of-palestinian-american": {
+      "summary": "U.S. Ambassador Mike Huckabee called Israeli settlers besieging a Palestinian-American family's West Bank home \"terrorists.\"",
+      "category": "world"
+    },
+    "https://www.nationalreview.com/2026/08/restoring-sanity-to-the-endangered-species-act/": {
+      "summary": "The article argues that the Fish and Wildlife Service and National Marine Fisheries Service overstepped their authority in regulating private lands under the Endangered Species Act, and that the rescinded harm definition restores sanity.",
+      "category": "politics"
+    },
+    "https://www.nature.com/articles/s41586-026-10959-w": {
+      "summary": "A correction notice for a paper on the structural mechanism of cGAS inhibition by the nucleosome.",
+      "category": "science"
+    },
+    "https://nypost.com/2026/08/13/sports/matthew-stafford-absence-opens-door-for-ty-simpson/": {
+      "summary": "Matthew Stafford is unlikely to play in the preseason game against the Chiefs, opening an opportunity for Ty Simpson.",
+      "category": "sports"
+    },
+    "https://www.nytimes.com/2026/08/13/us/politics/trump-private-companies-hacking-cybercriminals.html": {
+      "summary": "The Trump administration is allowing U.S. companies to conduct hacking operations against cybercriminals, aligning with practices in China and Russia where private-sector hackers support national security missions. This marks a significant shift in U.S. cyber policy.",
+      "category": "technology"
+    },
+    "https://www.pbs.org/newshour/politics/judge-drops-nevada-case-against-electors-accused-of-forging-2020-election-certificate": {
+      "summary": "A Nevada judge dismissed the case against fake electors accused of forging 2020 election certificates, dealing another setback to swing-state prosecutions related to efforts to overturn the election.",
+      "category": "politics"
+    },
+    "https://pitchfork.com/story/siblings-child-sex-trafficking-lawsuit-against-michael-jackson-dismissed/": {
+      "summary": "A California judge dismissed the Cascio siblings' child sex trafficking lawsuit against Michael Jackson, sending it to arbitration due to a clause in their 2019 settlement with the Jackson estate.",
+      "category": "entertainment"
+    },
+    "https://www.politico.com/news/2026/08/13/bernie-sanders-wisconsin-progressives-hong-01037121": {
+      "summary": "Bernie Sanders responded to progressives upset over Hong's loss in Wisconsin, saying he has limited resources and cannot endorse every candidate.",
+      "category": "politics"
+    },
+    "https://www.politico.com/live-updates/2026/08/13/congress/senators-probe-robloxs-kids-online-safety-practices-01036094": {
+      "summary": "The Senate launched a bipartisan investigation into Roblox over kids' safety concerns, led by Sens. Hawley and Durbin, following recent efforts to advance child safety legislation.",
+      "category": "technology"
+    },
+    "https://www.propublica.org/article/aau-youth-sports-sexual-abuse-failure-amateur-athletic-union": {
+      "summary": "ProPublica reports that a major youth sports organization promised reforms to protect children from sexual abuse but most were never implemented, highlighting systemic failures in safeguarding minors.",
+      "category": "politics"
+    },
+    "https://reason.com/volokh/2026/08/13/en-banc-fifth-circuit-dismisses-alien-enemies-act-case-as-moot/": {
+      "summary": "The en banc Fifth Circuit dismissed the Alien Enemies Act case as moot, without addressing whether Trump properly invoked the Act, leaving the legal question unresolved.",
+      "category": "politics"
+    },
+    "https://www.rollingstone.com/music/music-news/romeo-santos-sues-accounting-firm-mismanagement-1235608306/": {
+      "summary": "Latin superstar Romeo Santos is suing his accounting firm for $2.3 million, alleging tax errors, missed deadlines, and mismanagement of his finances, underscoring accountability for financial professionals handling celebrity wealth.",
+      "category": "entertainment"
+    },
+    "https://www.statnews.com/2026/08/13/commure-terminates-payments-under-customer-referral-programs/?utm_campaign=rss": {
+      "summary": "Commure, a company selling AI products to clinics, has terminated payments under its customer referral programs, affecting how AI products are marketed in healthcare.",
+      "category": "technology"
+    },
+    "https://www.science.org/content/article/science-investigation-casts-doubt-genes-hailed-warding-alzheimer-s-disease": {
+      "summary": "A Science investigation casts doubt on the protective effects of certain genes against Alzheimer's, citing altered patient data and suspect images, challenging the basis for potential treatments.",
+      "category": "science"
+    },
+    "https://slate.com/podcasts/political-gabfest/2026/08/politics-the-security-calculus-behind-the-trump-plane-swap?via=rss": {
+      "summary": "The article questions whether Trump's secret plane swap was necessary, suggesting an alternative might have protected him without endangering journalists.",
+      "category": "politics"
+    },
+    "https://www.si.com/onsi/minor-league-baseball/news/mariners-set-to-change-course-with-struggling-prospect-colt-emerson-justin3?utm_source=RSS": {
+      "summary": "The Seattle Mariners are reportedly making a major move regarding struggling top prospect Colt Emerson.",
+      "category": "sports"
+    },
+    "https://www.theatlantic.com/newsletters/2026/08/us-childhood-vaccine-guidance-mess/688285/?utm_source=feed": {
+      "summary": "Trump's latest vaccine order has added to confusion among Americans, who are experiencing whiplash from changing guidance.",
+      "category": "health"
+    },
+    "https://dailycaller.com/2026/08/13/democrats-young-candidates-establishment-primaries": {
+      "summary": "Democratic voters are replacing older party members faster than Republicans, indicating a hunger for a new generation.",
+      "category": "politics"
+    },
+    "https://www.dailywire.com/news/top-trump-officials-sound-alarm-over-gop-midterm-strategy": {
+      "summary": "Trump's top advisers are urging Republicans to shift midterm messaging to focus on health care instead of voter integrity, potentially giving them an advantage on a traditionally weak issue.",
+      "category": "politics"
+    },
+    "https://thedispatch.com/newsletter/boilingfrogs/trump-air-force-one/": {
+      "summary": "The article explains why the public is interested in Trump's alleged decoy strategy involving Air Force One.",
+      "category": "politics"
+    },
+    "https://www.economist.com/finance-and-economics/2026/08/13/when-japan-buys-yen-it-unwinds-a-dangerous-trade": {
+      "summary": "Japan's yen purchases are unwinding a massive carry trade, which could have global financial implications.",
+      "category": "business"
+    },
+    "https://www.theguardian.com/us-news/live/2026/aug/13/karoline-leavitt-white-house-primaries-trump-politics-latest-updates": {
+      "summary": "Trump ordered the Navy to revert to steam catapults on aircraft carriers, a costly change, and also issued an executive order on vaccines that experts say creates confusion and could lead to more illness.",
+      "category": "politics"
+    },
+    "https://www.theguardian.com/world/2026/aug/13/ebola-drc-democratic-republic-congo-sixth-province": {
+      "summary": "The Ebola outbreak in the DRC has spread to a sixth province, with the WHO warning it could become the deadliest ever, having already killed over 2,100 people.",
+      "category": "health"
+    },
+    "https://thehill.com/policy/defense/6029103-trump-orders-navy-catapult-reversal/": {
+      "summary": "Trump directed the Navy to replace electromagnetic catapults with steam systems on Ford-class carriers, a move experts say will increase costs.",
+      "category": "politics"
+    },
+    "https://thehill.com/homenews/administration/6029126-china-tariff-evasion-white-house-report/": {
+      "summary": "The White House released a report accusing China of routing goods through over 40 countries to avoid US tariffs, costing billions in lost revenue. This matters because it highlights ongoing trade tensions and potential policy responses.",
+      "category": "business"
+    },
+    "https://www.hollywoodreporter.com/business/business-news/paramount-warner-bros-labor-world-1236673223/": {
+      "summary": "The antitrust battle over a merged Paramount and Warner Bros. is causing divisions among Hollywood unions, as members have differing interests on how to wage the fight. This matters because it affects the future of the entertainment industry and labor relations.",
+      "category": "entertainment"
+    },
+    "https://theintercept.com/2026/08/13/israel-palestine-benjamin-netanyahu-likud-crazy/": {
+      "summary": "The article argues that Israel's past justifications for war by labeling enemies 'crazy' now apply to Israel itself, as Netanyahu's actions in Gaza have become increasingly extreme. This matters because it reflects on shifting perceptions of Israel's conduct in international affairs.",
+      "category": "world"
+    },
+    "https://www.theverge.com/policy/979977/trump-declares-100-percent-tariffs-on-many-drones-and-all-aircraft-parts": {
+      "summary": "President Trump declared 100% tariffs on many drones and all aircraft parts, targeting existing imports. This matters because it could significantly increase costs for drone and aviation industries.",
+      "category": "business"
+    },
+    "https://www.washingtontimes.com/news/2026/aug/13/us-attorney-confirms-no-meth-found-van-texas-man-shot-immigration/": {
+      "summary": "A federal prosecutor confirmed that a substance found in the van of a Texas man shot by immigration officers was not methamphetamine, contradicting earlier claims. This matters because it clarifies the circumstances of the shooting and may affect public perception.",
+      "category": "politics"
+    },
+    "https://variety.com/feature/2027-oscars-best-supporting-actress-predictions-1236834272/": {
+      "summary": "Variety's awards predictions for the supporting actress Oscar race, questioning whether Pen\u00e9lope Cruz could win this year.",
+      "category": "entertainment"
+    },
+    "https://www.vox.com/the-logoff-newsletter-trump/499337/us-iran-war-uss-lincoln-aircraft-carrier-sailors-mental-health": {
+      "summary": "The article discusses the mental health toll on US sailors deployed in the Middle East during the Iran campaign, highlighting deteriorating conditions.",
+      "category": "world"
+    },
+    "https://www.who.int/news/item/25-02-2026-who-director-general-visits-jordan-to-recognize-strong-collaboration-on-health-system-delivery--emergency-relief-and-advancing-mental-health": {
+      "summary": "WHO Director-General visited Jordan to acknowledge the country's collaboration on health system delivery, emergency relief, and mental health initiatives.",
+      "category": "health"
+    },
+    "https://www.washingtonexaminer.com/policy/defense/4687173/mark-kelly-trump-aircraft-carriers-steam-launch/": {
+      "summary": "Senator Mark Kelly criticized President Trump over a reported plan to overhaul aircraft carrier launch systems, calling it wasteful and telling him to 'stick to bulls***.'",
+      "category": "politics"
+    },
+    "https://www.washingtonpost.com/world/2026/08/14/new-president-asks-trump-bring-deadly-antidrug-campaign-colombia/": {
+      "summary": "Colombia's new president asked President Trump to bring a militarized anti-drug campaign to the country, which is the world's largest cocaine producer.",
+      "category": "world"
+    },
+    "https://www.wired.com/story/openai-safety-security-ai-agents-culture/": {
+      "summary": "OpenAI's rogue agent hack exposed significant AI safety and cybersecurity vulnerabilities, prompting internal questions about the company's culture.",
+      "category": "technology"
+    },
+    "https://abcnews.com/video/41463246/": {
+      "summary": "ABC News Live offers continuous 24/7 coverage of breaking news and live events.",
+      "category": "top"
+    },
+    "https://arstechnica.com/security/2026/08/white-house-recruits-security-firms-to-hack-overseas-cybercriminals/": {
+      "summary": "A Trump memo authorizes private security firms to conduct cyberattacks against overseas cybercriminals, marking the first time the government has allowed private sector offensive hacking.",
+      "category": "technology"
+    },
+    "https://www.axios.com/2026/08/13/republicans-insider-congress-stock-trading-ads": {
+      "summary": "House Democrats are angry over a Republican ad campaign that praises GOP lawmakers for voting on a stock trading ban bill, which Democrats call a flawed 'set-up' that excludes the president and cabinet and includes a voter ID provision. The $9 million ad campaign targets swing districts.",
+      "category": "politics"
+    },
+    "https://www.bbc.co.uk/news/videos/c3v0ykk4lplo?at_medium=RSS&at_campaign=rss": {
+      "summary": "Aerial footage shows multiple fires in Stourbridge, West Midlands, destroying homes. The fires burned across the area, causing significant property damage.",
+      "category": "world"
+    },
+    "https://www.bbc.co.uk/sport/athletics/videos/c5yvz902xv5o?at_medium=RSS&at_campaign=rss": {
+      "summary": "Amy Hunt won the women's 200m at the European Athletics Championships, securing her second gold of the event, ahead of Rhasidat Adeleke and Dina Asher-Smith.",
+      "category": "sports"
+    },
+    "https://www.bbc.co.uk/news/articles/c74grmy2v7ko?at_medium=RSS&at_campaign=rss": {
+      "summary": "Nobel Peace Prize winner Dmitry Muratov told the BBC that Putin can only destroy Ukraine, not conquer it, as the war enters its fifth year.",
+      "category": "world"
+    },
+    "https://www.bloomberg.com/news/articles/2026-08-14/uber-and-china-s-pony-ai-to-deploy-2-000-robotaxis-in-europe": {
+      "summary": "Uber and Pony AI announced plans to deploy over 2,000 robotaxis across Europe, accelerating the commercialization of autonomous mobility in the region.",
+      "category": "technology"
+    },
+    "https://www.cbsnews.com/video/university-of-michigan-implements-passfail-grading-for-first-semester-freshmen/": {
+      "summary": "The University of Michigan has announced a pass/fail grading system for first-semester freshmen, with details discussed by a reporting fellow.",
+      "category": "politics"
+    },
+    "https://www.cbssports.com/fantasy/baseball/news/2026-fantasy-baseball-week-21-trade-values-rest-of-season-rankings-for-roto-h2h-points/": {
+      "summary": "The 2026 Fantasy Baseball Week 21 trade values chart provides rest-of-season rankings to help with trades.",
+      "category": "sports"
+    },
+    "https://www.cnbc.com/2026/08/14/china-tech-global-appeal-apple-ford-catl-deepseek.html": {
+      "summary": "Global companies are increasingly adopting Chinese technology for its capabilities and scale, despite geopolitical risks, signaling a shift in global tech reliance. This matters as it reflects changing supply chains and competitive dynamics.",
+      "category": "technology"
+    },
+    "https://www.canarymedia.com/articles/wind/huge-new-turbines-uk-wind-farm": {
+      "summary": "ScottishPower plans to repower the UK's largest onshore wind farm with larger, more efficient turbines, improving output and cost-effectiveness. This matters for renewable energy efficiency and the UK's clean energy transition.",
+      "category": "energy"
+    },
+    "https://www.carbonbrief.org/qa-what-is-in-chinas-new-five-year-plan-for-climate-change": {
+      "summary": "China has released its 15th five-year plan for climate change, outlining its national response strategy. This matters because China's climate policy has significant global implications.",
+      "category": "politics"
+    },
+    "https://deadline.com/2026/08/big-brother-season-28-week-5-eviction-cbs-1237033488/": {
+      "summary": "In Big Brother Season 28's Week 5 eviction, a fifth housemate was voted out after a surprising twist, with La Trice Verrett as Head of Household. This matters for fans of the reality competition series.",
+      "category": "entertainment"
+    },
+    "https://www.espn.com/college-football/story/_/id/49602842/dj-pickett-budge-no-5-amid-jayden-daniels-lsu-flap": {
+      "summary": "LSU's DJ Pickett says he will not change his No. 5 jersey despite pushback from Jayden Daniels, who says it won't be a distraction. This matters in college football as it involves a prominent player and potential controversy.",
+      "category": "sports"
+    },
+    "https://www.ft.com/content/d0464e03-c3fd-4e8b-9ffa-573762e97e16?syn-25a6b1a6=1": {
+      "summary": "Russian attacks in Odesa are disrupting the port city's export lifeline, threatening its economy and trade.",
+      "category": "world"
+    },
+    "https://www.forbes.com/sites/johnkoetsier/2026/08/13/ai-can-now-make-deepfake-biological-viruses-we-are-not-prepared/": {
+      "summary": "AI's ability to read and edit DNA offers medical benefits but also risks, including the potential for deepfaked biological viruses.",
+      "category": "technology"
+    },
+    "https://foreignpolicy.com/2026/08/13/west-bank-israel-settlers-idf-mecca-pact-turkey-russia-japan-kuril-islands-congo-ebola/": {
+      "summary": "U.S. Ambassador Mike Huckabee condemned settler violence in the West Bank, a rare criticism of Israeli settlers.",
+      "category": "world"
+    },
+    "https://www.foxnews.com/us/live-bullet-found-aboard-united-flight-forces-passengers-off-plane-security-sweep-denver-airport": {
+      "summary": "A live bullet found on a United Airlines flight forced 178 passengers to deplane for a security sweep at Denver airport.",
+      "category": "business"
+    },
+    "https://www.technologyreview.com/2026/08/13/1141041/building-a-practical-path-to-post-quantum-cryptography/": {
+      "summary": "Post-quantum cryptography is a manageable evolution for businesses, not a crisis, despite quantum computing's threat to current encryption.",
+      "category": "technology"
+    },
+    "https://www.npr.org/2026/08/13/nx-s1-5930397/mangione-federal-court-hearing-guilty-plea": {
+      "summary": "A surprise federal court hearing has fueled speculation that Luigi Mangione might plead guilty, potentially derailing his state murder trial. The case is significant because a plea could alter the legal proceedings.",
+      "category": "politics"
+    },
+    "https://www.npr.org/2026/08/12/g-s1-138180/hilton-humanitarian-prize-last-mile-health-liberia-raj-panjabi": {
+      "summary": "Dr. Raj Panjabi's Last Mile Health, which brings healthcare to remote areas, has won the 2026 Conrad N. Hilton Humanitarian Prize of $3 million. The award highlights the importance of expanding healthcare access to underserved populations.",
+      "category": "health"
+    },
+    "https://www.npr.org/2026/08/13/g-s1-138556/spain-solar-eclipse": {
+      "summary": "Spain witnessed its first total solar eclipse in over a century, drawing millions to cities where crowds cheered as the sky darkened. The event was a rare astronomical occurrence with broad public interest.",
+      "category": "science"
+    },
+    "https://www.nationalreview.com/2026/08/scott-wiener-faces-a-roadblock-on-the-way-to-washington-nancy-pelosi/": {
+      "summary": "According to National Review, former Speaker Nancy Pelosi is reportedly blocking Scott Wiener's path to Washington, described as prosecuting a grudge. This political friction could affect Wiener's political ambitions.",
+      "category": "politics"
+    },
+    "https://www.nature.com/articles/s41586-026-10960-3": {
+      "summary": "This is an author correction to a Nature paper about a Cretaceous bird from Brazil that informs the evolution of the avian skull and brain, published online on August 13, 2026. The correction addresses errors in the original publication.",
+      "category": "science"
+    },
+    "https://nypost.com/2026/08/13/us-news/california-navy-medical-commander-ousted-after-loss-of-confidence/": {
+      "summary": "Capt. Mathew Loe was relieved as commanding officer of Navy Medicine Readiness and Training Command Lemoore on Aug. 7. The brief report gives no reason for the removal.",
+      "category": "politics"
+    },
+    "https://www.nytimes.com/2026/08/13/us/uss-abraham-lincoln-iran-navy.html": {
+      "summary": "The U.S.S. Abraham Lincoln has been deployed for nearly nine months, prompting concerns from members of Congress about the crew's well-being. The article highlights the extended deployment and congressional worry.",
+      "category": "politics"
+    },
+    "https://www.pbs.org/newshour/show/news-wrap-earthquake-death-toll-in-colombia-tops-260": {
+      "summary": "Colombia's president says more than 260 people are confirmed dead after this week's earthquake, while nearly 20 million in the Midwest are under flood alerts and Defense Secretary Hegseth disputed reports of low morale and suicide attempts on the U.S.S. Abraham Lincoln. This is a news wrap covering multiple events.",
+      "category": "world"
+    },
+    "https://pitchfork.com/story/dummy-reveal-new-album-do-you-love-the-color-of-the-sky/": {
+      "summary": "Dummy announced their new album 'Do You Love the Color of the Sky?' along with a surreal music video for the first single 'Full Spectrum Dominance.' The article covers the announcement.",
+      "category": "entertainment"
+    },
+    "https://www.politico.com/news/2026/08/13/david-crowley-wisconsin-governor-election-strategy-01036209": {
+      "summary": "David Crowley, in his first interview since winning the Democratic gubernatorial nomination, plans to focus on 'MAGA extremism' to rebuild a fractured Wisconsin coalition, but won't commit to campaigning with far-left surrogates. The article discusses his strategy.",
+      "category": "politics"
+    },
+    "https://www.politico.com/live-updates/2026/08/13/congress/house-eyes-senate-stopgap-01036101": {
+      "summary": "The House advanced its own stopgap funding bill before recess, signaling a positive reception to the Senate-passed measure.",
+      "category": "politics"
+    },
+    "https://www.propublica.org/article/general-dynamics-artillery-factory-failed": {
+      "summary": "ProPublica reports that a $533 million taxpayer-funded artillery plant produced nothing, highlighting a major waste of public funds.",
+      "category": "business"
+    },
+    "https://reason.com/volokh/2026/08/13/justice-elena-kagan-on-the-late-great-prof-richard-fallon/": {
+      "summary": "Justice Elena Kagan wrote a tribute to the late Professor Richard Fallon in the Harvard Law Review, reflecting on his influence.",
+      "category": "politics"
+    },
+    "https://www.rollingstone.com/music/music-news/nba-youngboy-korea-heart-condition-one-more-tour-1235608299/": {
+      "summary": "Rapper NBA YoungBoy, now in Korea, disclosed a heart condition and said he has one more tour and one or two albums left.",
+      "category": "entertainment"
+    },
+    "https://www.statnews.com/2026/08/13/biotech-news-eli-lilly-targets-booming-retatrutide-black-market/?utm_campaign=rss": {
+      "summary": "Eli Lilly is targeting the black market for its drug retatrutide, while other biotech developments include Khartis raising funds and Neurocrine safety concerns.",
+      "category": "health"
+    },
+    "https://www.science.org/content/article/new-explanation-why-universe-s-supply-nuclear-matter-fixed": {
+      "summary": "Scientists propose an alternative explanation for the fixed amount of nuclear matter in the universe, based on experiments involving the baryon number.",
+      "category": "science"
+    },
+    "https://slate.com/culture/2026/08/the-end-of-oak-street-anne-hathaway-movie-horror-review.html?via=rss": {
+      "summary": "A review praises Anne Hathaway's film for capturing a nastier, more subversive quality reminiscent of Spielberg's best work, unlike recent Jurassic Park movies.",
+      "category": "entertainment"
+    },
+    "https://www.si.com/college/duke/blue-devils-adds-interesting-4-star-recruit-2027-recruiting-efforts?utm_source=RSS": {
+      "summary": "Duke is showing interest in an intriguing four-star prospect for its 2027 recruiting class.",
+      "category": "sports"
+    },
+    "https://www.theatlantic.com/newsletters/2026/08/watergate-schlesinger-nixon-presidential-scandals/688282/?utm_source=feed": {
+      "summary": "The article argues that Watergate's intended lesson of restraining presidential power was not learned, and instead it set a precedent for future political scandals.",
+      "category": "politics"
+    },
+    "https://dailycaller.com/2026/08/13/exclusive-unearthed-data-transgenderism-explosion-us-military-biden-admin": {
+      "summary": "Newly unearthed data reportedly shows a significant increase in transgender service members during Biden's presidency, with critics blaming his policies.",
+      "category": "politics"
+    },
+    "https://www.dailywire.com/news/sanders-fires-back-at-leftists-mad-he-didnt-endorse-francesca-hong": {
+      "summary": "Bernie Sanders defended his decision not to endorse Francesca Hong in Wisconsin's gubernatorial primary, citing limited resources, after left-wing critics blamed him for her narrow defeat. The exchange highlights tensions within the Democratic Party over endorsements and primary outcomes.",
+      "category": "politics"
+    },
+    "https://thedispatch.com/newsletter/dispatch-markets/artificial-intelligence-winners-losers-land-housing/": {
+      "summary": "The article argues that land will be a strong investment in the AI era because AI cannot create or replace it, making it a scarce asset. This matters for investors considering long-term value in a technology-driven economy.",
+      "category": "business"
+    },
+    "https://www.economist.com/finance-and-economics/2026/08/13/is-chinas-debt-bomb-squad-about-to-blow-up": {
+      "summary": "The Economist reports that Chinese firms tasked with defusing credit crises are themselves facing financial trouble, raising concerns about potential systemic risk. This matters because it could signal instability in China's financial system with global implications.",
+      "category": "business"
+    },
+    "https://www.theguardian.com/us-news/2026/aug/13/executions-oklahoma-alabama-tennessee": {
+      "summary": "Three men were executed in Oklahoma, Tennessee, and Alabama on the same day, the first such triple execution in the US in 15 years, reflecting a renewed use of capital punishment. The rare scheduling underscores a shift in state-level death penalty practices.",
+      "category": "politics"
+    },
+    "https://www.theguardian.com/world/2026/aug/13/france-ambassador-car-central-african-republic-investigation-bruno-foucher": {
+      "summary": "France has opened disciplinary proceedings against its ambassador to the Central African Republic over allegations he hosted dozens of women at his residence, raising security concerns. The investigation comes as France tries to rebuild relations with CAR amid Russia's growing influence.",
+      "category": "world"
+    },
+    "https://thehill.com/newsletters/healthcare/6029087-schwartz-faces-trumps-vaccine-test/": {
+      "summary": "Erica Schwartz was sworn in as CDC director and faces an early test: President Trump's executive order to change childhood vaccine policy.",
+      "category": "health"
+    },
+    "https://www.hollywoodreporter.com/tv/tv-news/tyler-duckworth-dead-the-challenge-winner-44-1236673350/": {
+      "summary": "Tyler Duckworth, a winner on MTV's The Challenge and a castmember on The Real World: Key West, has died at age 44.",
+      "category": "entertainment"
+    },
+    "https://theintercept.com/2026/08/12/tennessee-oklahoma-alabama-executions-anthony-darrell-hines-carlos-cuesta-rodriguez-jeremy-williams/": {
+      "summary": "Tennessee plans to carry out a lethal injection execution on Thursday despite a record of botched executions, with three states scheduling executions that day.",
+      "category": "politics"
+    },
+    "https://www.theverge.com/tech/979967/apple-epic-games-external-links-fees-filing": {
+      "summary": "In its ongoing legal dispute with Epic Games, Apple has proposed collecting fees on digital purchases made via external links outside its in-app purchase system, a move Epic says is far outside the bounds of the court's order.",
+      "category": "technology"
+    },
+    "https://www.washingtontimes.com/news/2026/aug/13/man-used-screwdriver-kill-wife-daughter-minnesota-daycare-police-say/": {
+      "summary": "A man used a screwdriver to fatally stab his wife and their 7-year-old daughter at a Minnesota daycare before killing himself, according to a search warrant.",
+      "category": "politics"
+    },
+    "https://variety.com/feature/2027-oscars-best-supporting-actor-predictions-1236834271/": {
+      "summary": "Variety's awards section discusses Oscar predictions for supporting actor, focusing on how many men from 'The Odyssey' could be nominated.",
+      "category": "entertainment"
+    },
+    "https://www.vox.com/politics/498994/election-deniers-2026-governor-tom-tiffany": {
+      "summary": "Vox examines the risks of election deniers overseeing elections, citing Wisconsin GOP nominee Tom Tiffany's promotion of false claims about the 2020 presidential election.",
+      "category": "politics"
+    },
+    "https://www.who.int/news/item/24-01-2026-who-statement-on-notification-of-withdrawal-of-the-united-states": {
+      "summary": "WHO regrets the United States' notification of withdrawal, stating it makes both the US and the world less safe, and will address the issue at upcoming meetings.",
+      "category": "world"
+    },
+    "https://www.washingtonexaminer.com/news/house/4687111/max-miller-miss-hearings-gop-house-majority/": {
+      "summary": "Rep. Max Miller told an Ohio judge he could miss court hearings for a civil protection order against his ex-wife due to the GOP's slim House majority.",
+      "category": "politics"
+    },
+    "https://www.washingtonpost.com/world/2026/08/13/ecuadorian-police-seize-1000-pounds-cocaine-bearing-image-soccer-star-erling-haaland/": {
+      "summary": "Ecuadorian police seized 1,000 pounds of cocaine bearing an image of soccer star Erling Haaland, a common cartel practice to mark products.",
+      "category": "world"
+    },
+    "https://www.wired.com/story/mark-zuckerbergs-ai-manifesto-is-6500-words-and-barely-says-anything/": {
+      "summary": "Wired critiques Mark Zuckerberg's 6,500-word AI manifesto as saying little, while also covering key findings from Black Hat and Defcon security conferences, highlighting AI's cultural impact.",
+      "category": "technology"
+    },
+    "https://abcnews.com/US/texas-law-firm-withdraws-150m-contract-represent-unaccompanied/story?id=135625919": {
+      "summary": "A small Texas law firm has withdrawn from a $150 million federal contract to represent unaccompanied migrant children, potentially affecting their legal representation.",
+      "category": "politics"
+    },
+    "https://arstechnica.com/space/2026/08/virgin-galactic-wants-your-help-naming-its-new-delta-class-spaceship/": {
+      "summary": "Virgin Galactic is asking the public to help name its new Delta class spaceship, with options like Horizon, Explorer, Ascend, or Apeiron.",
+      "category": "technology"
+    },
+    "https://www.axios.com/2026/08/13/kushner-israel-gaza-netanyahu": {
+      "summary": "Jared Kushner plans to visit Israel and Egypt for Gaza talks to advance a U.S. plan to disarm Hamas and transfer control, despite Netanyahu's public rejection and political tensions.",
+      "category": "world"
+    },
+    "https://www.bbc.co.uk/news/articles/cz972d30l30o?at_medium=RSS&at_campaign=rss": {
+      "summary": "A passenger train derailed in East Sussex, leaving two seriously injured, with a passenger describing the chaotic scene.",
+      "category": "world"
+    },
+    "https://www.bbc.co.uk/sport/football/articles/cp30xwkj4y3o?at_medium=RSS&at_campaign=rss": {
+      "summary": "Manchester City midfielder Tijjani Reijnders is set to leave after just one year, with a \u00a352m move agreed to Saudi Pro-League side Al-Qadsiah. This highlights the growing financial pull of the Saudi league.",
+      "category": "sports"
+    },
+    "https://www.bbc.co.uk/news/articles/cyvl2d5j52lo?at_medium=RSS&at_campaign=rss": {
+      "summary": "Sailors on the USS Abraham Lincoln have faced food shortages and broken plumbing after more than 250 days at sea, with some considering jumping overboard, raising alarms about conditions on the carrier. This matters as it highlights potential morale and safety issues in the US Navy.",
+      "category": "politics"
+    },
+    "https://www.bloomberg.com/news/articles/2026-08-13/diversified-said-to-near-deal-for-elliott-backed-birch": {
+      "summary": "Diversified Energy is in advanced talks to acquire Elliott-backed oil and gas company Birch Resources for over $1.7 billion in cash. This would be a significant consolidation in the energy sector.",
+      "category": "business"
+    },
+    "https://www.cbsnews.com/video/americans-can-now-possess-short-barreled-rifles-shotguns-and-silencers-without-registration/": {
+      "summary": "A Texas judge's ruling that allows Americans to own short-barreled rifles, shotguns, and silencers without federal registration stands after the Trump administration declined to pause it. This significantly deregulates these weapons.",
+      "category": "politics"
+    },
+    "https://www.cbssports.com/college-football/news/jayden-daniels-camp-picked-a-fight-with-lsu-and-may-have-overplayed-his-hand-in-baton-rouge/": {
+      "summary": "Former LSU quarterback Jayden Daniels is reportedly upset that his No. 5 jersey was reissued while Joe Burrow's No. 9 remains untouched, and his camp may have overplayed their hand. This is a notable college sports controversy.",
+      "category": "sports"
+    },
+    "https://www.cnbc.com/2026/08/13/trump-trade-court-de-minimis-tariffs-ieepa.html": {
+      "summary": "A trade court upheld the closure of the de minimis exemption, a duty-free threshold for small imports, which President Trump celebrated as a 'BIG WIN.'",
+      "category": "business"
+    },
+    "https://www.canarymedia.com/articles/virtual-power-plants/federal-ruling-virtual-power-plants-pjm": {
+      "summary": "Federal regulators ordered PJM Interconnection to accept statistical sampling for measuring virtual power plant reliability, allowing these resources to help meet surging energy demand in the largest U.S. energy market.",
+      "category": "energy"
+    },
+    "https://www.carbonbrief.org/factcheck-how-nuclear-gas-wind-and-solar-power-are-affected-during-heatwaves": {
+      "summary": "The article factchecks how heatwaves, which are becoming more frequent and intense due to climate change, affect nuclear, gas, wind, and solar power generation.",
+      "category": "energy"
+    },
+    "https://deadline.com/2026/08/julianne-nicholson-concerned-reprising-mare-of-easttown-role-task-1237033475/": {
+      "summary": "Julianne Nicholson expressed concern about reprising her Mare of Easttown role in the upcoming second season of Task, wondering if she still knows the character.",
+      "category": "entertainment"
+    },
+    "https://www.espn.com/nfl/story/_/id/49604057/sources-terrion-arnold-plans-sign-seahawks": {
+      "summary": "Cornerback Terrion Arnold plans to sign a one-year deal with the Seahawks, choosing them over the Texans, Saints, and Giants.",
+      "category": "sports"
+    },
+    "https://www.ft.com/content/c78f18d3-fd4f-47ee-b34b-e5bdaa2fb9c6?syn-25a6b1a6=1": {
+      "summary": "AI is already being used as a damaging weapon in cyber attacks, and it's too late to prevent that, so urgent investment in defenses is needed.",
+      "category": "technology"
+    },
+    "https://www.forbes.com/sites/erikkain/2026/08/13/nyt-pips-answers-friday-august-14/": {
+      "summary": "This article provides hints, answers, and a walkthrough for the New York Times' Pips puzzle for Friday, August 14.",
+      "category": "entertainment"
+    },
+    "https://foreignpolicy.com/2026/08/13/iran-mojtaba-khamenei-rezaei-war/": {
+      "summary": "Iran's supreme leader has made new government appointments that reveal his military strategy, indicating preparation for a long war.",
+      "category": "world"
+    },
+    "https://www.foxnews.com/sports/seahawks-sign-former-first-round-lions-cornerback-terrion-arnold-despite-looming-felony-charges": {
+      "summary": "The Seattle Seahawks signed cornerback Terrion Arnold, who faces felony robbery and kidnapping charges, after the Detroit Lions released him.",
+      "category": "sports"
+    },
+    "https://www.technologyreview.com/2026/08/13/1141904/flock-is-tightening-its-rules-in-response-to-a-growing-surveillance-backlash/": {
+      "summary": "Police-tech company Flock is changing officers' access to its nationwide license plate reader network in response to a surveillance backlash, aiming to win back lost contracts.",
+      "category": "technology"
+    },
+    "https://www.npr.org/2026/08/13/g-s1-138631/vladimir-putins-first-visit-to-disputed-pacific-islands-draws-tokyo-protest": {
+      "summary": "Russian President Vladimir Putin visited the disputed Kuril islands, which Japan also claims as the Northern Territories, prompting a protest from Tokyo.",
+      "category": "world"
+    },
+    "https://www.npr.org/2026/08/12/nx-s1-5896356/find-time-for-things-that-matter-time-audit": {
+      "summary": "Psychotherapist Niro Feliciano suggests doing a time audit to identify what's wasting your time and make room for what matters, which can be surprising.",
+      "category": "health"
+    },
+    "https://www.npr.org/sections/the-picture-show/2026/08/12/nx-s1-5929788/best-solar-eclipse-photos": {
+      "summary": "Millions of people in Europe watched a total solar eclipse during sunset, with the path of totality passing through parts of Greenland, Iceland, Spain, and Portugal.",
+      "category": "science"
+    },
+    "https://www.nationalreview.com/2026/08/how-far-can-americas-free-speech-protections-reach/": {
+      "summary": "A former U.S. ambassador faces defamation charges in South Korea, raising questions about the reach of American free speech protections.",
+      "category": "world"
+    },
+    "https://www.nature.com/articles/d41586-026-01904-y": {
+      "summary": "Female founders in science face sexist assumptions and a male-dominated culture that make it harder to attract investment for their companies, according to Nature.",
+      "category": "business"
+    },
+    "https://nypost.com/2026/08/13/entertainment/stuart-fails-to-save-the-universe-star-dishes-on-big-bang-theory-reunion/": {
+      "summary": "Kevin Sussman says it was fitting for Mayim Bialik to appear on his show due to their behind-the-scenes relationship.",
+      "category": "entertainment"
+    },
+    "https://www.nytimes.com/2026/08/13/us/harvard-antisemitism-case-dismissed.html": {
+      "summary": "A judge dismissed the Trump administration's antisemitism case against Harvard, ruling the incidents were 'isolated and episodic.'",
+      "category": "politics"
+    },
+    "https://www.pbs.org/newshour/show/act-of-terror-u-s-condemns-israeli-settler-siege-of-palestinian-homes-in-west-bank": {
+      "summary": "The U.S. condemned Israeli settlers' siege of Palestinian homes in the West Bank, with Ambassador Mike Huckabee calling it an 'act of terror,' prompting Israeli forces to intervene.",
+      "category": "world"
+    },
+    "https://pitchfork.com/story/watch-bjork-throw-an-eclipse-rave-in-a-balloon-dress/": {
+      "summary": "Bj\u00f6rk performed at an eclipse rave in Iceland, keeping 7,000 people dancing while wearing a balloon dress.",
+      "category": "entertainment"
+    },
+    "https://www.politico.com/news/2026/08/13/graham-platner-maine-event-speaker-01036207": {
+      "summary": "Platner, who dropped out of Maine's Senate race after a sexual assault allegation, will speak at an activist-led event.",
+      "category": "politics"
+    },
+    "https://www.politico.com/live-updates/2026/08/13/congress/no-tax-fever-hits-congress-01035858": {
+      "summary": "Lawmakers from both parties are proposing various tax breaks, inspired by Trump's tax cuts, covering items like boat loan interest and New Jersey merchandise. This reflects a trend of tax-cut fever in Congress.",
+      "category": "politics"
+    },
+    "https://www.propublica.org/article/wayne-halfway-house-jason-crews-tennessee": {
+      "summary": "An investigation reveals that abuse in juvenile prisons run by a Tennessee businessman was kept under wraps, putting kids at risk. The story highlights systemic failures in oversight.",
+      "category": "politics"
+    },
+    "https://reason.com/podcast/2026/08/13/woke-1-0-house-of-the-dragon-and-the-absurd-politics-of-surveillance/": {
+      "summary": "A discussion on Reason covers AOC, House of the Dragon, and the politics of surveillance, blending pop culture and political commentary.",
+      "category": "politics"
+    },
+    "https://www.rollingstone.com/music/music-news/lil-durk-murder-for-hire-trial-video-lyrics-used-evidence-1235608235/": {
+      "summary": "In Lil Durk's murder-for-hire trial, a judge allowed a video titled 'Pissed Me Off' as evidence, over defense objections about prejudice and confusion.",
+      "category": "entertainment"
+    },
+    "https://www.statnews.com/2026/08/13/rfk-california-tour-hhs-addiction-treatment-plan-dc-diagnosis/?utm_campaign=rss": {
+      "summary": "Health Secretary Kennedy traveled to California to announce a new approach to addiction treatment, criticizing former HHS Secretary Becerra.",
+      "category": "health"
+    },
+    "https://www.science.org/content/article/una-investigaci\u00f3n-de-science-arroja-dudas-sobre-genes-prometedores-para-prevenir-la": {
+      "summary": "A Science investigation raises doubts about promising Alzheimer's genes found in Colombian families, citing altered data and suspicious images that question the benefits.",
+      "category": "science"
+    },
+    "https://slate.com/news-and-politics/2026/08/ukraine-iran-trump-jd-vance-oil-gas-prices.html?via=rss": {
+      "summary": "Vice President J.D. Vance is learning a difficult foreign policy lesson, according to Slate, highlighting an embarrassing moment for him.",
+      "category": "politics"
+    },
+    "https://www.si.com/mlb/dodgers/onsi/dodgers-sign-reliever-demote-landon-knack-ahead-brewers-series?utm_source=RSS": {
+      "summary": "The Dodgers re-signed a reliever and demoted Landon Knack ahead of their series against the Brewers.",
+      "category": "sports"
+    },
+    "https://www.theatlantic.com/culture/2026/08/kennedy-center-trump-board/688276/?utm_source=feed": {
+      "summary": "The Kennedy Center board voted again to shut down for renovation, with a design tweak, as part of Trump's new plan to get his name back on the center.",
+      "category": "politics"
+    },
+    "https://dailycaller.com/2026/08/13/flock-safety-cameras-pr-release-guardrails-protections-civil-rights-groups-aclu-marlow-garret-langley": {
+      "summary": "Many people are skeptical of Flock's latest PR move, which references American history, according to The Daily Caller.",
+      "category": "business"
+    }
+  }
+}
