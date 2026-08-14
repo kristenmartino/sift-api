@@ -70,6 +70,7 @@ from services import summarizer, usage_tracker  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_CORPUS = REPO / "data" / "eval" / "summarizer_corpus.jsonl"
+DEFAULT_RUNS = REPO / "data" / "eval" / "summarizer_incumbent_runs.json"
 
 # What _build_prompt itself applies. Storing more than the model sees would
 # bloat the corpus and misrepresent the input.
@@ -343,7 +344,10 @@ def report(s: dict, repeats: int, ledger: _LocalLedger) -> None:
     )
 
 
-async def self_agreement(corpus: list[RSSArticle], repeats: int, out_json: Path | None) -> int:
+async def self_agreement(
+    corpus: list[RSSArticle], repeats: int, out_json: Path | None,
+    save_runs: Path | None = None,
+) -> int:
     runs = []
     with _LocalLedger() as ledger:
         for i in range(repeats):
@@ -356,9 +360,161 @@ async def self_agreement(corpus: list[RSSArticle], repeats: int, out_json: Path 
     s = score(runs, corpus)
     report(s, repeats, ledger)
 
+    if save_runs:
+        # Per-article labels, so --candidate can be scored without re-paying —
+        # and against the SAME draws the agreement number came from.
+        save_runs.write_text(json.dumps(
+            {"repeats": repeats, "runs": runs}, indent=2) + "\n")
+        print(f"  saved incumbent runs -> {save_runs}")
+
     if out_json:
         out_json.write_text(json.dumps(s, indent=2, default=str) + "\n")
         print(f"\n  wrote {out_json}")
+    return 0
+
+
+# ─── candidate (mode: --candidate) ────────────────────────
+
+async def run_candidate(
+    corpus: list[RSSArticle], catalog_id: str, max_tokens: int,
+) -> tuple[dict[str, dict], dict]:
+    """One pass on a candidate, through PRODUCTION's prompt and parser.
+
+    `summarize_articles` builds its own anthropic client and hardcodes
+    MAX_OUTPUT_TOKENS, so it cannot route to a candidate. This reimplements the
+    LOOP only — `_build_prompt` and `_parse_summaries` are the shipped
+    functions, because a reimplemented parser measures the harness rather than
+    the model. `_parse_summaries` is also where index alignment is enforced, so
+    a candidate that cannot hold indices fails here exactly as in production.
+    """
+    from services import llm_client
+    from services.index_alignment import AlignmentError
+    from services.model_registry import MODELS
+
+    spec = MODELS[catalog_id]
+    results: dict[str, dict] = {}
+    stats = {
+        "batches": 0, "alignment_failures": 0, "empty_text": 0,
+        "truncated": 0, "errors": 0,
+        "input_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0,
+        "latencies_ms": [], "cost_usd": 0.0,
+    }
+
+    for i in range(0, len(corpus), summarizer.BATCH_SIZE):
+        batch = corpus[i : i + summarizer.BATCH_SIZE]
+        stats["batches"] += 1
+        try:
+            resp = await llm_client.complete(
+                operation="summarizer.batch",
+                user=summarizer._build_prompt(batch),
+                max_tokens=max_tokens,
+                spec=spec,
+            )
+        except llm_client.LLMClientError as e:
+            stats["errors"] += 1
+            print(f"    batch {stats['batches']}: provider error — {str(e)[:110]}")
+            continue
+
+        u = resp.usage
+        stats["input_tokens"] += u.input_tokens + u.cache_read_tokens
+        stats["output_tokens"] += u.output_tokens
+        stats["reasoning_tokens"] += u.reasoning_tokens
+        stats["latencies_ms"].append(resp.latency_ms)
+        prices = usage_tracker.prices_for(spec.model)
+        stats["cost_usd"] += (
+            (u.input_tokens + u.cache_read_tokens) * prices.input_per_m / 1e6
+            + u.output_tokens * prices.output_per_m / 1e6
+        )
+
+        if resp.stop_reason == "max_tokens":
+            stats["truncated"] += 1
+        if not resp.text.strip():
+            stats["empty_text"] += 1
+
+        try:
+            results.update(summarizer._parse_summaries(resp.text, batch))
+        except AlignmentError:
+            stats["alignment_failures"] += 1
+
+    return results, stats
+
+
+def compare_to_incumbent(
+    candidate: dict[str, dict], runs: list[dict], corpus: list[RSSArticle],
+) -> dict:
+    """Score a candidate on the incumbent's STABLE subset.
+
+    "Stable" = every incumbent run gave the same category. There the incumbent
+    has no noise by construction, so a disagreement is signal rather than a
+    coin-flip on an article the incumbent cannot decide either.
+    """
+    urls = list(dict.fromkeys(a.source_url for a in corpus))
+    common = [u for u in urls if all(u in r for r in runs)]
+    stable = [u for u in common if len({r[u]["category"] for r in runs}) == 1]
+    scored = [u for u in stable if u in candidate]
+
+    agree = sum(candidate[u]["category"] == runs[0][u]["category"] for u in scored)
+    mism: Counter = Counter()
+    for u in scored:
+        inc, cand = runs[0][u]["category"], candidate[u]["category"]
+        if inc != cand:
+            mism[f"{inc} -> {cand}"] += 1
+
+    return {
+        "n_stable": len(stable),
+        "n_scored": len(scored),
+        "n_missing": len(stable) - len(scored),
+        "agreement_on_stable": agree / len(scored) if scored else 0.0,
+        "top_mismatches": mism.most_common(8),
+    }
+
+
+async def candidate_mode(
+    corpus: list[RSSArticle], catalog_id: str, max_tokens: int, runs_path: Path,
+) -> int:
+    from services.model_registry import MODELS
+
+    if not runs_path.exists():
+        raise SystemExit(
+            f"No incumbent baseline at {runs_path}. Record one first:\n"
+            f"  ./.venv/bin/python3 scripts/eval_summarizer.py --self-agreement "
+            f"--repeats 5 --save-runs {runs_path}"
+        )
+    runs = json.loads(runs_path.read_text())["runs"]
+
+    spec = MODELS[catalog_id]
+    print(f"\n  candidate {catalog_id} ({spec.model})  max_tokens={max_tokens}")
+    results, stats = await run_candidate(corpus, catalog_id, max_tokens)
+    cmp = compare_to_incumbent(results, runs, corpus)
+
+    lat = sorted(stats["latencies_ms"])
+    p50 = lat[len(lat) // 2] if lat else 0.0
+    p95 = lat[min(int(len(lat) * 0.95), len(lat) - 1)] if lat else 0.0
+    n_articles = len(list(dict.fromkeys(a.source_url for a in corpus)))
+
+    print(f"\n  STRUCTURAL  ({stats['batches']} batches of {summarizer.BATCH_SIZE})")
+    print(f"    provider errors        {stats['errors']}")
+    print(f"    empty text             {stats['empty_text']}")
+    print(f"    hit max_tokens         {stats['truncated']}")
+    print(f"    alignment failures     {stats['alignment_failures']}")
+    print(f"    articles parsed        {len(results)} / {n_articles}")
+
+    print("\n  QUALITY  (incumbent's stable subset only)")
+    print(f"    stable articles        {cmp['n_stable']}")
+    print(f"    scored                 {cmp['n_scored']}  (missing {cmp['n_missing']})")
+    print(f"    category agreement     {cmp['agreement_on_stable']:.3f}")
+    if cmp["top_mismatches"]:
+        print("    disagreements:")
+        for m, c in cmp["top_mismatches"]:
+            print(f"      {c:4d}  {m}")
+
+    out_tok = stats["output_tokens"] or 1
+    print("\n  COST + LATENCY")
+    print(f"    tokens in/out          {stats['input_tokens']:,} / {stats['output_tokens']:,}")
+    print(f"    of which reasoning     {stats['reasoning_tokens']:,} "
+          f"({stats['reasoning_tokens'] / out_tok:.0%} of output)")
+    print(f"    measured $/1k articles {stats['cost_usd'] / max(n_articles, 1) * 1000:.4f}")
+    print(f"    latency p50 / p95      {p50:.0f} / {p95:.0f} ms")
     return 0
 
 
@@ -370,16 +526,29 @@ def main() -> None:
                       help="capture a corpus from live RSS (free)")
     mode.add_argument("--self-agreement", action="store_true",
                       help="run the incumbent N times over the corpus and score agreement")
+    mode.add_argument("--candidate", metavar="CATALOG_ID",
+                      help="run a candidate model and score it against the incumbent")
     p.add_argument("--n", type=int, default=150, help="--sample: articles to capture")
     p.add_argument("--repeats", type=int, default=5)
+    p.add_argument("--max-tokens", type=int, default=summarizer.MAX_OUTPUT_TOKENS,
+                   help="--candidate: output ceiling. Defaults to the incumbent's, "
+                        "which is the point — it was fitted to Haiku's verbosity, "
+                        "and a reasoning model spends it before answering.")
     p.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    p.add_argument("--runs", type=Path, default=DEFAULT_RUNS)
+    p.add_argument("--save-runs", type=Path,
+                   help="--self-agreement: write per-article labels for --candidate")
     p.add_argument("--json", dest="out_json", type=Path)
     a = p.parse_args()
 
     if a.sample:
         asyncio.run(sample_corpus(a.n, a.corpus))
         return
-    sys.exit(asyncio.run(self_agreement(load_corpus(a.corpus), a.repeats, a.out_json)))
+    if a.candidate:
+        sys.exit(asyncio.run(candidate_mode(
+            load_corpus(a.corpus), a.candidate, a.max_tokens, a.runs)))
+    sys.exit(asyncio.run(self_agreement(
+        load_corpus(a.corpus), a.repeats, a.out_json, a.save_runs)))
 
 
 if __name__ == "__main__":
