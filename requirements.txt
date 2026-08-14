@@ -2,6 +2,12 @@ fastapi==0.135.3
 uvicorn==0.42.0
 langgraph==1.1.4
 anthropic==0.88.0
+# Reaches every OpenAI-compatible provider (OpenAI, Together, Groq, DeepInfra,
+# Fireworks) through services/llm_client.py. In requirements.txt rather than
+# requirements-dev.txt despite being eval-only today: LLM_MODEL_OVERRIDES can
+# route a production stage to one of those models, and a missing import would
+# turn a config change into a runtime failure on the ingest path.
+openai==2.9.0
 voyageai==0.3.7
 asyncpg==0.31.0
 feedparser==6.0.11

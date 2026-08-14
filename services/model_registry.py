@@ -57,7 +57,7 @@ class ModelSpec:
     """
 
     catalog_id: str  # repo-local alias used in LLM_MODEL_OVERRIDES
-    provider: str  # "anthropic"
+    provider: str  # "anthropic" | "openai_compatible"
     model: str  # the id sent on the wire, and written to ai_usage_daily
     # No defaults on the capability flags: a new catalog entry must state what
     # it can do. Defaulting them to True would let a candidate silently claim a
@@ -73,6 +73,17 @@ class ModelSpec:
     # own default is still the alias. A lookup that only matched `model` would
     # quietly treat the alias as an unknown model and drop the batch discount.
     aliases: tuple[str, ...] = ()
+    # None for Anthropic; the OpenAI-compatible endpoint for everything else.
+    base_url: str | None = None
+    # NAME of the Settings attribute holding the key, never the key itself.
+    api_key_setting: str = "anthropic_api_key"
+    # Explicit, because nothing in this repo has ever set temperature and the
+    # provider default is not portable: Anthropic's range is 0-1, OpenAI's is
+    # 0-2, so "the default" means different sampling on each. index_alignment
+    # states non-zero temperature as a premise for its retry being a different
+    # draw — this is where that stops being inherited and starts being enforced.
+    default_temperature: float = 1.0
+    max_retries: int = 2
     # What a batched call costs relative to list price. 0.5 on Anthropic; 1.0
     # means the provider bills batches at full rate. A property of the model,
     # not a global constant — applying Anthropic's 0.5 to a provider that has
@@ -103,6 +114,44 @@ MODELS: dict[str, ModelSpec] = {
         supports_prompt_cache=True,
         supports_server_web_search=True,
         batch_price_multiplier=0.5,
+    ),
+
+    # ── candidates, for evaluation only ──────────────────────
+    # Present so the eval harness can select them; NOT reachable in production
+    # unless someone sets LLM_MODEL_OVERRIDES, and their keys are deliberately
+    # absent from Railway. Cost projections in scripts/project_model_cost.py:
+    # ~93% and ~91% under the incumbent respectively, on measured tokens.
+    #
+    # Both speak the OpenAI wire format, which is why one adapter reaches both
+    # — and why picking OpenAI first did not foreclose Together.
+    #
+    # supports_batch is True for gpt-5-nano because OpenAI does bill batches at
+    # 50%. It is NOT the same API shape as `messages.batches`, so the three
+    # batch stages would still need their async-completion path rewritten —
+    # CAPABILITIES gates on the discount, and services/batch_client.py refuses
+    # a non-Anthropic model outright.
+    "gpt-5-nano": ModelSpec(
+        catalog_id="gpt-5-nano",
+        provider="openai_compatible",
+        model="gpt-5-nano",
+        supports_batch=True,
+        supports_prompt_cache=True,
+        supports_server_web_search=False,
+        base_url="https://api.openai.com/v1",
+        api_key_setting="openai_api_key",
+        batch_price_multiplier=0.5,
+    ),
+    # Together lists no batch discount for this model, so it is priced and
+    # gated without one — the conservative direction.
+    "deepseek-v4-flash": ModelSpec(
+        catalog_id="deepseek-v4-flash",
+        provider="openai_compatible",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        supports_batch=False,
+        supports_prompt_cache=False,
+        supports_server_web_search=False,
+        base_url="https://api.together.xyz/v1",
+        api_key_setting="together_api_key",
     ),
 }
 
