@@ -48,6 +48,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -69,15 +70,19 @@ MIN_ELIGIBLE = 40
 RUBRIC = """You are checking whether a one-or-two sentence news summary is \
 FAITHFUL to the article text it was written from.
 
-ARTICLE:
+ARTICLE HEADLINE:
+{title}
+
+ARTICLE BODY:
 {article}
 
 SUMMARY:
 {summary}
 
-Answer three questions about the SUMMARY, using ONLY the ARTICLE above as the \
-source of truth. Do not use outside knowledge; if the article does not say it, \
-it is not supported.
+Answer three questions about the SUMMARY, using ONLY the HEADLINE AND BODY \
+above as the source of truth. Do not use outside knowledge; if neither says it, \
+it is not supported. The headline counts: it is part of what the summary was \
+written from.
 
 1. "supported" — Does the summary FABRICATE? Answer false only if it states a \
 specific checkable thing the article does not contain or contradicts: a number, \
@@ -110,13 +115,23 @@ Return ONLY this JSON object:
 "why": "<= 15 words, only if any answer is false"}}"""
 
 
-async def judge_one(sem, article_text: str, summary: str) -> dict | None:
+async def judge_one(sem, title: str, article_text: str, summary: str) -> dict | None:
+    """Judge one summary against the SAME input the summarizer was given.
+
+    The title is passed because `summarizer._build_prompt` sends
+    "Title: ... Content: ..." — so a summary legitimately drawing on the
+    headline was being scored as fabrication. It flagged both models on a STAT
+    News piece for not mentioning "vaccines, AAP president, or federal leaders",
+    every one of which is in the headline. Same class of error as the retracted
+    run: the judge was not seeing what the model saw.
+    """
     spec = model_registry.MODELS[JUDGE]
     async with sem:
         try:
             resp = await llm_client.complete(
                 operation="judge.batch",
-                user=RUBRIC.format(article=article_text[:4000], summary=summary),
+                user=RUBRIC.format(title=title, article=article_text[:4000],
+                                   summary=summary),
                 max_tokens=200,
                 spec=spec,
             )
@@ -150,15 +165,15 @@ def _tally(verdicts: list[dict]) -> dict:
     }
 
 
-async def identity_control(sem, items: list[tuple[str, str]], n: int) -> float:
+async def identity_control(sem, items: list[tuple[str, str, str]], n: int) -> float:
     """Judge the SAME summary twice. Disagreement here is the judge's own noise.
 
     Any gap between models smaller than this is not a finding — the same
     argument docs/SOURCE_SCALING.md makes for the linker's 97.3% self-agreement.
     """
     sample = items[:n]
-    first = await asyncio.gather(*(judge_one(sem, a, s) for a, s in sample))
-    second = await asyncio.gather(*(judge_one(sem, a, s) for a, s in sample))
+    first = await asyncio.gather(*(judge_one(sem, ti, a, s) for ti, a, s in sample))
+    second = await asyncio.gather(*(judge_one(sem, ti, a, s) for ti, a, s in sample))
 
     pairs = [(x, y) for x, y in zip(first, second, strict=True) if x and y]
     if not pairs:
@@ -226,7 +241,8 @@ async def main(candidate_path: Path, corpus_path: Path, runs_path: Path,
     sem = asyncio.Semaphore(CONCURRENCY)
 
     print(f"\n  identity control ({control_n} summaries judged twice)...")
-    control_items = [(by_url[u].raw_content, incumbent[u]["summary"]) for u in urls]
+    control_items = [(by_url[u].title, by_url[u].raw_content,
+                      incumbent[u]["summary"]) for u in urls]
     self_agree = await identity_control(sem, control_items, control_n)
     print(f"    judge self-agreement   {self_agree:.3f}  "
           f"(noise floor: {1 - self_agree:.1%})")
@@ -237,15 +253,16 @@ async def main(candidate_path: Path, corpus_path: Path, runs_path: Path,
     for u in urls:
         for who, summ in (("incumbent", incumbent[u]["summary"]),
                           ("candidate", candidate[u]["summary"])):
-            work.append((who, u, by_url[u].raw_content, summ))
+            work.append((who, u, by_url[u].title, by_url[u].raw_content, summ))
     work.sort(key=lambda w: hashlib.sha256(f"{w[1]}{w[0]}".encode()).hexdigest())
 
     print(f"\n  judging {len(work)} summaries blind...")
-    results = await asyncio.gather(*(judge_one(sem, a, s) for _, _, a, s in work))
+    results = await asyncio.gather(
+        *(judge_one(sem, ti, a, s) for _, _, ti, a, s in work))
 
     buckets: dict[str, list[dict]] = {"incumbent": [], "candidate": []}
     failures = []
-    for (who, u, _, summ), v in zip(work, results, strict=True):
+    for (who, u, _ti, _a, summ), v in zip(work, results, strict=True):
         if v is None:
             continue
         buckets[who].append(v)
@@ -259,16 +276,33 @@ async def main(candidate_path: Path, corpus_path: Path, runs_path: Path,
         print(f"  {k:22s} {inc[k]:10.3f} {cand[k]:10.3f} {d:+8.3f}")
     print(f"  {'n judged':22s} {inc['n']:10d} {cand['n']:10d}")
 
-    gap = abs(cand["clean_all_three"] - inc["clean_all_three"])
+    # Two independent reasons a gap can mean nothing, and BOTH have to be
+    # cleared. Comparing only against the judge's noise floor was overconfident:
+    # at n≈42 a 4.5-point gap is a THREE-summary difference, and its confidence
+    # interval spans zero several times over.
+    p1, n1 = inc["clean_all_three"], inc["n"]
+    p2, n2 = cand["clean_all_three"], cand["n"]
+    gap = abs(p2 - p1)
     noise = 1 - self_agree
+    se = math.sqrt(p1 * (1 - p1) / max(n1, 1) + p2 * (1 - p2) / max(n2, 1))
+    ci = 1.96 * se
+
     print(f"\n  gap on clean_all_three   {gap:.3f}")
+    print(f"  95% CI on the gap        +/- {ci:.3f}   (n={n1}, {n2})")
     print(f"  judge noise floor        {noise:.3f}")
-    if gap <= noise:
-        print("  => INDISTINGUISHABLE. The gap is inside the judge's own\n"
-              "     disagreement-with-itself, so it is not evidence either way.")
+
+    if gap <= ci:
+        print("\n  => INDISTINGUISHABLE. The confidence interval spans zero, so")
+        print("     this sample cannot tell the two apart. Detecting a gap of")
+        print(f"     {gap:.3f} at 95% would need roughly n="
+              f"{int(2 * (1.96 ** 2) * p1 * (1 - p1) / max(gap ** 2, 1e-9))} per arm.")
+    elif gap <= noise:
+        print("\n  => INDISTINGUISHABLE. The gap is inside the judge's own")
+        print("     disagreement-with-itself, so it is not evidence either way.")
     else:
-        better = "candidate" if cand["clean_all_three"] > inc["clean_all_three"] else "incumbent"
-        print(f"  => the {better} is cleaner by more than the judge's noise floor.")
+        better = "candidate" if p2 > p1 else "incumbent"
+        print(f"\n  => the {better} is cleaner, beyond both the judge's noise")
+        print("     floor and sampling error.")
 
     if failures:
         print(f"\n  {len(failures)} summaries failed at least one axis. First 6:")

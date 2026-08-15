@@ -123,7 +123,7 @@ async def main(corpus_path: Path, runs_path: Path, min_body: int,
     incumbent = json.loads(runs_path.read_text())["runs"][0]
 
     items = [
-        (u, by_url[u].raw_content, incumbent[u]["summary"])
+        (by_url[u].title, by_url[u].raw_content, incumbent[u]["summary"])
         for u in by_url
         if u in incumbent and len((by_url[u].raw_content or "").split()) >= min_body
     ][:limit]
@@ -138,7 +138,7 @@ async def main(corpus_path: Path, runs_path: Path, min_body: int,
 
     # ── specificity: does it object to unmodified summaries? ──
     print("  SPECIFICITY — unmodified summaries, judged as-is")
-    clean = await asyncio.gather(*(judge_one(sem, a, s) for _, a, s in items))
+    clean = await asyncio.gather(*(judge_one(sem, ti, a, s) for ti, a, s in items))
     ok = [v for v in clean if v]
     for axis in ("supported", "legal_safe", "attributed"):
         flagged = sum(1 for v in ok if not v[axis])
@@ -150,15 +150,15 @@ async def main(corpus_path: Path, runs_path: Path, min_body: int,
     results: dict[str, tuple[int, int]] = {}
     for axis, plant in PLANTS.items():
         planted = []
-        for _u, article, summary in items:
+        for title, article, summary in items:
             bad = plant(summary, article)
             if bad:
-                planted.append((article, bad))
+                planted.append((title, article, bad))
         if not planted:
             print(f"    {axis:12s} no summaries carried a plantable pattern")
             continue
         verdicts = await asyncio.gather(
-            *(judge_one(sem, a, s) for a, s in planted)
+            *(judge_one(sem, ti, a, s) for ti, a, s in planted)
         )
         got = [v for v in verdicts if v]
         caught = sum(1 for v in got if not v[axis])
