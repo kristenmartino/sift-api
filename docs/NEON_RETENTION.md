@@ -107,9 +107,9 @@ Check before running: nothing outside the feed path reads older rows. `scripts/e
 
 Reclaims ~40 MB of dead tuples. Takes an `ACCESS EXCLUSIVE` lock — run off-peak, and note the batch poller writes this table every 60s (`services/batch_poller.py:28`).
 
-### 4. Prune orphan stories — DONE 2026-08-10
+### 4. Prune orphan stories — CLOSED 2026-08-17
 
-`scripts/prune_orphan_stories.py --apply`. **60,020 rows deleted of 61,143**, archived first to a 139 MB JSONL. The 624 orphans inside the 48h window were left alone; they are recent enough that an article could still be on its way.
+**First pass, 2026-08-10.** `scripts/prune_orphan_stories.py --apply`. **60,020 rows deleted of 61,143**, archived first to a 139 MB JSONL. The 624 orphans inside the 48h window were left alone; they are recent enough that an article could still be on its way.
 
     stories table   132 MB -> 2.2 MB
     database      2,102 MB -> 1,973 MB
@@ -117,6 +117,21 @@ Reclaims ~40 MB of dead tuples. Takes an `ACCESS EXCLUSIVE` lock — run off-pea
 **Deleting 98% of the rows returned 10 MB.** `VACUUM` reclaimed nothing and `REINDEX` gave back only the index; the heap stayed full of dead tuples until `VACUUM FULL` rewrote it — 0.1s, because only 1,123 live rows remained. That is the second time in this document that VACUUM did nothing and a rewrite did all of it. Reclaiming space in Postgres needs a rewrite, not a vacuum.
 
 Order mattered and was respected: incremental threading went live 17:39Z and the marginal orphan rate fell to 0% before this ran. Pruning first would have refilled within hours.
+
+**The tail, and why it took four more passes.** The script gates on `updated_at` with a 48-hour floor, so the leftovers could only be deleted as they aged past it — **171, then 52, then 16 on 2026-08-11**, then the last **387 on 2026-08-17** (archived to `orphan_stories.20260817T154612Z.jsonl`, 0.8 MB). **60,646 rows deleted in total. Orphans remaining: 0. Dangling `articles.story_id` references: 0.** Every one of those 387 was pre-cutover — newest `updated_at` 2026-08-10 17:38Z, one minute before the legacy path stopped writing — so all of them came due at 17:38Z on 08-12 and none needed the floor lowered.
+
+**The marginal rate held at zero the whole time.** 0 orphans among 354 post-cutover stories on 2026-08-11; 0 among **1,251** on 2026-08-17. Nearly 900 stories threaded since the last check without producing one.
+
+`VACUUM (ANALYZE)` 0.06s and `REINDEX TABLE CONCURRENTLY` 0.10s afterwards, no invalid indexes left behind:
+
+    stories table   4,000 kB -> 3,888 kB   (indexes 352 kB -> 240 kB; heap unchanged)
+    database        2,020 MB -> 2,020 MB   (106 kB returned)
+
+**That is kilobytes, and it is the right answer, not a failed one.** Autovacuum had already zeroed `n_dead_tup` before the manual VACUUM ran, and `stories` is under 4 MB in total — there is no space left in it to find. `VACUUM FULL` was deliberately *not* run: at 1,570 live rows its `ACCESS EXCLUSIVE` lock buys nothing. Per the 2026-08-14 header note, this is hygiene; at $0.35/GB-month the whole database costs $0.38/month and none of this moves it. **Database size work is §1 (`articles` retention) above, not here** — `articles` is 97% of the database and `idx_articles_embedding` alone is ~600 MB of it.
+
+One row survives at `synthesis_status='failed'` (8 before this pass; the other 7 were orphans): `1b72a6941cfd8e75`, a **single-member** story. No tool owns it — the sweeper in `run_incremental_threading` correctly won't retry it (below `MIN_UNIQUE_OUTLETS` there is nothing to synthesize *across*) and `prune_orphan_stories.py` won't touch it (it is not an orphan). Harmless and invisible in the feed. Left alone.
+
+48-hour grouping rate at close: **34.1%** of 2,654 articles, against 4.8% at cutover.
 
 ### 4a. Original note
 
