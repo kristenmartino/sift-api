@@ -99,13 +99,33 @@ Target rows past the feed's own 30-day floor. Models the DB from ~2.27 GB to **~
 
 Check before running: nothing outside the feed path reads older rows. `scripts/eval_clustering.py --sample` pulls historical windows, and the clustering corpus (Next-3 #1) is drawn from them. **Label that corpus first, or exclude its article ids from the prune.**
 
-### 2. Do not drop `idx_articles_embedding`
+### 2. Do not drop `idx_articles_embedding` — but not for the reason first given here
 
-75 lifetime scans makes it look dead. It is not — [INCREMENTAL_THREADING.md](./INCREMENTAL_THREADING.md) makes it load-bearing, and the topic-search path in `sift` uses it. Retention shrinks it naturally; the P1 rebuild there (`lists=20` → ~500, or HNSW) then runs against a table ~80% smaller, which is the difference between a cheap rebuild and an expensive one. **Sequence retention before the rebuild.**
+**Threading does not use it, and this section said it did.** [INCREMENTAL_THREADING.md](./INCREMENTAL_THREADING.md) §"recall is 100% by construction" settled that on 2026-08-10 and this line was never updated. Re-confirmed against prod 2026-08-17: `EXPLAIN (ANALYZE, BUFFERS)` on `find_candidates`' exact query ([`services/story_matcher.py:212`](../services/story_matcher.py)) plans as
 
-### 3. `VACUUM (FULL, ANALYZE) api_batches`
+    Sort (top-N heapsort)
+      -> Index Scan using idx_articles_category_date
+           Index Cond: category = 'sports' AND published_date > now() - 48h
 
-Reclaims ~40 MB of dead tuples. Takes an `ACCESS EXCLUSIVE` lock — run off-peak, and note the batch poller writes this table every 60s (`services/batch_poller.py:28`).
+997 rows filtered, sorted exactly, **14 ms** — and `idx_articles_embedding.idx_scan` stayed at **75** across the run, the same 75 recorded on 2026-08-05. It has not moved through the entire life of incremental threading. `category = $2 AND published_date > NOW() - 48h` is too selective for ivfflat to win, and the planner is right.
+
+**What does use it** is `searchArticlesByEmbedding` ([`sift/lib/db.ts:665`](https://github.com/kristenmartino/sift/blob/main/lib/db.ts)) — whole-corpus, no category or recency filter, which is the shape ivfflat exists for. That is the entire justification for keeping 644 MB, and it is a feature with near-zero traffic (`search_queries`: 0 rows in 8 days). **Keep it** — 644 MB is $0.22/month and a rebuild on 188,538 embedded rows is not free — but keep it knowing the real reason, because "threading depends on it" is a false constraint that will steer the next decision wrong.
+
+Retention would shrink it naturally, and the P1 rebuild (`lists=20` → ~500, or HNSW) would then run against a much smaller table. **Sequence retention before the rebuild** — if retention ever happens, which on the numbers below it should not.
+
+### 3. ~~`VACUUM (FULL, ANALYZE) api_batches`~~ — WITHDRAWN 2026-08-17, the 40 MB is live data
+
+This said "reclaims ~40 MB of dead tuples." **It does not, and there was never a measurement behind it** — the 40 MB was inferred as `pg_total_relation_size` minus heap minus indexes, and that remainder is the **TOAST table**, not bloat. Measured:
+
+    api_batches   56.7 MB = heap 8.0 + indexes 1.4 + toast 47.3
+    pg_toast_12869672   46.6 MB   live=26,619   dead=0
+    sum(pg_column_size(metadata))   46.9 MB
+
+The TOAST holds the `metadata` jsonb of **14,933 batches** back to April, and it is **live**: zero dead tuples, and the summed column size accounts for the whole table. `VACUUM FULL` would take an `ACCESS EXCLUSIVE` lock to return roughly nothing. Heap dead tuples were 135; autovacuum last ran 2026-08-16.
+
+If that 47 MB is ever worth reclaiming the lever is **deleting old batch metadata**, not vacuuming — but it is 47 MB, i.e. **$0.016/month**, so it is not worth reclaiming. Left alone deliberately.
+
+*General lesson, and it is the same one §4 taught: `total − heap − indexes` is TOAST plus bloat, not bloat. Read `pg_stat_user_tables.n_dead_tup` before believing a reclaim estimate.*
 
 ### 4. Prune orphan stories — CLOSED 2026-08-17
 
@@ -140,6 +160,19 @@ One row survives at `synthesis_status='failed'` (8 before this pass; the other 7
 ### 5. Re-measure and record
 
 `pg_database_size` after each step, recorded the way `ai_usage_daily` now anchors the Anthropic side. A storage number in a doc goes stale exactly as fast as the "~$15/mo" in `STATUS.md:40` did.
+
+**Reading, 2026-08-17** (the 2026-08-05 numbers in `## Measured` are kept as the original snapshot):
+
+| Object | 2026-08-05 | 2026-08-17 |
+|---|---:|---:|
+| Whole database | 2,272 MB | **2,118 MB** |
+| `articles` | 2,089 MB | **2,045 MB** (96.6%) — heap 428 + idx 826 + toast 792 |
+| └ `idx_articles_embedding` | 879 MB | **644 MB**, `idx_scan` still **75** |
+| `api_batches` | 48 MB | **57 MB** (47 MB of it live TOAST — see §3) |
+| `stories` | 124 MB | **3.9 MB** |
+| Articles past the 30-day floor | 228,689 / 282,943 (80.8%) | **250,415 / 305,106 (82.1%)** |
+
+**The whole retention case, priced:** deleting the 82.1% would take the database to ~439 MB, i.e. **$0.74/month → $0.15/month**. Fifty-nine cents, against a destructive day with archive-before-delete and a `VACUUM FULL` rewrite of a 2 GB table. **Do not do this for money.** The only thing that would change the verdict is the corpus growing an order of magnitude or the feed getting real traffic.
 
 ---
 
