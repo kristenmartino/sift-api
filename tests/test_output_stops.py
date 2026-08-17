@@ -2,9 +2,12 @@
 
 WHY THIS FILE EXISTS
 --------------------
-`summarizer.batch` re-asks 4-12% of its calls for misalignment and nothing
-recorded why. These tests cover the recording path, and specifically the two
-ways instrumentation like this goes wrong in this repo's history:
+`summarizer.batch` re-asks any batch it cannot prove aligned, and nothing
+recorded why. (The rate that motivated this was quoted as 4-12%; measurement
+put it at **0.5%** — 1 misaligned call in 212 — and the higher figure turned
+out to be an artifact of counting partial last-batches as retries. See
+migrations/021.) These tests cover the recording path, and specifically the
+two ways instrumentation like this goes wrong in this repo's history:
 
 1. **It breaks the thing it measures.** A telemetry write that raises would
    take ingest down with it — so the recorder must swallow everything.
