@@ -531,3 +531,29 @@ CREATE TABLE IF NOT EXISTS feed_balance (
 
 CREATE INDEX IF NOT EXISTS idx_feed_balance_run_at
     ON feed_balance (run_at DESC);
+
+-- Curated term definitions. See migrations/031_term_profiles.sql for why the
+-- unsourced primer definitions are not enough.
+CREATE TABLE IF NOT EXISTS term_profiles (
+    slug               TEXT PRIMARY KEY,
+    term               TEXT NOT NULL,
+    definition         TEXT NOT NULL,
+    definition_source  TEXT NOT NULL,
+    definition_checked DATE,
+    aliases            JSONB NOT NULL DEFAULT '[]'::jsonb,
+    category           TEXT,
+    notes              TEXT,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_term_profiles_term_lower
+    ON term_profiles (LOWER(term));
+
+-- Prefilter for the /term/<slug> coverage query. See
+-- migrations/032_articles_fulltext.sql — the read query keeps an exact
+-- word-boundary regex alongside this, because FTS stems and would otherwise
+-- widen what the page claims to cover.
+CREATE INDEX IF NOT EXISTS idx_articles_fulltext
+    ON articles USING gin (to_tsvector('english',
+        COALESCE(title, '') || ' ' || COALESCE(summary, '')));

@@ -852,6 +852,49 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
         )
 
 
+        # Curated term definitions (migrations/031_term_profiles.sql).
+        # The primers already define ~11,900 terms, unsourced. Publishing those
+        # as pages would state a legal definition on Sift's own authority — the
+        # defect 013 and 015 each removed. A term gets a page only once a human
+        # has written a definition and attached the authority behind it.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS term_profiles (
+              slug               TEXT PRIMARY KEY,
+              term               TEXT NOT NULL,
+              definition         TEXT NOT NULL,
+              definition_source  TEXT NOT NULL,
+              definition_checked DATE,
+              aliases            JSONB NOT NULL DEFAULT '[]'::jsonb,
+              category           TEXT,
+              notes              TEXT,
+              created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_term_profiles_term_lower "
+            "ON term_profiles (LOWER(term))"
+        )
+
+        # Full-text index behind the /term/<slug> coverage query
+        # (migrations/032_articles_fulltext.sql). Without it, "which articles
+        # mention this term" is a parallel seq scan of all 305k rows: measured
+        # 1,000-1,800 ms and ~52,000 buffers per term, against 34-81 ms and 16
+        # buffers with it.
+        #
+        # The read query uses this as a PREFILTER only and keeps an exact
+        # word-boundary regex as the confirming predicate, because FTS stems
+        # ('temporari <-> protect <-> status') and would otherwise widen what
+        # the page claims. Verified lossless against the regex-only counts on
+        # all three terms with corpus volume. The expression below must match
+        # `TERM_MATCH_TSV` in sift/lib/db.ts exactly or the index goes unused.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_fulltext "
+            "ON articles USING gin (to_tsvector('english', "
+            "COALESCE(title, '') || ' ' || COALESCE(summary, '')))"
+        )
+
+
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
         raise RuntimeError("Database pool not initialized. Call init_pool() first.")
