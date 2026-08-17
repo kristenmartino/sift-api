@@ -894,6 +894,36 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "COALESCE(title, '') || ' ' || COALESCE(summary, '')))"
         )
 
+        # Primer-term keys + index (migrations/033_primer_term_index.sql).
+        # Lets /term/<slug> count articles whose primer DEFINES a term, not
+        # only those with it in the headline. The title+summary matcher missed
+        # the terms most worth a page: prior restraint 0 vs 128 primers,
+        # certiorari 5 vs 83, cloture 0 vs 45.
+        #
+        # The primer is a coverage signal only, never a definition — all
+        # 72,689 primer terms carry source: null, which is why 031 exists.
+        #
+        # Folds case inside the function because the generator is not
+        # consistent ('redistricting' 483, 'Redistricting' 2), and plain jsonb
+        # containment would be case-sensitive. STRICT + the jsonb_typeof
+        # guards make it total, so a malformed primer cannot break the read
+        # path. Matched with && in sift/lib/db.ts.
+        await conn.execute("""
+            CREATE OR REPLACE FUNCTION primer_term_keys(p jsonb)
+            RETURNS text[] LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $fn$
+              SELECT COALESCE(array_agg(DISTINCT lower(btrim(x->>'term'))), ARRAY[]::text[])
+                FROM jsonb_array_elements(
+                       CASE WHEN jsonb_typeof(p->'terms') = 'array' THEN p->'terms' ELSE '[]'::jsonb END
+                     ) x
+               WHERE jsonb_typeof(x) = 'object'
+                 AND NULLIF(btrim(x->>'term'), '') IS NOT NULL
+            $fn$
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_primer_terms "
+            "ON articles USING gin (primer_term_keys(context_primer))"
+        )
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:

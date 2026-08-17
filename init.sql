@@ -557,3 +557,20 @@ CREATE INDEX IF NOT EXISTS idx_term_profiles_term_lower
 CREATE INDEX IF NOT EXISTS idx_articles_fulltext
     ON articles USING gin (to_tsvector('english',
         COALESCE(title, '') || ' ' || COALESCE(summary, '')));
+
+-- Primer-term keys + index. See migrations/033_primer_term_index.sql — lets
+-- the /term/<slug> coverage query count articles whose primer defines a term,
+-- not only those with it in the headline. Coverage signal only: every primer
+-- term in the corpus has source: null.
+CREATE OR REPLACE FUNCTION primer_term_keys(p jsonb)
+RETURNS text[] LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $fn$
+  SELECT COALESCE(array_agg(DISTINCT lower(btrim(x->>'term'))), ARRAY[]::text[])
+    FROM jsonb_array_elements(
+           CASE WHEN jsonb_typeof(p->'terms') = 'array' THEN p->'terms' ELSE '[]'::jsonb END
+         ) x
+   WHERE jsonb_typeof(x) = 'object'
+     AND NULLIF(btrim(x->>'term'), '') IS NOT NULL
+$fn$;
+
+CREATE INDEX IF NOT EXISTS idx_articles_primer_terms
+    ON articles USING gin (primer_term_keys(context_primer));
