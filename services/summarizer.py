@@ -26,13 +26,34 @@ logger = logging.getLogger("sift-api.summarizer")
 BATCH_SIZE = 5
 OPERATION = "summarizer.batch"
 
-# Output ceiling for one batch. Five summaries at ~60 tokens each is ~300, so
-# a typical batch has room to spare — but the longest summaries in prod run 79
-# words (~105 tokens), and five of those land near 575 plus JSON scaffolding.
-# Named rather than inline because it is the number the truncation question is
-# about, and because it has to scale with BATCH_SIZE: a response cut off at the
-# cap is truncated JSON, and truncated JSON fails index alignment.
-MAX_OUTPUT_TOKENS = 700
+# Output ceiling for one batch — DERIVED, not a constant, because the two
+# things it has to cover both move.
+#
+# It was a flat 700, which was comfortable when written and is not any more.
+# #240 stopped discarding `content:encoded`, so the model now reads far more
+# of each article and writes marginally fuller summaries: measured peak output
+# went 481 -> 567 of 700 between 2026-08-11 and 08-17 (81% of the ceiling)
+# while mean output moved only 332 -> 359. Summaries are length-bounded by the
+# prompt ("1-2 concise sentences"), not by input size, so this drifts rather
+# than runs away — but it drifts toward a cliff.
+#
+# The cliff is sharp and silent: a response cut off at the cap is truncated
+# JSON, which fails `index_alignment`, which re-asks and then degrades the
+# WHOLE batch to `_raw_content_fallback` — five articles served truncated RSS
+# text while the run reports success. This repo has now hit that twice, both
+# times from a fixed ceiling: `story_synthesizer`'s max_tokens=1024 was
+# breaking exactly its biggest clusters, and gpt-5-nano produced 30/30 empty
+# batches at 700 by spending the whole budget reasoning.
+#
+# Raising it is close to free — `max_tokens` bills on tokens *used*, not on
+# the ceiling — so the asymmetry is one-sided: an unused ceiling costs
+# nothing, a binding one costs five articles.
+#
+# Per-article budget is ~2x the measured peak: the worst observed batch was
+# 567 for five articles, ~105/article after scaffolding.
+OUTPUT_TOKENS_PER_ARTICLE = 240
+OUTPUT_TOKENS_SCAFFOLDING = 120  # the JSON array, keys and index fields
+MAX_OUTPUT_TOKENS = BATCH_SIZE * OUTPUT_TOKENS_PER_ARTICLE + OUTPUT_TOKENS_SCAFFOLDING
 
 VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
 

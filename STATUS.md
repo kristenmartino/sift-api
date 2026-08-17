@@ -219,6 +219,23 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
   **A correction to the plan this came from:** it claimed `data/eval/*.labels.csv` being gitignored "ignores the most expensive, least reproducible artifact in the repo." Wrong — the labels live in the tracked corpus and `--export-labels` regenerates the CSV byte-identically. The ignore rule is deliberate and correct.
 
+- **2026-08-17** — **#240 moved the cost curve, and the summarizer's output ceiling with it.** Reading `content:encoded` instead of the short `summary` field is a quality win that no cost figure in this file reflected. Input tokens per call, 08-13 vs 08-17:
+
+  | operation | before | after | |
+  |---|---:|---:|---:|
+  | `summarizer.batch` | 1,128 | 1,639 | **+45.2%** |
+  | `story_synthesizer.synthesize` | 749 | 848 | +13.1% |
+  | `context_generator.batch` | 1,777 | 1,893 | +6.6% |
+  | `entity_linker_llm.link_text` | 624 | 659 | +5.6% |
+  | `primer_generator.batch` | 1,573 | 1,651 | +4.9% |
+  | `entity_extractor.batch` | 1,073 | 1,100 | +2.6% |
+
+  **The summarizer is the only stage that reads raw article text**; everything downstream reads the *summary*, so their few percent is just slightly fuller summaries. Summarizer cost went **$0.62 → $0.72 per 1k articles**. All-in is unchanged at **$2.0–2.4/1k** — the increase is real but small against the total and masked by volume swings, which is exactly why it needed measuring rather than eyeballing.
+
+  **It is not finished growing.** Input per article has gone **71 → 173 tokens** and sits at **27% of the ~650-token cap** `_truncate(content, 500)` imposes; the feeds carry far more (ProPublica publishes 3,186 words where Sift used to read 20). If it saturates that cap, the summarizer reaches **~$1.22/1k**, about **+23% all-in**. Worth having, but it should be a decision rather than a drift — re-read this before quoting any $/1k figure.
+
+  **The output ceiling was the near-term risk, and it is now derived rather than fixed** (`OUTPUT_TOKENS_PER_ARTICLE × BATCH_SIZE + scaffolding`, 700 → 1,320). Measured peak output drifted **481 → 567 of 700 (81%)** over six days while *mean* output moved only 332 → 359 — summaries are length-bounded by the prompt, not by input, so it drifts rather than runs away, but it drifts toward a cliff. **The cliff is sharp and silent**: a response cut off at the cap is truncated JSON, which fails `index_alignment`, which re-asks and then degrades the *whole batch* to `_raw_content_fallback` — five articles served truncated RSS text while the run reports success. `max_tokens` bills on tokens *used*, so headroom is free and the asymmetry is one-sided. **Third instance of the same bug class**: `story_synthesizer`'s fixed 1024 was breaking exactly its biggest clusters, and gpt-5-nano produced 30/30 empty batches at 700. A test pins the ceiling to `BATCH_SIZE` *in the source*, not to its value — replacing the formula with the literal it evaluates to leaves every arithmetic assertion passing.
+
 - **2026-08-12** — **The eleven cost estimates live in one module, and an unmeasured model gets a bound rather than a guess** (`services/cost_estimates.py`). They were scattered across eight files, two of them literal copies under a comment saying so, and every one was measured on Haiku — so the registry being able to move a stage invalidates all eleven. A test pins each to its pre-refactor value to 6dp and to the same `constant × n` scaling, so centralizing them provably moved nothing.
 
   **The design decision worth recording is what this deliberately does *not* do.** The obvious move is to store an input/output token shape per operation and re-price it against any model. It is also the move that would produce confident wrong numbers today: `ai_usage_daily` recorded dollars only until migrations/029, so there is no stored in:out split to derive a shape from, and any shape written now would be **reverse-engineered to reproduce the figure it is meant to explain** — one equation, two unknowns, infinitely many splits that fit. It would look rigorous and be arbitrary.
