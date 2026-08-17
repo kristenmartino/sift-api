@@ -224,3 +224,63 @@ class TestSummarizerRecordsBothOutcomes:
 
         assert [c["aligned"] for c in calls] == [False]
         assert calls[0]["batch_size"] == 2
+
+
+class TestOutputCeilingScalesWithBatchSize:
+    """The ceiling must be derived from BATCH_SIZE, not a constant beside it.
+
+    A flat `max_tokens` is how `story_synthesizer` came to break exactly its
+    biggest clusters, and how this file's own subject drifted to 81% of its
+    ceiling after #240 widened the input. The failure is silent — truncated
+    JSON fails alignment, the batch is re-asked, and then the WHOLE batch
+    degrades to `_raw_content_fallback`, so five articles get truncated RSS
+    text while the run reports success.
+    """
+
+    def test_ceiling_covers_the_worst_observed_batch_with_room(self):
+        """567 tokens for 5 articles is the measured peak (2026-08-17)."""
+        from services.summarizer import MAX_OUTPUT_TOKENS
+
+        assert MAX_OUTPUT_TOKENS >= 2 * 567, (
+            f"{MAX_OUTPUT_TOKENS} leaves under 2x headroom over the measured "
+            "peak; max_tokens bills on tokens used, so headroom is free"
+        )
+
+    def test_ceiling_is_computed_from_batch_size_not_hardcoded(self):
+        """The regression: a future BATCH_SIZE change must move the ceiling.
+
+        Checked against the source, not the value. Replacing the formula with
+        the literal it currently evaluates to (`MAX_OUTPUT_TOKENS = 1320`)
+        leaves every arithmetic assertion passing while reintroducing exactly
+        the trap this guards — so the arithmetic cannot be the test.
+        """
+        import ast
+        import inspect
+
+        from services import summarizer
+
+        tree = ast.parse(inspect.getsource(summarizer))
+        assigns = [
+            n for n in tree.body
+            if isinstance(n, ast.Assign)
+            and any(getattr(t, "id", None) == "MAX_OUTPUT_TOKENS" for t in n.targets)
+        ]
+        assert len(assigns) == 1, "expected exactly one MAX_OUTPUT_TOKENS assignment"
+
+        names = {n.id for n in ast.walk(assigns[0].value) if isinstance(n, ast.Name)}
+        assert "BATCH_SIZE" in names, (
+            "MAX_OUTPUT_TOKENS must be derived from BATCH_SIZE; a literal "
+            "silently truncates the whole batch when BATCH_SIZE is raised"
+        )
+
+    def test_the_formula_matches_its_parts(self):
+        from services.summarizer import (
+            BATCH_SIZE,
+            MAX_OUTPUT_TOKENS,
+            OUTPUT_TOKENS_PER_ARTICLE,
+            OUTPUT_TOKENS_SCAFFOLDING,
+        )
+
+        assert MAX_OUTPUT_TOKENS == (
+            BATCH_SIZE * OUTPUT_TOKENS_PER_ARTICLE + OUTPUT_TOKENS_SCAFFOLDING
+        )
