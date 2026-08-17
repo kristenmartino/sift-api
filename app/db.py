@@ -556,12 +556,19 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
 
         # How each Claude call ended, per day (migrations/021).
         #
-        # Alignment re-asks on summarizer.batch run at 4-12% of calls and each
-        # is a full-price duplicate; nothing recorded *why*. `max_tokens = 700`
-        # against five ~60-token summaries is comfortable on a typical batch
-        # and tight on five long ones, and a response cut off at the cap is
-        # truncated JSON — which fails alignment exactly the way these retries
-        # look. Same queryability argument as threading_shadow above.
+        # Built to test whether summarizer.batch's alignment re-asks were
+        # output truncation. They were not, and the premise was wrong too:
+        # the "4-12% of calls" that motivated this was an artifact of
+        # inferring re-asks as excess over ceil(articles / BATCH_SIZE), which
+        # counts every partial last-batch as a retry. Measured 2026-08-11 over
+        # 212 calls: 1 misaligned (0.5%), 0 ended in max_tokens, peak output
+        # 481 of 700.
+        #
+        # The table stays because the aligned/misaligned split turned out to
+        # be the only stored signal for whether a model returns parseable
+        # indexed JSON at all — which is what caught gpt-5-nano emitting 30/30
+        # empty batches at max_tokens=700. Same queryability argument as
+        # threading_shadow above.
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS llm_output_stops (
                 usage_date        DATE    NOT NULL,

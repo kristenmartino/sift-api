@@ -3,22 +3,37 @@
 -- WHY THIS EXISTS
 -- ---------------
 -- `summarizer.batch` re-asks a batch whose response cannot be proven to line
--- up with its input (services/index_alignment). Measured 2026-08-11, those
--- re-asks run at 4-12% of calls — 25 extra calls on 2026-08-05, 23 on 08-11 —
--- and every one is a full-price duplicate. Nothing records *why* they
--- misalign.
+-- up with its input (services/index_alignment). This table was built to test
+-- whether those re-asks were caused by output truncation: `max_tokens = 700`
+-- against five ~60-token summaries has headroom, but the longest summaries in
+-- prod run 79 words (~105 tokens), and five of those land near 575 plus JSON
+-- scaffolding. A response cut off at the cap is truncated JSON, which fails
+-- alignment exactly the way a scrambled response does — except the fix would
+-- be a bigger ceiling, not a re-ask.
 --
--- One hypothesis is cheap to test and cheap to fix: `max_tokens = 700` against
--- five summaries at ~60 tokens each leaves real headroom on a typical batch,
--- but the longest summaries in prod run 79 words (~105 tokens), so five long
--- ones land near 575 plus JSON scaffolding. A response cut off at the cap is
--- truncated JSON, and truncated JSON fails alignment exactly the way these
--- retries look. If that is what is happening, raising the cap *removes* cost
--- instead of adding it.
+-- ANSWERED 2026-08-11, AND BOTH HALVES WERE WRONG. Over 212 calls:
 --
--- `stop_reason` answers it directly, and the answer has to be queryable: the
--- same reasoning as 018_threading_shadow — the Railway log buffer rotates and
--- resets on deploy, so a 24h aggregate cannot be reconstructed from it.
+--     0 ended in max_tokens (every one end_turn); peak output 481 of 700
+--     1 misaligned call, 0.5% — not the 4-12% this was premised on
+--
+-- The 4-12% was a measurement artifact. It came from inferring re-asks as the
+-- excess of calls over ceil(articles / BATCH_SIZE) in ai_usage_daily, which
+-- counts every partial last-batch as a retry: 18 of the 212 calls ran below
+-- BATCH_SIZE, carrying 43 articles that would pack into 9 calls if filled.
+-- That is ~9 of the 9 "excess" calls. Packing across runs would mean holding
+-- articles back from a pipeline that runs every 30 minutes, so it is not
+-- recoverable waste either.
+--
+-- The table stays, for a purpose it was not built for: the aligned/misaligned
+-- split is the only stored signal for whether a model returns parseable
+-- indexed JSON at all. That is what caught gpt-5-nano producing 30/30 empty
+-- batches at this same max_tokens — spending its whole budget reasoning, with
+-- zero provider errors — which would otherwise have degraded to truncated RSS
+-- text while the run reported success.
+--
+-- The answer had to be queryable rather than logged, for the same reason as
+-- 018_threading_shadow: the Railway log buffer rotates and resets on deploy,
+-- so a 24h aggregate cannot be reconstructed from it.
 --
 -- Deliberately an aggregate, not a row per call: a handful of rows per day,
 -- no growth problem, and no article text.

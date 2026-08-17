@@ -1,21 +1,41 @@
-"""Are summarizer re-asks caused by output truncation?
+"""Are summarizer re-asks caused by output truncation? — ANSWERED, NO.
 
-WHY THIS EXISTS
----------------
-`summarizer.batch` re-asks any batch whose response cannot be proven to line up
-with its input. Measured 2026-08-11 against `ai_usage_daily`, those re-asks run
-at **4-12% of calls** — the excess of calls over ceil(articles / BATCH_SIZE) —
-and each one is a full-price duplicate. Nothing recorded why they misalign.
+THE ANSWER, SO NOBODY RE-RUNS THE INVESTIGATION
+-----------------------------------------------
+Measured 2026-08-11 over the first 212 `summarizer.batch` calls recorded in
+`llm_output_stops`:
 
-One candidate is cheap to test and cheap to fix. `MAX_OUTPUT_TOKENS = 700`
-against five summaries at ~60 tokens each leaves room on a typical batch, but
-the longest summaries in prod run 79 words (~105 tokens), and five of those
-land near 575 plus JSON scaffolding. A response cut off at the cap is truncated
-JSON, and truncated JSON fails alignment exactly the way a scrambled response
-does — except the fix is a bigger ceiling, not a re-ask. If that is what is
-happening, raising the cap *removes* cost.
+    0 calls ended in max_tokens (every one end_turn); peak output 481 of 700
+    1 misaligned call — 0.5%, not the 4-12% this was premised on
 
-This reads `llm_output_stops` (migration 021) and answers it directly.
+**Truncation is not why batches misalign**, and `MAX_OUTPUT_TOKENS = 700` is
+not close to binding at `BATCH_SIZE = 5`. The instrument was checked for a
+blind spot and does not have one: a truncated response fails to parse, which
+raises `AlignmentError`, which is the path that records `aligned=False`.
+Truncation would have been counted. There was none.
+
+**The 4-12% was a measurement artifact**, and it is the more useful finding.
+It came from inferring re-asks as the excess of calls over
+`ceil(articles / BATCH_SIZE)` in `ai_usage_daily` — which counts every partial
+last-batch as a retry:
+
+    articles summarized     1013        actual calls            212
+    ceil(articles / 5)       203        'excess' it infers        9  (4.2%)
+    ACTUAL misaligned          1  (0.5%)
+
+18 of the 212 calls ran below `BATCH_SIZE` (five at 1 article, six at 2, two
+at 3, five at 4), carrying 43 articles that would pack into 9 calls if filled.
+That accounts for essentially all of it. Nor is it recoverable waste: packing
+across runs would mean holding articles back from a pipeline that runs every
+30 minutes.
+
+WHAT THIS SCRIPT IS STILL FOR
+-----------------------------
+The aligned/misaligned split turned out to be the only stored signal for
+whether a model returns parseable indexed JSON *at all* — which is what caught
+gpt-5-nano emitting 30/30 empty batches at this same ceiling, spending its
+whole budget reasoning, with zero provider errors. Run this when swapping the
+model behind any batched operation; the truncation question itself is closed.
 
 WHAT COUNTS AS AN ANSWER
 ------------------------
@@ -115,11 +135,12 @@ async def main(days: int) -> int:
 
     print()
     if misaligned == 0:
-        print("No misaligned calls in this window — nothing to explain. The "
-              "re-ask rate measured off ai_usage_daily was 4-12%, so a zero "
-              "here means the window is too short or too quiet, not that the "
-              "retries stopped.")
-        verdict = 3
+        print("No misaligned calls in this window — which is the expected "
+              "reading, not a gap. The measured rate is ~0.5% (1 in 212), so "
+              f"{total:,} calls buys roughly {total / 212:.1f} expected "
+              "misalignments. Treat zero as 'nothing to explain'; the "
+              "truncation question is already closed (see the docstring).")
+        verdict = 0
     else:
         share = 100 * mis_trunc / misaligned
         print(f"of {misaligned:,} misaligned calls, {mis_trunc:,} were truncated "

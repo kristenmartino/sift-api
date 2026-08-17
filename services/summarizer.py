@@ -201,10 +201,12 @@ async def _summarize_batch(
         if block.type == "text":
             text += block.text
 
-    # Record how the call ended, split on whether it aligned. Alignment
-    # re-asks run at 4-12% of calls and nothing recorded why; a response cut
-    # off at MAX_OUTPUT_TOKENS is truncated JSON, which fails alignment
-    # exactly the way those retries look. See migrations/021.
+    # Record how the call ended, split on whether it aligned. Measured over
+    # 212 calls on 2026-08-11: 1 misaligned (0.5%), 0 ended in max_tokens,
+    # peak output 481 of 700 — so truncation is not why batches misalign, and
+    # this ceiling is not close to binding at BATCH_SIZE = 5. The split is
+    # kept because it is the only stored signal for whether a model returns
+    # parseable indexed JSON at all. See migrations/021.
     try:
         parsed = _parse_summaries(text, batch)
     except AlignmentError as e:
