@@ -574,3 +574,12 @@ $fn$;
 
 CREATE INDEX IF NOT EXISTS idx_articles_primer_terms
     ON articles USING gin (primer_term_keys(context_primer));
+
+-- Coverage counts, denormalised. See migrations/034_term_coverage_counts.sql
+-- for why these are stored rather than computed on read, and why
+-- coverage_computed_at NULL must fail closed in the publish floor.
+ALTER TABLE term_profiles
+    ADD COLUMN IF NOT EXISTS article_count        INTEGER,
+    ADD COLUMN IF NOT EXISTS outlet_count         INTEGER,
+    ADD COLUMN IF NOT EXISTS unnamed_count        INTEGER,
+    ADD COLUMN IF NOT EXISTS coverage_computed_at TIMESTAMPTZ;

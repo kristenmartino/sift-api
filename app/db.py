@@ -924,6 +924,23 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
             "ON articles USING gin (primer_term_keys(context_primer))"
         )
 
+        # Coverage counts on term_profiles (migrations/034_term_coverage_counts.sql).
+        # /glossary and the sitemap floor were recomputing these across the
+        # corpus on every read: 785 ms at 24 terms, 1,522 ms at 37, and the
+        # slope steepens. `/term/<slug>` is per-term and unaffected, so it
+        # keeps computing live.
+        #
+        # coverage_computed_at NULL means never measured, and the floor treats
+        # that as zero coverage -- a freshly seeded term is withheld until it
+        # has been measured rather than published on a guess.
+        await conn.execute("""
+            ALTER TABLE term_profiles
+              ADD COLUMN IF NOT EXISTS article_count        INTEGER,
+              ADD COLUMN IF NOT EXISTS outlet_count         INTEGER,
+              ADD COLUMN IF NOT EXISTS unnamed_count        INTEGER,
+              ADD COLUMN IF NOT EXISTS coverage_computed_at TIMESTAMPTZ
+        """)
+
 
 async def get_pool() -> asyncpg.Pool:
     if _pool is None:
