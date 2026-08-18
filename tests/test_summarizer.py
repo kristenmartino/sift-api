@@ -190,6 +190,18 @@ class TestParseSummaries:
         results = _parse_summaries(_response({"i": 1, "s": "Body", "c": " Technology "}), batch)
         assert results["https://example.com/article-1"]["category"] == "technology"
 
+    def test_general_is_accepted_as_a_deliberate_choice_not_coerced(self, caplog):
+        """#227: "general" used to be the FALLBACK_CATEGORY value but was
+        absent from VALID_CATEGORIES, so a model that ever emitted it landed
+        here by coincidence while being logged as "unrecognized". It is now an
+        explicit prompt option and must pass through cleanly, with no
+        unrecognized-category log noise."""
+        batch = [_make_article(1)]
+        with caplog.at_level(logging.INFO, logger="sift-api.summarizer"):
+            results = _parse_summaries(_response({"i": 1, "s": "Body", "c": "general"}), batch)
+        assert results["https://example.com/article-1"]["category"] == "general"
+        assert not any("Unrecognized category" in r.message for r in caplog.records)
+
     def test_preamble_line_no_longer_shifts_every_summary(self):
         """The deleted positional fallback's failure mode.
 
@@ -322,6 +334,23 @@ class TestBuildPrompt:
         assert "<p>" not in prompt
         assert "<b>" not in prompt
         assert "Hello world" in prompt
+
+    def test_general_is_offered_as_a_named_category_option(self):
+        """#227: the model must be told "general" is a real choice, not just a
+        parse-failure sink it can never reach on purpose."""
+        prompt = _build_prompt([_make_article(1)])
+        assert '"general"' in prompt
+        assert "never \"world\" and never \"top\" as a default" in prompt
+
+    def test_world_requires_the_event_itself_be_outside_the_us(self):
+        """#227: prod data (n=819 `world`-tagged articles, 7d) showed
+        US-domestic tabloid crime/accident stories with no other fit landing
+        in "world" by elimination — 44% of a New York Post sample vs. 0-8%
+        elsewhere. The old bullet ("international affairs, geopolitics,
+        diplomacy, foreign policy") never said a domestic story was excluded;
+        this pins the language that does."""
+        prompt = _build_prompt([_make_article(1)])
+        assert "OUTSIDE the United States" in prompt
 
 
 class TestTruncate:

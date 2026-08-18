@@ -55,13 +55,26 @@ OUTPUT_TOKENS_PER_ARTICLE = 240
 OUTPUT_TOKENS_SCAFFOLDING = 120  # the JSON array, keys and index fields
 MAX_OUTPUT_TOKENS = BATCH_SIZE * OUTPUT_TOKENS_PER_ARTICLE + OUTPUT_TOKENS_SCAFFOLDING
 
-VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment"}
+VALID_CATEGORIES = {"top", "technology", "business", "science", "energy", "world", "health", "politics", "sports", "entertainment", "general"}
 
 # Sink for articles whose category the model failed to provide (unrecognized
-# label, or a whole batch degraded to _raw_content_fallback). Maps to no feed
-# tab: the row is stored and searchable but never ranked. The old behavior —
-# coercing to "top" — funneled exactly the least-classifiable content into the
-# most visible tab. Misfiling by policy is worse than not filing.
+# label, or a whole batch degraded to _raw_content_fallback), AND — since
+# #227 — the model's own deliberate choice for content with no natural home
+# in the ten topic categories. Maps to no feed tab: the row is stored and
+# searchable but never ranked. The old behavior — coercing to "top" — funneled
+# exactly the least-classifiable content into the most visible tab. Misfiling
+# by policy is worse than not filing.
+#
+# #227: before this was an explicit prompt choice, "general" wasn't even in
+# VALID_CATEGORIES, so a model that guessed the label anyway (it never did —
+# the prompt never offered it) would have been logged as "unrecognized" while
+# still landing here by coincidence. Measured on prod (n=819 `world`-tagged
+# articles, 7d): US-domestic tabloid crime/accident/human-interest stories
+# with no topical or geographic fit were landing in "world" by elimination —
+# concentrated in New York Post (44% of its sampled `world` articles judged
+# US-domestic, vs. 0-8% for every other source sampled, general-firehose or
+# not). "world" was the only category vague enough to absorb them; "general"
+# now gives the model an explicit, honest place to put them instead.
 FALLBACK_CATEGORY = "general"
 
 
@@ -267,13 +280,14 @@ Also classify each article into exactly ONE category:
 - "business" — Wall Street, stock market, earnings reports, M&A, IPOs, venture capital, interest rates, Federal Reserve, banking, employment data, GDP, inflation, corporate strategy, trade policy. NOT consumer product launches, pop culture brands, or retail sales events
 - "science" — research, discoveries, space, physics, biology, climate science
 - "energy" — power grid, renewables, oil & gas, EVs, energy policy, utilities
-- "world" — international affairs, geopolitics, diplomacy, foreign policy
+- "world" — the story's own content is about an event, affairs, or consequence located OUTSIDE the United States: foreign governments, international diplomacy, a war, a disaster, a crime, or any other event happening in another country. Do NOT use "world" for a story that happens to run in an outlet's "world" feed, or for a U.S.-based story just because it doesn't fit another category below — see "general"
 - "health" — medicine, public health, pharma, healthcare policy, disease
 - "politics" — elections, legislation, political parties, Congress, campaigns, government policy
 - "sports" — professional sports, college sports, Olympics, player trades, game results
 - "entertainment" — movies, TV, music, celebrities, streaming, awards, pop culture, consumer product launches, brand collaborations, viral consumer trends
+- "general" — genuine human-interest, novelty, or single-incident U.S. local news (a car crash, a missing pet, a bizarre find, a local crime with no national angle) that carries no international, national-political, or clear topical significance and does not fit any category above. This is the correct home for a story that "doesn't fit anywhere else" — not "world" and not "top"
 
-Most articles must go into a specific topic category — when unsure, prefer the specific category over "top".
+Most articles must go into a specific topic category — when unsure, prefer the specific category over "top" or "general".
 
 Routing rule for crime, accident, and death stories: these are "top" only when \
 the event itself has national or international consequence (a mass-casualty \
@@ -281,9 +295,10 @@ attack, the assassination of a public figure, a disaster prompting a national \
 response). Otherwise classify by setting or participants: sports figures → \
 "sports"; entertainers or media personalities → "entertainment"; corporate or \
 financial wrongdoing → "business"; policing, courts, or justice-system policy → \
-"politics"; incidents outside the U.S. → "world"; deaths with public-health \
-relevance (overdoses, outbreaks) → "health". If none fit, pick the closest \
-category anyway — never default to "top".
+"politics"; the event itself located outside the U.S. → "world"; deaths with \
+public-health relevance (overdoses, outbreaks) → "health"; an ordinary U.S. \
+local incident with none of the above → "general". If none of the ten topic \
+categories fit, use "general" — never "world" and never "top" as a default.
 
 Rules about people and legal matters — these override everything above:
 - Describe only what the source article states. Do not add facts, motives, or \
