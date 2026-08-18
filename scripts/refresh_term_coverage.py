@@ -99,12 +99,75 @@ SELECT p.slug,
 # -- this script measures, the floor decides.
 TERM_MIN_ARTICLES = 8
 
+# How old the counts may get before --check calls them stale. A judgement, not
+# a derivation: the corpus grows daily, so a month-old count understates every
+# term, and /glossary prints the date so a reader can already see it. This is
+# the threshold at which somebody should be told without having to look.
+MAX_COUNT_AGE_DAYS = 30
 
-async def main(dry_run: bool) -> int:
+
+async def check(conn) -> int:
+    """Report staleness without recomputing anything.
+
+    Exists because the recompute is a ~1.5s corpus-wide query and "are these
+    numbers current?" should not cost that. Answers the two questions that
+    actually go wrong: a term seeded but never measured (which the floor
+    treats as zero, so the page is silently unpublished), and counts old
+    enough that /glossary is describing a corpus that has moved on.
+
+    Exit 0 clean, 2 something needs the refresh -- so a human or a cron can
+    branch on it.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT slug, article_count, coverage_computed_at,
+               EXTRACT(DAY FROM NOW() - coverage_computed_at)::int AS age_days
+          FROM term_profiles
+         WHERE definition IS NOT NULL AND definition_source IS NOT NULL
+         ORDER BY coverage_computed_at NULLS FIRST
+        """
+    )
+    unmeasured = [r for r in rows if r["coverage_computed_at"] is None]
+    aged = [r for r in rows if r["age_days"] is not None
+            and r["age_days"] > MAX_COUNT_AGE_DAYS]
+
+    print(f"Sourced terms: {len(rows)}")
+    print(f"  never measured : {len(unmeasured)}")
+    print(f"  older than {MAX_COUNT_AGE_DAYS}d : {len(aged)}")
+    # Oldest among MEASURED rows. The query is NULLS FIRST, so rows[0] is an
+    # unmeasured term whenever one exists -- reading the stamp off it printed
+    # "None (Noned)". Unmeasured rows are reported separately below; they are
+    # a different problem from a stale one.
+    measured = [r for r in rows if r["coverage_computed_at"] is not None]
+    if measured:
+        # /glossary shows the OLDEST stamp across the set, so that is the one
+        # worth reporting -- the page is only as fresh as its stalest row.
+        print(f"  oldest stamp   : {measured[0]['coverage_computed_at']} "
+              f"({measured[0]['age_days']}d)")
+
+    if unmeasured:
+        print("\n!! Never measured -- these do NOT publish, floor reads NULL as zero:")
+        for r in unmeasured:
+            print(f"     /term/{r['slug']}")
+    if aged:
+        print(f"\n!! Older than {MAX_COUNT_AGE_DAYS} days:")
+        for r in aged[:10]:
+            print(f"     {r['slug']:<34}{r['age_days']}d")
+
+    if unmeasured or aged:
+        print("\n   Run without --check to refresh.")
+        return 2
+    print("\nCounts are current.")
+    return 0
+
+
+async def main(dry_run: bool, check_only: bool) -> int:
     db_url = os.environ.get("DATABASE_URL", settings.database_url)
     ssl = "require" if "neon.tech" in db_url else False
     conn = await asyncpg.connect(db_url, ssl=ssl, command_timeout=900)
     try:
+        if check_only:
+            return await check(conn)
         before = {
             r["slug"]: (r["article_count"], r["coverage_computed_at"])
             for r in await conn.fetch(
@@ -189,6 +252,10 @@ async def main(dry_run: bool) -> int:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Recompute term coverage counts.")
-    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="measure and report, but do not write")
+    ap.add_argument("--check", action="store_true",
+                    help="report staleness only; no recompute. Exit 2 if a "
+                         "refresh is needed.")
     args = ap.parse_args()
-    sys.exit(asyncio.run(main(args.dry_run)))
+    sys.exit(asyncio.run(main(args.dry_run, args.check)))
