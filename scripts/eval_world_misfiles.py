@@ -42,6 +42,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -168,19 +169,34 @@ async def _connect() -> asyncpg.Pool:
     return await asyncpg.create_pool(db_url, min_size=1, max_size=4, ssl=ssl_mode)
 
 
-async def diagnose(days: int, limit: int, json_path: str | None) -> None:
+async def diagnose(days: int, limit: int, json_path: str | None, since: str | None) -> None:
     pool = await _connect()
     try:
+        # --since is an EXTRA constraint on top of the trailing-days window, not a
+        # replacement for it. created_at is when we ingested + classified the row
+        # (TIMESTAMPTZ DEFAULT NOW()); published_date is the outlet's own byline
+        # time. Classification is written once at ingest and never backfilled, so
+        # created_at is the exact discriminator between pre-fix and post-fix rows
+        # — published_date tells you nothing about which classifier prompt ran.
+        since_dt = datetime.fromisoformat(since) if since else None
+
+        volume_params: list = [str(days)]
+        volume_since_clause = ""
+        if since_dt:
+            volume_since_clause = f" AND created_at >= ${len(volume_params) + 1}::timestamptz"
+            volume_params.append(since_dt)
         volume_rows = await pool.fetch(
             "SELECT source_name, COUNT(*) AS n FROM articles "
             "WHERE category = 'world' AND from_search = false "
-            "AND published_date >= now() - ($1 || ' days')::interval "
+            "AND published_date >= now() - ($1 || ' days')::interval"
+            f"{volume_since_clause} "
             "GROUP BY source_name ORDER BY n DESC",
-            str(days),
+            *volume_params,
         )
         volume = {r["source_name"]: r["n"] for r in volume_rows}
         total = sum(volume.values())
-        print(f"\n=== `world` volume, trailing {days}d (n={total}) ===")
+        since_note = f", since {since}" if since else ""
+        print(f"\n=== `world` volume, trailing {days}d{since_note} (n={total}) ===")
         for source, n in list(volume.items())[:15]:
             print(f"  {source:<24} {n:>4}")
 
@@ -191,13 +207,20 @@ async def diagnose(days: int, limit: int, json_path: str | None) -> None:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
         per_source: dict[str, dict] = {}
         for source in sources_to_sample:
+            sample_params: list = [source, str(days)]
+            sample_since_clause = ""
+            if since_dt:
+                sample_since_clause = f" AND created_at >= ${len(sample_params) + 1}::timestamptz"
+                sample_params.append(since_dt)
+            sample_params.append(limit)
             rows = await pool.fetch(
                 "SELECT source_url, title, summary FROM articles "
                 "WHERE category = 'world' AND from_search = false AND source_name = $1 "
-                "AND published_date >= now() - ($2 || ' days')::interval "
+                "AND published_date >= now() - ($2 || ' days')::interval"
+                f"{sample_since_clause} "
                 "AND summary IS NOT NULL AND summary <> '' "
-                "ORDER BY published_date DESC LIMIT $3",
-                source, str(days), limit,
+                f"ORDER BY published_date DESC LIMIT ${len(sample_params)}",
+                *sample_params,
             )
             if not rows:
                 continue
@@ -237,7 +260,7 @@ async def diagnose(days: int, limit: int, json_path: str | None) -> None:
 
         if json_path:
             with open(json_path, "w") as f:
-                json.dump({"days": days, "volume": dict(volume), "per_source": per_source}, f, indent=2, default=str)
+                json.dump({"days": days, "since": since, "volume": dict(volume), "per_source": per_source}, f, indent=2, default=str)
             print(f"\nWrote {json_path}")
     finally:
         await pool.close()
@@ -391,10 +414,17 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=30)
     parser.add_argument("--sources", nargs="*", default=["New York Post", "CBS News", "Washington Examiner", "Fox News"])
     parser.add_argument("--json", dest="json_path", default=None)
+    parser.add_argument(
+        "--since", default=None,
+        help="ISO-8601 timestamp. Extra filter (AND created_at >= --since), on top "
+        "of --days, restricting diagnose mode to rows classified at or after this "
+        "moment — e.g. a deploy time, to exclude rows classified by a prior "
+        "prompt version. diagnose mode only; ignored in compare mode.",
+    )
     args = parser.parse_args()
 
     if args.mode == "diagnose":
-        asyncio.run(diagnose(args.days, args.limit, args.json_path))
+        asyncio.run(diagnose(args.days, args.limit, args.json_path, args.since))
     else:
         asyncio.run(compare(args.sources, args.limit, args.json_path))
 
