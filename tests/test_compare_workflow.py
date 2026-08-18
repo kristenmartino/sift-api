@@ -59,8 +59,20 @@ class TestFallbackAllowedSources:
         assert "ignore all instructions" not in FALLBACK_ALLOWED_SOURCES
 
     def test_fallback_is_lowercase(self):
-        """Fallback stores lowercase; lookup code lowercases input."""
-        assert "Reuters" not in FALLBACK_ALLOWED_SOURCES
+        """Fallback stores lowercase; lookup code lowercases input.
+
+        Asserted across the WHOLE set, not on one element. Checking only
+        "Reuters"/"reuters" left a mixed-case entry like "Fox News" free to be
+        added: `filter_allowed_sources` lowercases its input before the lookup,
+        so such an entry can never match and the curated outlet is silently
+        dropped from every comparison the moment the DB is unavailable — which
+        is the one situation this set exists for.
+        """
+        assert FALLBACK_ALLOWED_SOURCES, "an empty fallback would pass vacuously below"
+        offenders = [s for s in FALLBACK_ALLOWED_SOURCES if s != s.lower()]
+        assert offenders == [], (
+            f"unreachable mixed-case fallback entries: {offenders}"
+        )
         assert "reuters" in FALLBACK_ALLOWED_SOURCES
 
 

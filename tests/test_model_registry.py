@@ -201,16 +201,26 @@ class TestCapabilityRefusals:
     """
 
     @pytest.mark.parametrize(
-        "operation",
+        ("operation", "required"),
         [
-            "context_generator.batch",
-            "primer_generator.batch",
-            "entity_extractor.batch",
-            "compare.search_sources",
+            ("context_generator.batch", model_registry.BATCH),
+            ("primer_generator.batch", model_registry.BATCH),
+            ("entity_extractor.batch", model_registry.BATCH),
+            ("compare.search_sources", model_registry.SERVER_WEB_SEARCH),
         ],
     )
-    def test_operations_with_requirements_declare_them(self, operation):
-        assert model_registry.CAPABILITIES[operation]
+    def test_operations_with_requirements_declare_the_right_one(self, operation, required):
+        """Which capability, not merely that some capability is declared.
+
+        This was `assert CAPABILITIES[operation]` — a non-empty check that
+        passes for ANY frozenset. Verified 2026-08-17: declaring
+        `compare.search_sources` as {BATCH} instead of {SERVER_WEB_SEARCH}
+        left the suite green, and the stage built entirely around server-side
+        web search would then accept any batch-capable model and silently lose
+        its search. primer_generator.batch and entity_extractor.batch had no
+        other coverage at all.
+        """
+        assert model_registry.CAPABILITIES[operation] == frozenset({required})
 
     def test_an_override_lacking_a_required_capability_is_refused(self, caplog):
         incapable = model_registry.ModelSpec(

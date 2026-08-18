@@ -9,6 +9,7 @@ under growth.
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -85,17 +86,12 @@ class TestSeedStoryId:
     def test_differs_by_category(self):
         assert seed_story_id("politics", ["a"]) != seed_story_id("sports", ["a"])
 
-    def test_a_later_joiner_does_not_change_it(self):
-        """THE fix. Under the old scheme adding a member produced a different
-        id, a new row, and an orphan. Identity must belong to the story, not
-        to its current membership."""
-        seed = ["a", "b"]
-        before = seed_story_id("politics", seed)
-        # 'c' joins later; the story keeps the id derived from its seed.
-        after_growth = seed_story_id("politics", seed)
-        assert before == after_growth
-        # And a *different seed* is legitimately a different story.
-        assert seed_story_id("politics", ["a", "b", "c"]) != before
+    def test_a_different_seed_is_a_different_story(self):
+        """The id is a function of the seed, so two different seeds must not
+        collide onto one story row."""
+        assert seed_story_id("politics", ["a", "b", "c"]) != seed_story_id(
+            "politics", ["a", "b"]
+        )
 
 
 # ── attach ──────────────────────────────────────────────────
@@ -300,6 +296,89 @@ async def test_existing_seed_attaches_instead_of_paying_again():
     assert "INSERT INTO stories" not in _sql(pool)
 
 
+@pytest.mark.asyncio
+async def test_a_later_joiner_does_not_change_the_story_id():
+    """THE fix, exercised rather than asserted about.
+
+    Under the old scheme gaining a member produced a different id, a new row,
+    and an orphan — 58,259 of them. Identity has to belong to the story, not to
+    its current membership.
+
+    The test that used to stand here called `seed_story_id` twice with the SAME
+    argument list and asserted the two results matched. That is f(x) == f(x):
+    true for every possible implementation of a pure function, and nothing ever
+    joined. Verified 2026-08-17 that appending `str(len(member_ids))` to the
+    hash key — restoring the exact 58k-orphan bug — left this file green.
+
+    So this one grows a real story through `_attach` and checks the id survives.
+
+    The expected id is a GOLDEN LITERAL, not `seed_story_id(...)` recomputed
+    here. Recomputing it reintroduces the same tautology one level up: under a
+    mutated hash both the fixture and the assertion shift together and the test
+    stays green. Confirmed — the first draft of this test did exactly that and
+    survived the membership-dependent mutation. Pinning the literal is the same
+    doctrine as the golden hashes in tests/test_rss.py.
+    """
+    story_id = "384293b3b19d2851"  # sha256("politics|a1|n1")[:16]
+    assert seed_story_id("politics", ["a1", "n1"]) == story_id, (
+        "the seed id scheme changed; every existing story row is keyed on the old one"
+    )
+
+    # 1. Create the story from its seed: Reuters + AP.
+    create_pool = _pool({
+        "id = ANY($1::text[])": [_article("a1", "Reuters"), _article("n1", "AP")],
+    })
+    created = await run_incremental_threading(
+        create_pool,
+        candidates=[{"article": _article("a1", "Reuters"),
+                     "existing_stories": {}, "loose_neighbours": [{"id": "n1"}]}],
+        confirm=AsyncMock(return_value={"a1": {"action": "new", "members": ["n1"]}}),
+        synthesize=AsyncMock(
+            return_value={"headline": "H", "summary": "S", "framings": []}),
+    )
+    assert created["created"] == 1
+    # The row is written under the seed-derived id, not some other id.
+    create_params = [c.args[1:] for c in create_pool.execute.call_args_list if len(c.args) > 1]
+    assert any(story_id in params for params in create_params), (
+        "the created story is not keyed on its seed id"
+    )
+
+    # 2. A third outlet joins later. The story now holds three members.
+    grow_pool = _pool({
+        "DISTINCT source_name": [{"source_name": "Reuters"}, {"source_name": "AP"}],
+        "WHERE story_id = $1": [_article("a1", "Reuters"), _article("n1", "AP"),
+                                _article("n2", "BBC")],
+    })
+    grown = await run_incremental_threading(
+        grow_pool,
+        candidates=[{"article": _article("n2", "BBC"),
+                     "existing_stories": {story_id: [{}]}, "loose_neighbours": []}],
+        confirm=AsyncMock(
+            return_value={"n2": {"action": "attach", "story_id": story_id}}),
+        synthesize=AsyncMock(
+            return_value={"headline": "H2", "summary": "S2", "framings": []}),
+    )
+
+    assert grown["attached"] == 1
+    # No second story row: growth updates in place, it does not re-create.
+    assert "INSERT INTO stories" not in _sql(grow_pool)
+    # And every write still names the ORIGINAL id — the article is pointed at
+    # it, and the story row updated under it.
+    # Every 16-hex-char id appearing in any write must be the original one:
+    # a second distinct id here IS the orphan bug (a new row, old members
+    # stranded). `mark_threaded` also writes on this pool with a list of
+    # article ids, hence matching on shape rather than on every parameter.
+    written_ids = {
+        param
+        for c in grow_pool.execute.call_args_list
+        for param in c.args[1:]
+        if isinstance(param, str) and re.fullmatch(r"[0-9a-f]{16}", param)
+    }
+    assert written_ids == {story_id}, (
+        f"growth wrote story ids {written_ids}, expected only {story_id}"
+    )
+
+
 # ── queue semantics ─────────────────────────────────────────
 
 
@@ -307,12 +386,40 @@ async def test_existing_seed_attaches_instead_of_paying_again():
 async def test_parked_articles_are_marked_threaded_too():
     """If a no-match article stayed queued it would be re-examined every run,
     rebuilding the O(window) cost this design exists to remove. It stays
-    searchable as a neighbour either way."""
-    pool = _pool()
+    searchable as a neighbour either way.
+
+    This test used to pass NO candidates, so `run_incremental_threading`
+    returned at the empty-queue guard before `mark_threaded` was reachable at
+    all — there were no parked articles and nothing was marked, and
+    `assert r == {"queued": 0}` was true of the early return alone. It now
+    parks a real article and asserts it gets marked.
+    """
+    # One relevant article the confirmer declines to place, and one parked
+    # alongside it. Both must leave the queue.
+    pool = _pool({
+        "id = ANY($1::text[])": [_article("a1", "Reuters"), _article("n1", "AP")],
+    })
     r = await run_incremental_threading(
-        pool, confirm=AsyncMock(return_value={}), synthesize=AsyncMock(), sweep=False,
+        pool,
+        candidates=[
+            {"article": _article("a1", "Reuters"),
+             "existing_stories": {}, "loose_neighbours": [{"id": "n1"}]},
+            {"article": _article("p1", "BBC"),
+             "existing_stories": {}, "loose_neighbours": []},
+        ],
+        confirm=AsyncMock(return_value={"a1": {"action": "none"}}),
+        synthesize=AsyncMock(),
+        sweep=False,
     )
-    assert r == {"queued": 0}
+
+    assert r["analysed"] == 2 and r["parked"] == 1
+    marked = _sql(pool)
+    assert "threaded" in marked.lower(), "the queue was never marked"
+    # The parked article (p1) is in the marked set, not just the relevant one.
+    marked_ids = [c.args[1:] for c in pool.execute.call_args_list if len(c.args) > 1]
+    flat = [i for params in marked_ids for p in params
+            for i in (p if isinstance(p, list) else [p])]
+    assert "p1" in flat, "the parked article was left queued and will be re-examined"
 
 
 @pytest.mark.asyncio
@@ -479,12 +586,24 @@ async def test_a_retry_that_fails_again_burns_an_attempt_and_writes_nothing_else
 @pytest.mark.asyncio
 async def test_retries_are_bounded_so_a_structural_failure_is_not_paid_for_forever():
     """A story failing for a structural reason would otherwise be re-synthesized
-    every 30 minutes indefinitely."""
+    every 30 minutes indefinitely.
+
+    The bounds are asserted as LITERALS on purpose. This test used to compare
+    `seen[0][0] == MAX_SYNTHESIS_ATTEMPTS` — the same module constant
+    `_sweep_failed` binds as its query parameter — so it pinned argument
+    position and nothing else. Verified 2026-08-17: with
+    MAX_SYNTHESIS_ATTEMPTS = 10_000 and SWEEP_LIMIT = 5000, this file stayed
+    green while every failed story would be re-synthesized ~forever at
+    $0.0022 a call, every 30 minutes. Which is the thing the test is named for.
+    """
     seen = []
     await _sweep_failed(_sweep_pool([], attempts_seen=seen), AsyncMock())
     assert seen, "the sweeper did not bound its selection"
-    assert seen[0][0] == MAX_SYNTHESIS_ATTEMPTS
-    assert seen[0][2] == SWEEP_LIMIT
+    assert seen[0][0] == 3, "three retries, then the story is left alone"
+    assert seen[0][2] == 5, "five per run keeps the sweep a rounding error"
+    # And the constants are what the query actually binds — this half is the
+    # wiring check the literals above cannot make on their own.
+    assert (seen[0][0], seen[0][2]) == (MAX_SYNTHESIS_ATTEMPTS, SWEEP_LIMIT)
 
 
 @pytest.mark.asyncio
@@ -493,6 +612,7 @@ async def test_only_multi_outlet_stories_are_retried():
     `synthesize_story` would return `_fallback()` without even calling out."""
     seen = []
     await _sweep_failed(_sweep_pool([], attempts_seen=seen), AsyncMock())
+    assert seen[0][1] == 2, "a story needs two outlets before there is anything to compare"
     assert seen[0][1] == MIN_UNIQUE_OUTLETS
 
 

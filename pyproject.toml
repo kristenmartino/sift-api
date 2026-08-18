@@ -59,12 +59,23 @@ exclude_lines = [
     "raise NotImplementedError",
 ]
 # A RATCHET, not a target. 57% was the measured value when coverage was first
-# turned on (2026-07-30); this floor sits just under it so the gate is real
+# turned on (2026-07-30); this floor sat just under it so the gate was real
 # from day one rather than aspirational. Raise it as coverage improves — never
 # lower it to make a red build green.
 #
-# Known zeros worth attacking first, all on the story path:
-#   workflows/story_workflow.py   0%
-#   services/story_synthesizer.py 0%
-#   services/deduplicator.py      0%
-fail_under = 55
+# Raised 2026-08-17 from 55. Measured coverage had reached 75.89% while the
+# floor stayed where it was set nine months of work earlier, so the gate
+# carried ~21 points of slack — a fifth of the suite's coverage could have
+# been deleted with the build still green. That is the same defect the jest
+# config in `sift` documents on its own threshold: a gate nothing can trip.
+# 74 sits just under the measured value, on the same doctrine as before.
+#
+# The three "known zeros" listed here until now — story_workflow,
+# story_synthesizer, deduplicator — are at 58%, 95% and 93%. Measured, not
+# remembered, the lowest are:
+#   app/db.py                     12%  (thin pg wrapper; exercised by the app)
+#   services/story_confirmer.py   26%
+#   workflows/compare_workflow.py 35%
+#   workflows/pipeline_workflow.py 35%
+#   app/routers/compare.py        47%
+fail_under = 74
