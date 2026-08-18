@@ -207,6 +207,35 @@ async def main(csv_path: str, dry_run: bool, prune: bool) -> int:
         print(f"\nUpserted {len(accepted)} terms.")
         if prune and stale:
             print(f"Deleted {len(stale)}: {', '.join(stale)}")
+
+        # Seeding a term does not publish it. /glossary and the publish floor
+        # read the counts migration 034 stores, and a row this script just
+        # inserted has article_count NULL until refresh_term_coverage.py
+        # measures it — which the floor treats as zero.
+        #
+        # That is the fail-closed behaviour working as designed, and it is
+        # indistinguishable from a bug unless something says so. seed_all.sh
+        # runs the refresh for you; anyone invoking this script directly gets
+        # told here, by name, with the command.
+        unmeasured = [
+            r["slug"] for r in await pool.fetch(
+                """
+                SELECT slug FROM term_profiles
+                 WHERE definition IS NOT NULL AND definition_source IS NOT NULL
+                   AND (article_count IS NULL OR coverage_computed_at IS NULL)
+                 ORDER BY slug
+                """
+            )
+        ]
+        if unmeasured:
+            print(
+                f"\n!! {len(unmeasured)} term(s) have no measured coverage and "
+                "will NOT publish:"
+            )
+            for slug in unmeasured:
+                print(f"     /term/{slug}")
+            print("\n   Fix (or just run scripts/seed_all.sh, which does it):")
+            print("     railway run ./.venv/bin/python3 scripts/refresh_term_coverage.py")
         return 0
     finally:
         await pool.close()
