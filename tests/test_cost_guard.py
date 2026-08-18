@@ -160,17 +160,34 @@ class TestRecordUsage:
                 )
         pool.execute.assert_called_once()
 
-    def test_write_error_is_swallowed(self):
-        fake_pool = AsyncMock(side_effect=RuntimeError("db down"))
+    def test_a_failing_get_pool_is_swallowed(self):
+        fake_pool = AsyncMock(side_effect=RuntimeError("no pool"))
         with patch.object(cost_guard.settings, "ai_cost_guard_enabled", True):
             with patch.object(cost_guard, "get_pool", fake_pool):
                 # Must not raise — telemetry never breaks the pipeline.
                 asyncio.run(cost_guard.record_usage("anthropic", "m", "op", 0.5))
 
-        # Assert it actually reached the DB and swallowed a real failure. Without
-        # this, the test would still pass if record_usage short-circuited before
-        # the write and never attempted anything at all.
         fake_pool.assert_called_once()
+
+    def test_a_failing_ledger_write_is_swallowed(self):
+        """The other half, and the one the comment here used to claim.
+
+        The previous single test patched `get_pool` itself with a raising
+        AsyncMock, so the exception fired at `pool = await get_pool()` and
+        `pool.execute` was never reached — despite asserting it "actually
+        reached the DB and swallowed a real failure". Narrowing the `try` in
+        cost_guard.py to wrap only `get_pool`, leaving the `await
+        pool.execute(...)` outside it, therefore passed: a ledger-write failure
+        would propagate and take down the pipeline over telemetry.
+        """
+        pool = _mock_pool()
+        pool.execute = AsyncMock(side_effect=RuntimeError("db down"))
+        with patch.object(cost_guard.settings, "ai_cost_guard_enabled", True):
+            with patch.object(cost_guard, "get_pool", AsyncMock(return_value=pool)):
+                asyncio.run(cost_guard.record_usage("anthropic", "m", "op", 0.5))
+
+        # It got past get_pool, attempted the INSERT, and swallowed the error.
+        pool.execute.assert_awaited_once()
 
     def test_token_counts_reach_the_ledger(self):
         """migrations/029. Dollars alone cannot be re-priced onto another

@@ -183,9 +183,18 @@ def test_build_bioguide_to_committees_skips_subcommittees():
     # Schumer is on the SSGA13 subcommittee per the membership fixture, but
     # SSGA13 isn't a top-level committee in committees-current, so it's dropped.
     # His result should be just Finance, not Finance + the subcommittee.
-    assert "Whatever" not in str(index.get("S000148"))
+    #
+    # This was `assert "Whatever" not in str(index.get("S000148"))`. The string
+    # "Whatever" appears in no fixture, no source, and no reachable output —
+    # the assertion was true for every possible implementation of
+    # build_bioguide_to_committees, and the load-bearing Schumer/SSGA13 check
+    # the test is named for was simply absent.
+    assert index["S000148"] == ["Finance"]
+    # Nothing derived from a subcommittee key leaked into the index at all.
+    assert "SSGA13" not in str(index)
     # Orphan thomas_id is also dropped.
     assert "X000001" not in index
+    assert "ORPHAN15" not in str(index)
 
 
 def test_build_bioguide_to_committees_skips_malformed_membership():
@@ -242,12 +251,30 @@ def test_build_bioguide_to_committees_sorts_committee_lists():
 
 
 def test_build_bioguide_to_committees_skips_committees_without_thomas_id():
-    """The 'Orphan Committee' fixture has no thomas_id and shouldn't get
-    indexed even if a member somehow references it."""
-    # No way for membership to reference a committee with no thomas_id since
-    # the dict is keyed on thomas_id. So this test verifies the iteration
-    # over committees doesn't crash on such entries.
+    """The 'Orphan Committee' (no thomas_id) and 'BAD' (no name) fixtures must
+    contribute nothing to the index.
+
+    This used to pass `membership={}`, so the loop over membership never
+    executed and `index == {}` was true by construction — independent of every
+    line the test claimed to cover. It now runs against the real membership
+    fixture, so the malformed committee entries are actually reached.
+    """
+    # Membership that REFERENCES both malformed committees with well-formed
+    # member lists. `_membership_fixture()` cannot do this job: its "BAD" value
+    # is itself malformed, so the later `isinstance(members, list)` guard drops
+    # it regardless and the two guards become indistinguishable.
+    membership = {
+        # 'BAD' has a thomas_id but no name. Without the guard it is indexed
+        # with the display name str(None) == "None".
+        "BAD": [{"bioguide": "Z000001", "name": "Someone"}],
+        # 'Orphan Committee' has no thomas_id. Without the guard it is keyed
+        # under the string "None", which this membership then matches.
+        "None": [{"bioguide": "Z000002", "name": "Someone Else"}],
+    }
     index = scrape_committees.build_bioguide_to_committees(
-        _committees_fixture(), {},
+        _committees_fixture(), membership,
     )
-    assert index == {}
+
+    assert index == {}, (
+        f"malformed committees leaked into the index: {index}"
+    )

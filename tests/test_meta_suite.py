@@ -91,10 +91,54 @@ def _module_level_test_functions() -> list[tuple[pathlib.Path, str]]:
 def test_the_meta_guard_actually_sees_the_suite():
     """Guard the guard: if the glob or the AST walk silently stops matching,
     every check below would pass vacuously — which is the exact failure mode
-    this file exists to prevent."""
+    this file exists to prevent.
+
+    Ratcheted 2026-08-17. The floors were `> 100` and `> 10` against a real
+    772 functions across 50 modules, so the guard tolerated losing 87% of the
+    suite before firing — it protected against total breakage of the glob, not
+    against drift. These sit just under the measured values, same doctrine as
+    the coverage floor in pyproject.toml. Raise as the suite grows.
+    """
     fns = _test_functions()
-    assert len(fns) > 100, f"expected the full suite, only found {len(fns)} test functions"
-    assert len({p.name for p, _ in fns}) > 10, "expected many test modules"
+    assert len(fns) > 750, f"expected the full suite, only found {len(fns)} test functions"
+    assert len({p.name for p, _ in fns}) > 45, "expected many test modules"
+
+
+def test_no_test_function_is_defined_where_pytest_will_never_run_it():
+    """`ast.walk` (used by the guard above) flattens the tree, so it counts
+    `test_*` methods in classes pytest does NOT collect — anything not named
+    `Test*` — and functions nested inside other functions. Either one is a test
+    that the guard believes exists and that never runs: the failure mode this
+    file exists to prevent, one level up.
+
+    Checked structurally rather than by diffing against `pytest --collect-only`,
+    because parametrization makes the collected count a multiple of the source
+    count and the comparison too coarse to see a single lost test.
+    """
+    def scan(node, container, filename, offenders):
+        """`container` is None while the node is somewhere pytest can reach,
+        and the name of the first unreachable ancestor once it is not."""
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if child.name.startswith("test_") and container is not None:
+                    offenders.append(f"{filename}::{container}::{child.name}")
+                # Anything nested inside a function is unreachable to pytest.
+                scan(child, container or f"{child.name}()", filename, offenders)
+            elif isinstance(child, ast.ClassDef):
+                unreachable = None if child.name.startswith("Test") else child.name
+                scan(child, container or unreachable, filename, offenders)
+            else:
+                scan(child, container, filename, offenders)
+
+    offenders: list[str] = []
+    for path in sorted(TESTS_DIR.glob("test_*.py")):
+        scan(ast.parse(path.read_text(encoding="utf-8")), None, path.name, offenders)
+
+    assert not offenders, (
+        "These test functions are defined where pytest will not collect them "
+        "— inside a class not named `Test*`, or nested inside another "
+        f"function. They never run: {offenders}"
+    )
 
 
 def test_every_test_function_asserts_something():
@@ -111,6 +155,42 @@ def test_every_test_function_asserts_something():
         "mock assert_* call — they pass no matter what the code does. Add a "
         f"real assertion, or a '{PRAGMA} <reason>' line to the docstring if "
         f"that is genuinely intended: {offenders}"
+    )
+
+
+def test_no_test_compares_a_value_to_itself():
+    """`assert f(x) == f(x)` passes for every possible implementation of a pure
+    `f`. This is the ORIGINAL form of the defect in this file's docstring —
+    `stable_hash("hello") == stable_hash("hello")` — and nothing catches it:
+    the check above tests for the ABSENCE of an assertion, not a vacuous one,
+    and Ruff's PT015/B011 only fire on `assert <literal constant>`.
+
+    Found live on 2026-08-17 in tests/test_incremental_threading.py, guarding
+    the story-identity fix that exists because 58,259 rows were orphaned.
+
+    Put `no-assert-ok:` in the docstring with a reason for the rare legitimate
+    case (an identity check on a memoized callable, where the two calls are
+    genuinely required to return the SAME object).
+    """
+    offenders = []
+    for path, fn in _test_functions():
+        if PRAGMA in (ast.get_docstring(fn) or ""):
+            continue
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+                continue
+            if not isinstance(node.ops[0], (ast.Eq, ast.Is)):
+                continue
+            left = ast.dump(node.left)
+            right = ast.dump(node.comparators[0])
+            if left == right:
+                offenders.append(
+                    f"{path.name}::{fn.name} — {ast.unparse(node)}"
+                )
+
+    assert not offenders, (
+        "These assertions compare a value to itself. They pass no matter what "
+        f"the code does: {offenders}"
     )
 
 
@@ -136,10 +216,17 @@ def test_eval_corpora_parse_and_have_unique_ids():
     """Every labeled corpus under data/eval must be valid JSONL with unique
     ids. A duplicated id silently pads the row count that
     tests/test_quality_gate.py asserts a floor on."""
-    if not EVAL_DIR.exists():
-        return
+    # No early return on a missing directory, and no unguarded glob. Both were
+    # here until 2026-08-17, and either one turns this into a test that checks
+    # nothing while reporting green — including the row-count floor
+    # tests/test_quality_gate.py depends on.
+    assert EVAL_DIR.exists(), f"the eval corpus directory is missing: {EVAL_DIR}"
+    paths = sorted(EVAL_DIR.glob("*.jsonl"))
+    assert len(paths) >= 3, (
+        f"expected the labeled corpora under {EVAL_DIR}, found {len(paths)}"
+    )
 
-    for path in sorted(EVAL_DIR.glob("*.jsonl")):
+    for path in paths:
         rows = []
         for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if not raw.strip():

@@ -267,9 +267,22 @@ class TestLedgerHandoff:
         # $0.05/M in + $0.40/M out — NOT Haiku's $1/$5.
         assert payload["cost_usd"] == pytest.approx(0.45)
 
-    def test_latency_is_recorded(self):
+    @pytest.mark.asyncio
+    async def test_latency_is_measured_by_the_call_not_supplied_to_it(self):
         """A cheaper model behind a slower endpoint is not cheaper: the
-        pipeline has to finish inside a 30-minute REFRESH_INTERVAL."""
-        resp = LLMResponse(text="", usage=LLMUsage(), stop_reason="end_turn",
-                           spec=NANO, latency_ms=1234.5)
-        assert resp.latency_ms == 1234.5
+        pipeline has to finish inside a 30-minute REFRESH_INTERVAL.
+
+        This used to construct `LLMResponse(latency_ms=1234.5)` in the test body
+        and assert it equalled 1234.5 — it exercised dataclass field
+        assignment, never `complete()`. Verified 2026-08-17: hardcoding
+        `latency_ms=0.0` in llm_client.py sent every latency figure in the
+        system to zero with the whole suite green, because these four lines
+        were the only place the word appeared in tests/.
+        """
+        client = _fake("openai", _openai_response(prompt=10, completion=5))
+        r = await complete(operation="summarizer.batch", user="hi", max_tokens=10,
+                           spec=NANO, client=client)
+        # A real elapsed measurement: positive, and not the sentinel a
+        # hardcoded default would produce.
+        assert r.latency_ms > 0
+        assert isinstance(r.latency_ms, float)
