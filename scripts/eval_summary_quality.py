@@ -67,7 +67,7 @@ DEFAULT_MIN_BODY_WORDS = 100
 # Fewer eligible articles than this and the result is not worth reporting.
 MIN_ELIGIBLE = 40
 
-RUBRIC = """You are checking whether a one-or-two sentence news summary is \
+_RUBRIC_TEMPLATE = """You are checking whether a one-or-two sentence news summary is \
 FAITHFUL to the article text it was written from.
 
 ARTICLE HEADLINE:
@@ -100,10 +100,7 @@ was left out
 production summaries when it asked for strict entailment. Reserve false for \
 something a reader could check against the article and find is not there.
 
-2. "legal_safe" — Does the summary avoid characterizing any legal matter \
-beyond what the article literally says? false if a charge becomes guilt, an \
-allegation becomes fact, an investigation becomes a finding, or a settlement \
-becomes an admission. true if no legal matter is involved.
+{legal_axis}
 
 3. "attributed" — Where the summary states a contested claim, does it keep the \
 article's attribution ("prosecutors say", "according to X")? false if the \
@@ -115,7 +112,60 @@ Return ONLY this JSON object:
 "why": "<= 15 words, only if any answer is false"}}"""
 
 
-async def judge_one(sem, title: str, article_text: str, summary: str) -> dict | None:
+# ── the `legal_safe` axis, in three readings ──────────────────────────────
+#
+# The shipped wording is AMBIGUOUS, and the ambiguity is load-bearing. It
+# lists "an allegation becomes fact" as a failure and then closes with "true
+# if no legal matter is involved" — without saying which clause governs when
+# a summary hardens a hedge that has nothing to do with a legal proceeding.
+#
+# That is not academic. `eval_judge_calibration.py` planted
+# "RTVE allegedly skipped introducing an athlete" -> "definitely skipped"
+# and recorded the judge's `true` as a missed detection. Under the first
+# clause the plant is a violation; under the last clause the judge is right.
+# Harness and judge each resolved it, differently, and the disagreement was
+# recorded as judge error.
+#
+# So the reading is now explicit and selectable, and AS_SHIPPED is kept so
+# every number measured under it stays reproducible.
+
+_LEGAL_AXIS_AS_SHIPPED = """2. "legal_safe" — Does the summary avoid characterizing any legal matter \
+beyond what the article literally says? false if a charge becomes guilt, an \
+allegation becomes fact, an investigation becomes a finding, or a settlement \
+becomes an admission. true if no legal matter is involved."""
+
+_LEGAL_AXIS_SCOPED = """2. "legal_safe" — Does the summary avoid characterizing a LEGAL MATTER \
+beyond what the article literally says? A legal matter means a criminal \
+charge, an investigation by an authority, a lawsuit, a settlement, a court \
+proceeding, or a regulatory action. false if a charge becomes guilt, an \
+allegation made in or about such a matter becomes fact, an investigation \
+becomes a finding, or a settlement becomes an admission. true if no legal \
+matter is involved. Hardening a hedge that is NOT about a legal matter is \
+not this axis — judge that under "supported"."""
+
+_LEGAL_AXIS_BROAD = """2. "legal_safe" — Does the summary avoid converting a hedged or attributed \
+allegation into asserted fact? false if a charge becomes guilt, an \
+investigation becomes a finding, a settlement becomes an admission, or an \
+allegation OF ANY KIND becomes fact — whether or not a legal proceeding is \
+involved. true only if the summary makes no such conversion."""
+
+LEGAL_AXES = {
+    "as-shipped": _LEGAL_AXIS_AS_SHIPPED,
+    "legal-scoped": _LEGAL_AXIS_SCOPED,
+    "broad": _LEGAL_AXIS_BROAD,
+}
+
+
+def build_rubric(variant: str = "as-shipped") -> str:
+    """The rubric with one of the three `legal_safe` readings spliced in."""
+    return _RUBRIC_TEMPLATE.replace("{legal_axis}", LEGAL_AXES[variant])
+
+
+RUBRIC = build_rubric("as-shipped")
+
+
+async def judge_one(sem, title: str, article_text: str, summary: str,
+                    rubric: str | None = None) -> dict | None:
     """Judge one summary against the SAME input the summarizer was given.
 
     The title is passed because `summarizer._build_prompt` sends
@@ -130,8 +180,8 @@ async def judge_one(sem, title: str, article_text: str, summary: str) -> dict | 
         try:
             resp = await llm_client.complete(
                 operation="judge.batch",
-                user=RUBRIC.format(title=title, article=article_text[:4000],
-                                   summary=summary),
+                user=(rubric or RUBRIC).format(
+                    title=title, article=article_text[:4000], summary=summary),
                 max_tokens=200,
                 spec=spec,
             )
