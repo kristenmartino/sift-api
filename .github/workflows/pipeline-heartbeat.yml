@@ -19,10 +19,17 @@ on:
 permissions:
   contents: read
 
+# Serialize, never cancel. This workflow changes state rather than reporting on
+# it, so an interrupted run is worse than a queued one.
+concurrency:
+  group: pipeline-heartbeat
+  cancel-in-progress: false
+
 jobs:
   heartbeat:
     name: Check ingestion freshness
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check /health and self-heal if stale
         env:

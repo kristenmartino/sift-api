@@ -10,6 +10,14 @@ on:
   # could move a query plan without touching migrations/.
   workflow_dispatch: {}
 
+# Supersede in-flight runs for the same pull request; pushing twice used to run
+# both to completion. Keyed by SHA on push so a branch/main run is never
+# cancelled — cancellation follows workflow start order, not commit order, so
+# cancelling a push run risks the newest commit never being the one validated.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint-test:
     name: Lint & Test
