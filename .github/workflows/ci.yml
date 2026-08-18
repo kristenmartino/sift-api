@@ -14,6 +14,11 @@ jobs:
   lint-test:
     name: Lint & Test
     runs-on: ubuntu-latest
+    # GitHub's default job timeout is 360 minutes, so a wedged step burns six
+    # hours of runner time before anything notices. sift's typecheck job hung
+    # 22 minutes on apt-get on 2026-08-17 and was only caught by hand; these
+    # jobs have the same exposure and none of them should ever run long.
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +54,7 @@ jobs:
     # metrics, or the corpus — all deliberate edits, which is exactly what a
     # gate should catch. Live runs stay out of CI for nondeterminism, not cost.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name == 'pull_request'
 
     steps:
@@ -94,6 +100,7 @@ jobs:
     # Only runs when a PR touches the query surface or the diagnostic script.
     # Guards against plan regressions landing in main without being noticed.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
 
     steps:
