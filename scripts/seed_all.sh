@@ -19,6 +19,8 @@
 #   6. seed_politician_profiles  (Phase 3.A)
 #   7. seed_org_profiles         (Phase 3.A)
 #   8. seed_bill_profiles        (Phase 3.A)
+#   9. seed_term_profiles        (migration 031)
+#  10. refresh_term_coverage     (migration 034) — MUST BE LAST, see below
 
 set -euo pipefail
 
@@ -78,7 +80,7 @@ warn()    { printf '%s! %s%s\n'         "$C_WARN" "$1" "$C_OFF"; }
 
 # ─── 1. dry-run validation ─────────────────────────────────
 heading "Validating CSVs (dry-run, no DB writes)"
-for s in seed_outlet_profiles seed_politician_profiles seed_org_profiles seed_bill_profiles; do
+for s in seed_outlet_profiles seed_politician_profiles seed_org_profiles seed_bill_profiles seed_term_profiles; do
   step "$s --dry-run"
   railway run "$PYTHON" "scripts/$s.py" --dry-run
 done
@@ -132,9 +134,32 @@ for s in seed_politician_profiles seed_org_profiles seed_bill_profiles; do
 done
 ok "All Phase 3.A tables synced."
 
+# ─── 5. terms (migration 031) ─────────────────────────────
+heading "Terms — term_profiles"
+railway run "$PYTHON" scripts/seed_term_profiles.py
+ok "term_profiles synced."
+
+# ─── 6. coverage counts (migration 034) — LAST ON PURPOSE ──
+#
+# Not a seed: a recompute of what the other steps just changed. It has to run
+# last, and after the alias step in particular, because outlet_count resolves
+# each article's source_name through source_name_aliases and outlet_profiles.
+# Run it before those and the counts are measured against a stale mapping —
+# which is exactly the bug that made /term/*'s spectrum block under-report
+# left coverage 21 vs 51 when source_name_aliases was empty.
+#
+# Skipping it entirely is worse than it looks: /glossary and the publish floor
+# read these columns, and a term seeded above shows article_count NULL until
+# this runs, which the floor treats as zero. A brand new term stays
+# unpublished until this step happens.
+heading "Coverage counts — refresh_term_coverage"
+railway run "$PYTHON" scripts/refresh_term_coverage.py
+ok "term coverage counts refreshed."
+
 # ─── done ──────────────────────────────────────────────────
 printf '\n'
 ok "Catch-up complete. Spot-check via the sift dev preview:"
 echo "  - feed → click an outlet name → /outlet/[slug] dossier"
 echo "  - /methodology → live outlet list grouped Left / Center / Right / Unrated"
 echo "  - /politician/S000148 → Schumer dossier (once Phase 3.C ships)"
+echo "  - /glossary → term list; check the 'Counts measured' date is today"
