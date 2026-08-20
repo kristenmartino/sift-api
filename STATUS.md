@@ -305,7 +305,20 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
   **The summarizer is the only stage that reads raw article text**; everything downstream reads the *summary*, so their few percent is just slightly fuller summaries. Summarizer cost went **$0.62 → $0.72 per 1k articles**. All-in is unchanged at **$2.0–2.4/1k** — the increase is real but small against the total and masked by volume swings, which is exactly why it needed measuring rather than eyeballing.
 
-  **It is not finished growing.** Input per article has gone **71 → 173 tokens** and sits at **27% of the ~650-token cap** `_truncate(content, 500)` imposes; the feeds carry far more (ProPublica publishes 3,186 words where Sift used to read 20). If it saturates that cap, the summarizer reaches **~$1.22/1k**, about **+23% all-in**. Worth having, but it should be a decision rather than a drift — re-read this before quoting any $/1k figure.
+  ~~**It is not finished growing.**~~ **It has since plateaued — the saturation case below did not happen, and is recorded here because it was the reason to watch.** The projection was: input per article had gone 71 → 173 tokens, 27% of the ~650-token cap `_truncate(content, 500)` imposes, with feeds carrying far more (ProPublica publishes 3,186 words where Sift used to read 20) — so saturating the cap would put the summarizer near **$1.22/1k, about +23% all-in**.
+
+  **Measured 2026-08-20 over the three days after the change settled**, input per article went **170 → 211 → 217 → 199** and flattened at roughly **a third of the cap**, not against it:
+
+  | UTC day | in/article | out/call | peak out | $/1k |
+  |---|---:|---:|---:|---:|
+  | 08-17 | 170 | 360 | 567 | 0.717 |
+  | 08-18 | 211 | 364 | 608 | 0.781 |
+  | 08-19 | 217 | 362 | 603 | 0.769 |
+  | 08-20 | 199 | 352 | 554 | 0.737 |
+
+  **The cap was never going to bind for the median article** — only 26% of entries carry more than double what was previously read, so the distribution runs out well before 500 words. Realized cost is **$0.62 → ~$0.75/1k, about +5% all-in**, not +23%. The number to quote is ~$0.75.
+
+  **What the projection was right about was the output ceiling, and the margin was thinner than it looked.** Peak output reached **608 on 08-18** — 46% of the derived 1,320 ceiling, but **87% of the flat 700 it replaced**. #249 landed with roughly two days of headroom left. Output per call itself never moved (360 → 352), confirming the raise was behaviorally inert: summaries are bounded by the prompt, not by `max_tokens`, which the model never sees.
 
   **The output ceiling was the near-term risk, and it is now derived rather than fixed** (`OUTPUT_TOKENS_PER_ARTICLE × BATCH_SIZE + scaffolding`, 700 → 1,320). Measured peak output drifted **481 → 567 of 700 (81%)** over six days while *mean* output moved only 332 → 359 — summaries are length-bounded by the prompt, not by input, so it drifts rather than runs away, but it drifts toward a cliff. **The cliff is sharp and silent**: a response cut off at the cap is truncated JSON, which fails `index_alignment`, which re-asks and then degrades the *whole batch* to `_raw_content_fallback` — five articles served truncated RSS text while the run reports success. `max_tokens` bills on tokens *used*, so headroom is free and the asymmetry is one-sided. **Third instance of the same bug class**: `story_synthesizer`'s fixed 1024 was breaking exactly its biggest clusters, and gpt-5-nano produced 30/30 empty batches at 700. A test pins the ceiling to `BATCH_SIZE` *in the source*, not to its value — replacing the formula with the literal it evaluates to leaves every arithmetic assertion passing.
 
