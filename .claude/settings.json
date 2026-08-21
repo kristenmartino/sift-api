@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "test -f STATUS.md && jq -Rs '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:.}}' < STATUS.md || echo '{}'",
+            "command": "test -f STATUS.md && head -c 20000 STATUS.md | jq -Rs '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:.}}' || echo '{}'",
             "timeout": 5
           }
         ]
