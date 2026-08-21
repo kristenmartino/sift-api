@@ -6,7 +6,9 @@ Context you'll want before editing anything here. Keep this file **short and cur
 
 Before doing real work in a session:
 
-1. Read [`STATUS.md`](./STATUS.md) — Active focus, Open question, Next 3, Blocked-on, Recent decisions.
+1. Read the head of `STATUS.md` (`sed -n '1,120p' STATUS.md`, or rely on the SessionStart hook, which already injects
+   it) — Active focus + open strategic questions. STATUS.md holds no current state of its own: the engineering queue
+   is `gh issue list`, blocked items are `gh issue list --label blocked`.
 2. List open PRs + issues (`mcp__github__list_pull_requests` / `list_issues`, or `gh` locally).
 3. If touching the feed read path, also read `sift/lib/db.ts` in the sibling repo — those queries are the user-visible slow path, not anything here.
 
@@ -16,7 +18,8 @@ If `STATUS.md` is older than ~3 days during a high-velocity period (10+ PRs / we
 
 Before opening the PR:
 
-- Did this change anything in `STATUS.md`'s Next 3, Blocked-on, or Open question? Update it.
+- Did this change `STATUS.md`'s Active focus or an Open strategic question? Update it.
+- Did this change what's next or what's blocked? Update the GitHub issue's state/labels — STATUS.md no longer tracks priority or blocked status.
 - Did this make or close a strategic decision? Add a `## Recent decisions` entry in `STATUS.md` (and, if substantial, a row in the sibling `sift/docs/DECISIONS.md`).
 - Did this change a public contract (API endpoint, response shape, env var)? Update `README.md` and any `sift/docs/TECHNICAL_SPEC.md` rows that referenced it.
 - Did this change DB schema? Update `init.sql` AND add a `migrations/NNN_*.sql` AND extend `app/db.py:_apply_migrations`. See `## Schema` below.
@@ -100,10 +103,10 @@ When you discover something during a session that's worth tracking, use this to 
 | What you found | Where it goes |
 |---|---|
 | **Bug blocking current work** | Fix in active branch. Don't file. |
-| **Concrete feature committing to in next ~2 weeks** | GitHub issue with `tier-v1.5` / `tier-v2` + `effort-*` labels. Add to STATUS.md "Next 3" if it bumps something. |
+| **Concrete feature committing to in next ~2 weeks** | GitHub issue with `tier-v1.5` / `tier-v2` + `effort-*` labels. |
 | **Concrete feature wanted eventually, no commitment** | Note in `STATUS.md` "Recent decisions" if it's a decision; otherwise wait until you're ready to commit, then file an issue. |
-| **Quirk or minor bug, not urgent** | GitHub issue with `bug` label. No need to surface in STATUS.md unless it blocks Next 3. |
-| **Critical bug found but not fixed** | GitHub issue with `bug` label, then mention in STATUS.md "Blocked-on" if it blocks Next 3. |
+| **Quirk or minor bug, not urgent** | GitHub issue with `bug` label. No need to surface in STATUS.md. |
+| **Critical bug found but not fixed** | GitHub issue with `bug` + `blocked` labels — `gh issue list --label blocked` is the queue now, not STATUS.md. |
 | **Strategic question / open architectural decision** | STATUS.md "Open strategic question" — never a GitHub issue. Questions get answered through usage/conversation, not engineering work. |
 | **Architectural decision now made** | STATUS.md "Recent decisions" with a date. If substantial, also add a row in [`sift/docs/DECISIONS.md`](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md) (sift owns the cross-repo decision log). |
 | **Out-of-scope idea surfaced during work** | If it's tied to a specific file, use the spawned-task chip in your editor. Otherwise note in STATUS.md "Recent decisions" or open an issue if scoped. |
