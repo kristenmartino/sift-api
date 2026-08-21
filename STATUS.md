@@ -216,7 +216,22 @@ Per Railway's 2026 fair-use clause (lists "Hosting/Distribution of DMCA protecte
 
   **sift-api#226's proposed low-importance dampener for `world`** may no longer be needed now that the tab's content mix should be substantially cleaner — worth re-checking `world` ranking after this deploys, rather than proceeding with #226 as originally scoped.
 
-- **2026-08-17** — **DIME gives us the campaign-finance question OpenSecrets is blocking, just not the same one** ([#260](https://github.com/kristenmartino/sift-api/issues/260); read side is [`sift`#264](https://github.com/kristenmartino/sift/issues/264)).
+- **2026-08-21** — **Post-deploy re-check confirms #227's fix worked: New York Post's `world` misfile rate is 4%, down from 44%.** #263 deployed 2026-08-18T03:26:43Z; this is the clean measurement its own scope note asked for before touching #226.
+
+  **Two premature readings before this one, both discarded rather than reported.** An unfiltered re-run 32 min post-deploy reproduced the pre-fix baseline almost exactly (same n=105 New York Post volume) — the trailing 7-day window was still ~100% pre-fix rows, since classification is written once at ingest and #263 shipped no backfill. A `--since`-filtered run 35 min post-deploy correctly isolated only 4 post-fix rows system-wide — proved the filter (`scripts/eval_world_misfiles.py --since`, [#266](https://github.com/kristenmartino/sift-api/pull/266)) is exact, but far too early to read. A scheduled recheck for 60h post-deploy was set up but produced no visible output when it fired; this measurement was run by hand instead, ~2 days 22h post-deploy.
+
+  **This run** (`--since 2026-08-18T03:26:43Z`, `--days 7`, prod): 373 post-fix `world`-tagged rows total, full or near-full n=30 samples on 8 of the 10 sources tracked.
+
+  | source | feed shape | n (post-fix) | misfile % |
+  |---|---|---:|---:|
+  | New York Post | general | 27 | **4%** |
+  | Washington Examiner | general | 30 | 7% |
+  | BBC World | dedicated | 30 | 3% |
+  | CBS News / Fox News / BBC / Bloomberg / NYT / FT | general | 14–30 | 0% |
+
+  **General-firehose average: 1.3%. Dedicated-feed average: 1.7%** — general-firehose is now *at or below* the dedicated-feed rate, not just "indistinguishable" as the pre-fix baseline had it. New York Post specifically dropped from 44% to 4%, closing almost the entire gap to the general-firehose mean. Raw volume corroborates the rate: New York Post's `world` output fell from ~15/day pre-fix to ~9.2/day post-fix (27 articles / 2.93 days) — fewer articles are landing on `world` at all, not just a smaller share of a similar-sized firehose.
+
+  **Verdict: the classification fix is sufficient. sift-api#226's proposed ranking dampener is not needed** — commented on the (already-closed) issue recommending it stay closed as superseded, with this data. Not reopened. ([#260](https://github.com/kristenmartino/sift-api/issues/260); read side is [`sift`#264](https://github.com/kristenmartino/sift/issues/264)).
 
   Stanford's DIME was ruled out as an industry source and that stands — no `catcode`/`realcode`/industry field in any tier, and the CRP-derived records it does gate are **state-level**, so academic access would not supply federal catcodes even if granted. But `dime_recipients_1979_2024.csv.gz` carries FEC-reported **composition** per candidate per cycle: total receipts, itemised vs unitemised individual, PAC, party, self-funding, `ind.exp.support` / `ind.exp.oppose`, and `num.givers`.
 
