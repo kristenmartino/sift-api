@@ -26,6 +26,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -33,11 +34,29 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.eval_summarizer import DEFAULT_CORPUS, DEFAULT_RUNS, load_corpus  # noqa: E402
+from services.summarizer import _truncate  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 SHEET_MD = REPO / "data" / "eval" / "summary_review.md"
 SHEET_CSV = REPO / "data" / "eval" / "summary_review.csv"
 KEY = REPO / "data" / "eval" / "summary_review.key.json"
+
+# Below this many words the source is a teaser, and a reader should treat any
+# specific detail beyond the teaser and the headline as unsupported.
+TEASER_WORDS = 40
+
+
+def model_input(article) -> str:
+    """The article text exactly as `summarizer._build_prompt` hands it over.
+
+    Shown under each pair so an invented fact can be checked on the sheet
+    itself — the A/B verdict records preference, not fabrication, and a reader
+    with only the headline cannot tell the two apart. Mirrors the two steps
+    `_build_prompt` applies; if that function changes, change this with it.
+    """
+    content = article.raw_content or article.title
+    content = re.sub(r"<[^>]+>", "", content).strip()
+    return _truncate(content, 500)
 
 
 def build(candidate_path: Path, corpus_path: Path, runs_path: Path, n: int) -> None:
@@ -78,6 +97,13 @@ def build(candidate_path: Path, corpus_path: Path, runs_path: Path, n: int) -> N
         "Judge whatever you actually care about: does it carry the right fact, "
         "does it read like Sift, would you ship it.",
         "",
+        "Under each pair, **What the models were given** is the article text "
+        "exactly as the summarizer received it, alongside the headline above. "
+        "Use it to check for invented "
+        "facts and dropped hedges (\"allegedly\" turned into fact), and note "
+        "either in the CSV's `notes` column — e.g. `B invented case`. The "
+        "verdict says which you prefer; only the notes record a fabrication.",
+        "",
         "Do not open `summary_review.key.json` until you are done.",
         "",
         "---",
@@ -95,7 +121,7 @@ def build(candidate_path: Path, corpus_path: Path, runs_path: Path, n: int) -> N
                        "B": "incumbent" if flip else "candidate",
                        "url": u}
         rows.append({"n": i, "source": art.source_name,
-                     "title": art.title, "verdict": ""})
+                     "title": art.title, "verdict": "", "notes": ""})
         md += [
             f"### {i}. {art.title}",
             f"*{art.source_name}*",
@@ -104,6 +130,20 @@ def build(candidate_path: Path, corpus_path: Path, runs_path: Path, n: int) -> N
             "",
             f"**B.** {b}",
             "",
+        ]
+        given = model_input(art)
+        words = len(given.split())
+        label = f"What the models were given ({words} words"
+        label += ", teaser only)" if words < TEASER_WORDS else ")"
+        md += [
+            "<details>",
+            f"<summary>{label}</summary>",
+            "",
+            # One paragraph per source line; a bare `>` keeps them in one quote.
+            "\n>\n".join(f"> {ln.strip()}" for ln in given.splitlines() if ln.strip()),
+            "",
+            "</details>",
+            "",
             "---",
             "",
         ]
@@ -111,7 +151,7 @@ def build(candidate_path: Path, corpus_path: Path, runs_path: Path, n: int) -> N
     SHEET_MD.parent.mkdir(parents=True, exist_ok=True)
     SHEET_MD.write_text("\n".join(md))
     with SHEET_CSV.open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["n", "source", "title", "verdict"])
+        w = csv.DictWriter(f, fieldnames=["n", "source", "title", "verdict", "notes"])
         w.writeheader()
         w.writerows(rows)
     KEY.write_text(json.dumps(
