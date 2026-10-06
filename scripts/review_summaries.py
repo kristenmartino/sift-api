@@ -59,14 +59,16 @@ def model_input(article) -> str:
     return _truncate(content, 500)
 
 
-def build(candidate_path: Path, corpus_path: Path, runs_path: Path, n: int) -> None:
+def build(candidate_path: Path, corpus_path: Path, runs_path: Path, n: int,
+          min_words: int = 0) -> None:
     corpus = load_corpus(corpus_path)
     by_url = {a.source_url: a for a in corpus}
     incumbent = json.loads(runs_path.read_text())["runs"][0]
     blob = json.loads(candidate_path.read_text())
     candidate = blob["results"]
 
-    usable = [u for u in by_url if u in incumbent and u in candidate]
+    usable = [u for u in by_url if u in incumbent and u in candidate
+              and len(model_input(by_url[u]).split()) >= min_words]
 
     # Round-robin across outlets: the top 10 sources are 64% of volume, so a
     # straight draw would be mostly Sports Illustrated and the New York Post.
@@ -215,9 +217,14 @@ if __name__ == "__main__":
     p.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     p.add_argument("--runs", type=Path, default=DEFAULT_RUNS)
     p.add_argument("--n", type=int, default=50)
+    # Since #240 production feeds the summarizer the full article body, so a
+    # pair built on a 20-word RSS teaser measures a case production rarely
+    # sees. 100 is the bar eval_summary_quality.py already uses for the same
+    # reason. --min-words 0 restores the original all-articles sheet.
+    p.add_argument("--min-words", type=int, default=100)
     p.add_argument("--score", action="store_true")
     a = p.parse_args()
     if a.score:
         score()
     else:
-        build(a.candidate, a.corpus, a.runs, a.n)
+        build(a.candidate, a.corpus, a.runs, a.n, a.min_words)
