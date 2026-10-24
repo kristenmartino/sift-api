@@ -21,6 +21,7 @@ from services.index_alignment import (
 )
 from services.judge import judge_lines, judge_rejects
 from services.quality_gate import gate_why_it_matters
+from services.copy_rules import COPY_RULES
 from services.usage_tracker import log_batch_usage, log_usage
 
 logger = logging.getLogger("sift-api.context_generator")
@@ -119,7 +120,9 @@ def _build_articles_text(batch: list[dict]) -> str:
 
 
 def _build_context_prompt(batch: list[dict]) -> str:
-    return f"""For each article below, provide two independent things.
+    return f"""{COPY_RULES}
+
+For each article below, provide two independent things.
 
 1. A "why it matters" line (key "c"). ONE neutral sentence, max 18 words, that \
 gives the reader a CONCRETE, VERIFIABLE stake that is NOT already stated in the \
@@ -505,7 +508,8 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
 
             url = urls[idx - 1]
             title, summary = meta_by_url.get(url, ("", ""))
-            gated = gate_why_it_matters(raw_context, title=title, summary=summary)
+            gated = (gate_why_it_matters(raw_context, title=title, summary=summary)
+                     if url in meta_by_url else None)
             if gated is None:
                 dropped += 1
             pending.append({

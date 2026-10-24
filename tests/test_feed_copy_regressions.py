@@ -74,4 +74,6 @@ async def test_synthesis_applies_copy_guards_and_preserves_empty_source_row():
     result = await synthesize_story(articles, client=client)
     assert result['headline'] == 'Officials reportedly plan talks'
     assert result['summary'] == 'Officials plan talks.'
-    assert result['framings'] == [{'source_name': 'A', 'framing': '', 'tone': 'neutral'}]
+    assert result['framings'] == [
+        {'source_name': name, 'framing': '', 'tone': 'neutral'} for name in ['A', 'B']
+    ]

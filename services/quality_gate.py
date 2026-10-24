@@ -21,9 +21,9 @@ Design choices grounded in the audit:
   conservative backstop for near-verbatim restatement only (the ~1% tail).
 - Patterns are HIGH precision: phrases that are almost always filler, so a real
   line is rarely false-dropped. Subtler paraphrase/fluff is the judge's job.
-- `background` is trimmed for clichés only — never for restatement (the audit
-  found it appropriately novel), only on short paragraphs (a long paragraph with
-  a stray cliché clause is kept), and terms are never touched (they're the gold).
+- `background` is checked against its article and term definitions for near
+  repetition. Cliché-only drops apply to short paragraphs; a longer useful
+  explanation is not discarded for a stray cliché clause.
 """
 from __future__ import annotations
 
@@ -140,6 +140,11 @@ MIN_SUMMARY_WORDS = 10
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
+_NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)*(?:%|\b)")
+_QUALIFIER_RE = re.compile(
+    r"\b(?:not|no|never|may|might|could|alleged|allegedly|reportedly|"
+    r"accused|suspected|proposed|proposal)\b", re.IGNORECASE,
+)
 
 # Strings models sometimes emit to mean "no line" — treated as a drop.
 _NULL_TOKENS = frozenset({"null", "none", "n/a", "na", "-", "—", "(none)", "[none]"})
@@ -260,11 +265,12 @@ def gate_summary(summary: str | None) -> str:
 
 
 _GENERIC_CLOSER_RE = re.compile(
-    r"^The (?:development|move|incident|case|alert|warning|dispute|decision|"
-    r"proposal|action|visit|surge|threat|finding|story|initiative|policy|troop movements) "
-    r"(?:reflects?|signals?|highlights?|underscores?|marks?|raises?)\b"
+    r"^(?:The|This) (?:development|move|incident|case|alert|warning|dispute|decision|"
+    r"proposal|action|visit|surge|threat|finding|story|initiative|policy|troop movements|"
+    r"disaster|discovery|event) "
+    r"(?:reflects?|signals?|highlights?|underscores?|marks?|raises?|adds? to)\b"
     r".*\b(?:tensions?|concerns?|importance|significance|questions?|"
-    r"challenges?|debate|notable event)\b",
+    r"challenges?|debate|notable event|risks?|understanding)\b",
     re.IGNORECASE,
 )
 _CONCRETE_CLOSER_RE = re.compile(
@@ -278,6 +284,21 @@ _ARTICLE_OMISSION_RE = re.compile(
     r"(?:does not|doesn't|fails to) (?:mention|specify|address|explain|detail|provide)\b",
     re.IGNORECASE,
 )
+_INPUT_OMISSION_RE = re.compile(
+    r"\b(?:not (?:mentioned|specified|addressed|explained|detailed|provided)|absent) "
+    r"(?:in|from|by)\b.*\b(?:input|summary|excerpt|coverage|outlet)\b",
+    re.IGNORECASE,
+)
+_META_PADDING_RE = re.compile(
+    r"^(?:The|This) (?:article|story|piece|report|coverage) "
+    r"(?:explores|discusses|examines|highlights|focuses on) "
+    r"(?:the )?(?:broader|wider|complex|evolving|significant)\b",
+    re.IGNORECASE,
+)
+_GENERIC_NOTE_RE = re.compile(
+    r"^(?:raises?|highlights?|underscores?|reflects?)\b.*"
+    r"\b(?:broader|wider|importance|significance|the future)\b", re.IGNORECASE,
+)
 
 
 def _is_generic_summary_closer(sentence: str) -> bool:
@@ -289,7 +310,8 @@ def _is_generic_summary_closer(sentence: str) -> bool:
     """
     return bool(
         (_GENERIC_CLOSER_RE.search(sentence.strip())
-         or _ARTICLE_OMISSION_RE.match(sentence.strip()))
+         or _ARTICLE_OMISSION_RE.match(sentence.strip())
+         or _META_PADDING_RE.match(sentence.strip()))
         and not _CONCRETE_CLOSER_RE.search(sentence)
     )
 
@@ -313,20 +335,30 @@ _COVERAGE_OMISSION_RE = re.compile(
 )
 
 
-def gate_framing(framing: str | None, *, source_text: str) -> str:
+def gate_framing(framing: str | None, *, source_text: str, summary: str = "") -> str:
     """An excerpt's silence is not evidence that an outlet omitted something.
 
     An explicitly reported omission (e.g. a court ruled without addressing a
     question) may survive; it must appear in the supplied source text too.
     """
-    text = (framing or "").strip()
+    text = framing.strip() if isinstance(framing, str) else ""
+    if len(text.split()) > 25:
+        return ""  # Omit, never truncate a qualification or attribution.
     # Generated summaries can themselves contain this meta-claim. Repeating
     # it upstream does not turn excerpt silence into a verified omission.
-    if _ARTICLE_OMISSION_RE.search(text):
+    if _ARTICLE_OMISSION_RE.search(text) or _INPUT_OMISSION_RE.search(text):
         return ""
     omissions = list(_COVERAGE_OMISSION_RE.finditer(text))
     source_lower = source_text.lower()
     if any(match.group(0).lower() not in source_lower for match in omissions):
+        return ""
+    if _is_generic_summary_closer(text):
+        return ""
+    # A reported concern/question can itself be a real source detail. Match
+    # standalone abstract observations, not any use of 'raises concerns'.
+    if _GENERIC_NOTE_RE.search(text) and not _CONCRETE_CLOSER_RE.search(text):
+        return ""
+    if summary and is_near_restatement(text, summary):
         return ""
     return text
 
@@ -342,6 +374,11 @@ def is_near_restatement(
     issue is explicit that lexical overlap is too weak to be THE gate — this only
     catches the egregious tail the prompt+cliché checks would otherwise miss.
     """
+    # A changed figure is a different fact, even if every word matches.
+    if set(_NUMBER_RE.findall(line)) - set(_NUMBER_RE.findall(reference)):
+        return False
+    if {q.lower() for q in _QUALIFIER_RE.findall(line)} - {q.lower() for q in _QUALIFIER_RE.findall(reference)}:
+        return False
     if lexical_novelty(line, reference) <= max_novelty:
         return True
     # "Advisers assess ... according to the administration's stated belief"
@@ -400,9 +437,8 @@ def gate_why_it_matters(line: str | None, *, title: str, summary: str) -> str | 
 def evaluate_background(background: str | None, *, title: str = "", summary: str = "") -> GateResult:
     """Deterministic verdict for a context_primer background paragraph.
 
-    Lighter touch than why_it_matters: clichés only. The audit found background
-    appropriately novel, so the restatement backstop is NOT applied here — only
-    vague-significance/editorial clichés are trimmed, and only on SHORT
+    Trim near-verbatim repetition when the article reference is available.
+    Vague-significance/editorial clichés are removed only on SHORT
     paragraphs (see BACKGROUND_CLICHE_MAX_WORDS): a long informative paragraph
     with a stray cliché clause is kept, since blanking it would destroy real
     context. Caller keeps `terms` regardless; an empty background just hides the
@@ -414,6 +450,9 @@ def evaluate_background(background: str | None, *, title: str = "", summary: str
 
     if not cleaned:
         return GateResult("", "empty", None, novelty)
+
+    if reference.strip() and is_near_restatement(cleaned, reference):
+        return GateResult("", "restatement", None, novelty)
 
     cliche = find_cliche(cleaned)
     if cliche and len(cleaned.split()) <= BACKGROUND_CLICHE_MAX_WORDS:

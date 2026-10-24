@@ -155,6 +155,14 @@ An entry below describes what was true on its date and is never edited to stay c
 
 ## Recent decisions (last 7 days)
 
+- **2026-10-24** — Feed copy follows one versioned standard across summaries,
+  significance notes, primers and story synthesis. Scheduled primer writes now
+  use the same article-reference checks as real-time generation. Real sources
+  retain blank rows instead of receiving filler notes. `/health` exposes the
+  active rules version; exact live failures and useful-copy controls run in CI.
+  See [Feed copy rules](docs/COPY_RULES.md). This does not enable the contingent
+  paid runtime judge or change feed design, ranking, models or historical rows.
+
 **Entries before 2026-08-13 are archived** in [`docs/STATUS_ARCHIVE.md`](docs/STATUS_ARCHIVE.md). This section
 held 58 entries going back to ~2026-05 (44 archived, 14 kept below).
 
