@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 import anthropic
 from langgraph.graph import StateGraph, END
@@ -100,6 +100,23 @@ class CompareState(TypedDict):
     claims: list[dict]
     comparison: str
     errors: list[str]
+    analyzed_sources: NotRequired[list[str]]
+
+
+def comparison_provenance(state: CompareState) -> dict:
+    """Source availability comes from workflow state, never generated prose."""
+    requested = list({s.strip().casefold(): s.strip() for s in state["sources"]}.values())
+    found = {s.strip().casefold() for s in state.get("search_results", {})}
+    completed = {s.strip().casefold() for s in state.get("analyzed_sources", [])}
+    retrieved = [s for s in requested if s.casefold() in found]
+    analyzed = [s for s in retrieved if s.casefold() in completed]
+    return {
+        "source_provenance_version": 1,
+        "sources_requested": requested,
+        "sources_retrieved": retrieved,
+        "sources_analyzed": analyzed,
+        "sources_unavailable": [s for s in requested if s not in retrieved],
+    }
 
 
 # --- Node functions ---
@@ -167,7 +184,10 @@ async def search_one_source(
 
 def source_found_coverage(text: str | None) -> bool:
     """Whether a search_one_source result counts as real coverage."""
-    return bool(text) and "no relevant coverage found" not in (text or "").lower()
+    if not text or not text.strip():
+        return False
+    missing = r"no (?:relevant )?(?:coverage|articles?) (?:was |were )?found|coverage (?:was |is )?unavailable"
+    return re.search(missing, text, re.I) is None
 
 
 async def search_sources_node(state: CompareState) -> dict:
@@ -240,10 +260,13 @@ async def extract_and_compare_node(state: CompareState) -> dict:
 {source_texts}
 
 Your task:
+Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
+Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 1. Extract 3-8 key factual claims made across these sources.
 2. For each claim, determine the agreement level:
-   - "unanimous": all sources that cover this claim agree
-   - "majority": most sources agree, some don't cover it
+   - "unanimous": every available source reports this claim (at least two sources)
+   - "majority": more than half of available sources report this claim
+   - "partial": at least two, but no more than half, report this claim
    - "disputed": sources contradict each other on this point
    - "unique": only one source reports this
 3. Write a 2-3 sentence overall comparison summary describing how coverage differs or aligns.
@@ -291,15 +314,28 @@ Return ONLY the JSON, no other text.""",
 
     comparison = parsed.get("comparison", "")
     claims = parsed.get("claims", [])
+    if not isinstance(comparison, str) or not isinstance(claims, list):
+        return {"comparison": "", "claims": [], "analyzed_sources": []}
 
     logger.info("extract_and_compare: got %d claims", len(claims))
-    return {"comparison": comparison, "claims": claims}
+    return {"comparison": comparison, "claims": claims, "analyzed_sources": sources_list}
 
 
 async def format_response_node(state: CompareState) -> dict:
     """Validate and clean up the response (no LLM call)."""
     claims = state.get("claims", [])
     cleaned_claims: list[dict] = []
+    provenance = comparison_provenance(state)
+    analyzed = provenance["sources_analyzed"]
+    names = {s.casefold(): s for s in analyzed}
+
+    def known_sources(value) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(
+            names[s.strip().casefold()] for s in value
+            if isinstance(s, str) and s.strip().casefold() in names
+        ))
 
     for claim in claims:
         if not isinstance(claim, dict) or "claim" not in claim:
@@ -311,28 +347,50 @@ async def format_response_node(state: CompareState) -> dict:
         }
 
         # Ensure agreement is valid
-        if cleaned["agreement"] not in ("unanimous", "majority", "disputed", "unique"):
+        if cleaned["agreement"] not in ("unanimous", "majority", "partial", "disputed", "unique"):
             cleaned["agreement"] = "unique"
 
         # Normalize source fields
         if cleaned["agreement"] == "disputed":
-            cleaned["sources_for"] = claim.get("sources_for", [])
-            cleaned["sources_against"] = claim.get("sources_against", [])
+            supporters = known_sources(claim.get("sources_for", []))
+            opponents = known_sources(claim.get("sources_against", []))
+            overlap = set(supporters) & set(opponents)
+            cleaned["sources_for"] = [s for s in supporters if s not in overlap]
+            cleaned["sources_against"] = [s for s in opponents if s not in overlap]
             cleaned["sources"] = []
+            if not cleaned["sources_for"] or not cleaned["sources_against"]:
+                continue
         else:
-            cleaned["sources"] = claim.get("sources", [])
+            cleaned["sources"] = known_sources(claim.get("sources", []))
             cleaned["sources_for"] = []
             cleaned["sources_against"] = []
+            count = len(cleaned["sources"])
+            if not count:
+                continue
+            cleaned["agreement"] = (
+                "unique" if count == 1 else "unanimous" if count == len(analyzed)
+                else "majority" if count > len(analyzed) / 2 else "partial"
+            )
 
         cleaned_claims.append(cleaned)
 
     # Disputed first — cross-spectrum disagreement is the feature's whole
     # point, so it leads instead of sitting mid-list. Stable sort keeps the
     # model's ordering within each band.
-    agreement_order = {"disputed": 0, "majority": 1, "unanimous": 2, "unique": 3}
+    agreement_order = {"disputed": 0, "majority": 1, "unanimous": 2, "partial": 3, "unique": 4}
     cleaned_claims.sort(key=lambda c: agreement_order.get(c["agreement"], 4))
 
-    return {"claims": cleaned_claims}
+    comparison = state.get("comparison", "") if analyzed else ""
+    unavailable = [s for s in provenance["sources_requested"] if s not in analyzed]
+    numbers = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+    count_claims = re.findall(r"\ball\s+(one|two|three|four|five|\d+)\s+sources?\b", comparison, re.I)
+    wrong_count = any(numbers.get(n.lower(), int(n) if n.isdigit() else 0) != len(analyzed)
+                      for n in count_claims)
+    mentions_unavailable = any(re.search(r"(?<!\w)" + re.escape(s) + r"(?!\w)", comparison, re.I)
+                               for s in unavailable)
+    if analyzed and (wrong_count or mentions_unavailable):
+        comparison = f"Compared coverage from {', '.join(analyzed)}. Review the sourced claims below."
+    return {"claims": cleaned_claims, "comparison": comparison}
 
 
 # --- JSON parsing helpers ---

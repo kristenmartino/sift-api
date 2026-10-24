@@ -74,7 +74,8 @@ class TestCompareInputValidation:
         mock_result = {
             "topic": "climate change",
             "sources": ["reuters", "bbc"],
-            "search_results": {},
+            "search_results": {"reuters": "Coverage A", "bbc": "Coverage B"},
+            "analyzed_sources": ["reuters", "bbc"],
             "claims": [{"claim": "test", "agreement": "unanimous", "sources": ["reuters"]}],
             "comparison": "Sources agree.",
             "errors": [],

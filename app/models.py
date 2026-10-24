@@ -26,7 +26,7 @@ class PipelineResponse(BaseModel):
 
 class Claim(BaseModel):
     claim: str
-    agreement: str  # "unanimous", "majority", "disputed", "unique"
+    agreement: str  # unanimous, majority, partial, disputed, unique
     sources: list[str] = []
     sources_for: list[str] = []
     sources_against: list[str] = []
@@ -46,6 +46,11 @@ class CompareResponse(BaseModel):
     sources_checked: list[str]
     claims: list[Claim]
     duration_ms: int
+    source_provenance_version: int = 1
+    sources_requested: list[str] = Field(default_factory=list)
+    sources_retrieved: list[str] = Field(default_factory=list)
+    sources_analyzed: list[str] = Field(default_factory=list)
+    sources_unavailable: list[str] = Field(default_factory=list)
 
 
 # --- Stories ---

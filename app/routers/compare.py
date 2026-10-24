@@ -19,6 +19,7 @@ from services.cost_guard import check_budget
 from services.daily_compare import refresh_daily_example
 from workflows.compare_workflow import (
     CompareState,
+    comparison_provenance,
     build_compare_graph,
     extract_and_compare_node,
     filter_allowed_sources,
@@ -143,8 +144,9 @@ async def compare_sources(
 
     comparison = result.get("comparison", "")
     claims = result.get("claims", [])
+    provenance = comparison_provenance({**initial_state, **result})
 
-    if not comparison and not claims:
+    if (not comparison and not claims) or not provenance["sources_analyzed"]:
         raise HTTPException(
             status_code=502,
             detail={
@@ -153,15 +155,13 @@ async def compare_sources(
             },
         )
 
-    # Report only the sources that were actually searched (present in search_results)
-    actually_checked = list(result.get("search_results", {}).keys()) or unique_sources
-
     return CompareResponse(
         topic=sanitized_topic,
         comparison=comparison,
-        sources_checked=actually_checked,
+        sources_checked=provenance["sources_analyzed"],
         claims=claims,
         duration_ms=duration_ms,
+        **provenance,
     )
 
 
@@ -279,7 +279,7 @@ async def compare_sources_stream(
                 yield _sse("stage", {"stage": "claims"})
                 state: CompareState = {
                     "topic": sanitized_topic,
-                    "sources": sources,
+                    "sources": unique_sources,
                     "search_results": search_results,
                     "claims": [],
                     "comparison": "",
@@ -290,9 +290,10 @@ async def compare_sources_stream(
                 yield _sse("stage", {"stage": "summary"})
                 state["claims"] = extracted.get("claims", [])
                 state["comparison"] = extracted.get("comparison", "")
+                state["analyzed_sources"] = extracted.get("analyzed_sources", [])
                 formatted = await format_response_node(state)
 
-                comparison = state["comparison"]
+                comparison = formatted.get("comparison", "")
                 claims = formatted.get("claims", [])
                 if not comparison and not claims:
                     yield _sse(
@@ -309,7 +310,8 @@ async def compare_sources_stream(
                     {
                         "topic": sanitized_topic,
                         "comparison": comparison,
-                        "sources_checked": list(search_results.keys()),
+                        "sources_checked": comparison_provenance(state)["sources_analyzed"],
+                        **comparison_provenance(state),
                         "claims": claims,
                         "duration_ms": int((time.time() - start) * 1000),
                     },
