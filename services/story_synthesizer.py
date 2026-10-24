@@ -7,6 +7,7 @@ import anthropic
 
 from app.config import settings
 from services.model_registry import resolve
+from services.quality_gate import clean_generated_headline, gate_framing, gate_summary
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_synthesizer")
@@ -48,12 +49,12 @@ async def synthesize_story(
             f"   {article['summary']}\n"
         )
 
-    prompt = f"""These {len(articles)} articles from different news sources cover the same event:
+    prompt = f"""These {len(articles)} articles were grouped automatically. Use only the shared event supported by their supplied text; do not invent a common event or causal link between merely related reports:
 {articles_text}
 
 Generate:
 1. headline: A unified headline capturing the core event. Be neutral and factual, not biased toward any single source.
-2. summary: A 2-3 sentence synthesis combining the most important facts from all sources.
+2. summary: At most two concise factual sentences combining the supported facts. One useful sentence is enough. Do not append a general observation about significance, broader tensions or implications, or commentary about how sources differ.
 3. framings: For each source, provide:
    - source_name: exact name as given above
    - framing: One short sentence naming a specific detail, quoted claim, \
@@ -77,6 +78,14 @@ without phrases such as "broader concerns", "within the context", or "highlights
 entry per source, with framing "" and tone "neutral" when no difference is apparent.
 - Do not assert that an outlet omitted a fact merely because its supplied \
 summary does not mention it. Do not infer motive from word choice.
+- "Does not specify", "without mentioning", and "omits" are not coverage \
+differences unless the supplied text explicitly reports a verified omission. \
+Blank the note instead. If every source supplies the same detail, blank the \
+notes rather than paraphrasing the shared summary for each outlet.
+- State a distinguishing reported detail directly. Avoid "emphasizes", \
+"focuses on", or "highlights" when those words only introduce a restatement.
+- In headlines, retain uncertainty once: use "reportedly" or "sources say", \
+not "reportedly ... sources say". Do not repeat "court says" after "court rules".
 
 Rules about people and legal matters — these override everything above:
 - Use only what the articles above state. Do not add facts, motives, or history \
@@ -129,10 +138,21 @@ Return ONLY a JSON object:
             )
 
         if result and "headline" in result and "summary" in result:
+            result["headline"] = clean_generated_headline(result["headline"])
+            result["summary"] = gate_summary(result["summary"])
+            if not result["summary"]:
+                return _fallback(articles)
             # Validate framings
             framings = result.get("framings", [])
             valid_tones = {"neutral", "urgent", "analytical", "critical", "optimistic"}
             for f in framings:
+                source_text = " ".join(
+                    f"{a['title']} {a['summary']}" for a in articles
+                    if a["source_name"] == f.get("source_name")
+                )
+                f["framing"] = gate_framing(f.get("framing"), source_text=source_text)
+                if not f["framing"]:
+                    f["tone"] = "neutral"
                 if f.get("tone") not in valid_tones:
                     f["tone"] = "neutral"
             result["framings"] = framings

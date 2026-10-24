@@ -207,7 +207,7 @@ def find_refusal(text: str) -> str | None:
 
 
 def gate_summary(summary: str | None) -> str:
-    """Strip the model's own apologies out of an article summary (sift-api#118).
+    """Strip generic significance closers and the model's own apologies.
 
     When an article's RSS entry carries no usable body, Haiku answers with a
     refusal rather than a summary — "Insufficient content provided to
@@ -239,8 +239,14 @@ def gate_summary(summary: str | None) -> str:
     unsummarizable rather than merely using the words.
     """
     text = (summary or "").strip()
+    sentences = _SENTENCE_SPLIT_RE.split(text)
+    if any(_is_generic_summary_closer(sentence) for sentence in sentences):
+        text = " ".join(
+            sentence for sentence in sentences
+            if not _is_generic_summary_closer(sentence)
+        ).strip()
     if not text or not find_refusal(text):
-        # Inert unless the model actually apologized. Note the early return:
+        # Refusal handling is inert unless the model actually apologized:
         # MIN_SUMMARY_WORDS must never touch a summary that was fine, or a
         # terse-but-correct one ("The Fed held rates steady at 4.25%.") would
         # be destroyed by a gate aimed at something else entirely.
@@ -251,6 +257,68 @@ def gate_summary(summary: str | None) -> str:
     if len(remainder.split()) < MIN_SUMMARY_WORDS:
         return ""
     return remainder
+
+
+_GENERIC_CLOSER_RE = re.compile(
+    r"^The (?:development|move|incident|case|alert|warning|dispute|decision|"
+    r"proposal|action|visit|surge|threat|finding|story|initiative|policy|troop movements) "
+    r"(?:reflects?|signals?|highlights?|underscores?|marks?|raises?)\b"
+    r".*\b(?:tensions?|concerns?|importance|significance|questions?|"
+    r"challenges?|debate|notable event)\b",
+    re.IGNORECASE,
+)
+_CONCRETE_CLOSER_RE = re.compile(
+    r"\d|[\"“”]|(?:^|\s)['‘][^'’]+['’](?:[.,!?]|\s|$)|"
+    r"\b(?:said|says|according to|warned|found|ruled|"
+    r"raised by|cited by|voiced by|expressed by|citing)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_generic_summary_closer(sentence: str) -> bool:
+    """Catch standalone significance padding, preserving quoted/attributed detail.
+
+    Deliberately narrow: this does not delete any sentence merely for using
+    'concerns' or 'questions'. The generic subject, evaluative verb and abstract
+    conclusion must all be present, with no figure, quote or attributed finding.
+    """
+    return bool(
+        _GENERIC_CLOSER_RE.search(sentence.strip())
+        and not _CONCRETE_CLOSER_RE.search(sentence)
+    )
+
+
+def clean_generated_headline(headline: str) -> str:
+    """Remove only a redundant generic attribution, retaining 'reportedly'."""
+    text = headline.strip()
+    if re.search(r"\breportedly\b", text, re.IGNORECASE):
+        text = re.sub(
+            r",?\s+(?:sources? say|according to sources)\.?$", "", text,
+            flags=re.IGNORECASE,
+        )
+    return text
+
+
+_COVERAGE_OMISSION_RE = re.compile(
+    r"\b(?:does not|doesn't|fails to) (?:mention|specify|address|explain|detail|provide)\b"
+    r"|\bwithout (?:mentioning|specifying|addressing|explaining|detailing)\b"
+    r"|\b(?:omits?|omitting)\b",
+    re.IGNORECASE,
+)
+
+
+def gate_framing(framing: str | None, *, source_text: str) -> str:
+    """An excerpt's silence is not evidence that an outlet omitted something.
+
+    An explicitly reported omission (e.g. a court ruled without addressing a
+    question) may survive; it must appear in the supplied source text too.
+    """
+    text = (framing or "").strip()
+    omissions = list(_COVERAGE_OMISSION_RE.finditer(text))
+    source_lower = source_text.lower()
+    if any(match.group(0).lower() not in source_lower for match in omissions):
+        return ""
+    return text
 
 
 def is_near_restatement(
