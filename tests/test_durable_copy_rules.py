@@ -80,6 +80,14 @@ def test_spelled_out_source_figures_can_be_written_as_digits():
     assert parsed[URL]["summary"] == "The company launched 4 rockets."
 
 
+@pytest.mark.parametrize(("source_count", "summary_count"), [("2,000", "2000"), ("14740", "14,740")])
+def test_digit_grouping_does_not_turn_a_supported_figure_into_a_rejection(source_count, summary_count):
+    source = SimpleNamespace(**ARTICLE, raw_content=f"The company employs {source_count} people.")
+    summary = f"The company employs {summary_count} people."
+    parsed = _parse_summaries(json.dumps([{"i": 1, "s": summary, "c": "business"}]), [source])
+    assert parsed[URL]["summary"] == summary
+
+
 def test_automatic_context_cannot_add_a_new_population_or_repackage_the_summary():
     for line in ["Nigeria has 223 million people.", SUMMARY, "A new era for banking."]:
         parsed = cg._parse_context(json.dumps([{"i": 1, "c": line, "s": 4}]), [ARTICLE])
