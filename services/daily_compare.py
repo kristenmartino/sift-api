@@ -26,7 +26,7 @@ import time
 from app.db import get_pool
 from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
-from workflows.compare_workflow import CompareState, build_compare_graph
+from workflows.compare_workflow import CompareState, build_compare_graph, comparison_provenance
 
 logger = logging.getLogger("sift-api.daily-compare")
 
@@ -165,15 +165,16 @@ async def _refresh(force: bool) -> bool:
 
     comparison = result.get("comparison", "")
     claims = result.get("claims", [])
-    if not comparison and not claims:
+    provenance = comparison_provenance(result)
+    if (not comparison and not claims) or len(provenance["sources_analyzed"]) < 2:
         logger.warning("daily-compare: workflow produced no coverage, keeping old example")
         return False
 
     payload = {
         "topic": topic,
         "comparison": comparison,
-        "sources_checked": list(result.get("search_results", {}).keys())
-        or list(DAILY_COMPARE_SOURCES),
+        "sources_checked": provenance["sources_analyzed"],
+        **provenance,
         "claims": claims,
         "duration_ms": int((time.time() - start) * 1000),
     }

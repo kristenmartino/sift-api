@@ -8,6 +8,9 @@ from workflows.compare_workflow import (
     _sanitize_text,
     filter_allowed_sources,
     load_allowed_sources,
+    comparison_provenance,
+    format_response_node,
+    source_found_coverage,
 )
 
 
@@ -151,3 +154,71 @@ class TestLoadAllowedSources:
         ):
             allowed = asyncio.run(load_allowed_sources())
         assert allowed == FALLBACK_ALLOWED_SOURCES
+
+
+def comparison_state(**overrides):
+    return {
+        "topic": "Example topic", "sources": ["Reuters", "Associated Press", "Fox News"],
+        "search_results": {"Associated Press": "Coverage A", "Fox News": "Coverage B"},
+        "analyzed_sources": ["Associated Press", "Fox News"], "claims": [],
+        "comparison": "The two available sources cover the topic.", "errors": [], **overrides,
+    }
+
+
+def test_provenance_never_falls_back_to_requested_sources_when_search_fails():
+    result = comparison_provenance(comparison_state(search_results={}, analyzed_sources=[]))
+    assert result["sources_retrieved"] == []
+    assert result["sources_analyzed"] == []
+    assert result["sources_unavailable"] == ["Reuters", "Associated Press", "Fox News"]
+
+
+def test_retrieved_does_not_mean_analysis_completed():
+    result = comparison_provenance(comparison_state(analyzed_sources=[]))
+    assert result["sources_retrieved"] == ["Associated Press", "Fox News"]
+    assert result["sources_analyzed"] == []
+    assert result["sources_unavailable"] == ["Reuters"]
+
+
+def test_source_availability_is_case_and_whitespace_insensitive():
+    result = comparison_provenance(comparison_state(
+        sources=[" AP ", "ap", "BBC"], search_results={"AP": "coverage"}, analyzed_sources=["AP"],
+    ))
+    assert result["sources_requested"] == ["ap", "BBC"]
+    assert result["sources_analyzed"] == ["ap"]
+
+
+def test_unavailable_text_is_not_counted_as_coverage():
+    for text in [None, "  ", "No relevant coverage found from Reuters.", "Reuters coverage was unavailable for comparison."]:
+        assert not source_found_coverage(text)
+    assert source_found_coverage("The outlet reports the measure passed.")
+
+
+def test_comparison_summary_does_not_claim_unavailable_sources_confirmed():
+    for text in ["All three sources confirm the event.", "Reuters coverage was unavailable."]:
+        result = asyncio.run(format_response_node(comparison_state(comparison=text)))
+        assert result["comparison"] == "Compared coverage from Associated Press, Fox News. Review the sourced claims below."
+    result = asyncio.run(format_response_node(comparison_state(analyzed_sources=[])))
+    assert result["comparison"] == ""
+
+
+def test_claim_sources_are_deduplicated_and_bounded_by_completed_analysis():
+    result = asyncio.run(format_response_node(comparison_state(claims=[
+        {"claim": "Shared", "agreement": "unanimous", "sources": ["associated press", "Fox News", "Reuters", "Fox News"]},
+        {"claim": "Unattributed", "agreement": "unanimous", "sources": ["Reuters"]},
+        {"claim": "One source", "agreement": "unanimous", "sources": ["Fox News"]},
+    ])))
+    assert len(result["claims"]) == 2
+    shared = next(c for c in result["claims"] if c["claim"] == "Shared")
+    assert shared["sources"] == ["Associated Press", "Fox News"]
+    assert shared["agreement"] == "unanimous"
+    assert next(c for c in result["claims"] if c["claim"] == "One source")["agreement"] == "unique"
+
+
+def test_two_of_four_is_partial_and_a_source_cannot_dispute_itself():
+    result = asyncio.run(format_response_node(comparison_state(
+        sources=["A", "B", "C", "D"], search_results={s: "Coverage" for s in "ABCD"}, analyzed_sources=list("ABCD"),
+        claims=[{"claim": "Minority", "agreement": "unanimous", "sources": ["A", "B"]},
+                {"claim": "False dispute", "agreement": "disputed", "sources_for": ["A"], "sources_against": ["A", "Unknown"]}],
+    )))
+    assert len(result["claims"]) == 1
+    assert result["claims"][0]["agreement"] == "partial"

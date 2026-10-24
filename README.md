@@ -257,3 +257,19 @@ ruff check .
 Deployed to [Railway](https://railway.app). Push to `main` triggers automatic deploy. CI runs ruff + pytest on every PR via GitHub Actions.
 
 **Production URL:** sift-api-production.up.railway.app (target port: 8080)
+
+## Comparison provenance
+
+The JSON compare response, SSE `results` event and newly saved daily example
+include `source_provenance_version: 1`, `sources_requested`, `sources_retrieved`,
+`sources_analyzed` and `sources_unavailable`. Coverage found is a search-workflow
+status, not independent verification of an article or claim. `sources_checked`
+is retained as an alias for successfully analyzed sources; failed searches never
+fall back to the requested source list.
+
+The formatter removes unrecognized or duplicate claim sources and calculates
+agreement against the analyzed source set. `partial` means multiple sources
+report a claim without a majority; a single-source claim is `unique`. Summaries
+that name unavailable sources or claim an inconsistent all-source count use a
+source-scoped fallback. Daily examples require at least two analyzed sources.
+Older saved examples are not assigned availability metadata retroactively.
