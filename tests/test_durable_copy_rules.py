@@ -17,7 +17,7 @@ from services.summarizer import _build_prompt, _parse_summaries
 URL = "https://example.com/one"
 SUMMARY = "The central bank held its policy rate at 4.25%."
 ARTICLE = {"source_url": URL, "title": "Bank holds rates", "summary": SUMMARY, "source_name": "A"}
-TERM = {"term": "basis point", "definition": "One hundredth of a percentage point."}
+TERM = {"term": "policy rate", "definition": "The central bank's target rate for short-term lending."}
 
 
 def response(data):
@@ -109,6 +109,11 @@ def test_primer_does_not_invent_earlier_plans_or_a_population():
     article = {**ARTICLE, "title": "NASA updates lander plans", "summary": "NASA revised its lunar lander plans."}
     for bg in ["Earlier plans relied on a single lander.", "NASA employs 18000 people."]:
         assert pg._parse_primers(json.dumps([{"i": 1, "b": bg, "t": []}]), [article]) == {}
+
+
+def test_primer_does_not_define_a_term_absent_from_its_inputs():
+    unrelated = {"term": "zoonotic spillover", "definition": "Transmission of a disease from animals to humans."}
+    assert pg._parse_primers(json.dumps([{"i": 1, "b": "", "t": [unrelated]}]), [ARTICLE]) == {}
 
 
 @pytest.mark.parametrize("line", [
@@ -244,6 +249,30 @@ async def test_context_without_reference_keeps_score_but_omits_unchecked_note(mo
     args = pool.execute.call_args.args
     assert args[1] is None
     assert args[2] == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["approved", "repeated", "unjudged", "budget", "error"])
+async def test_primer_novelty_review_retains_terms_and_withholds_unapproved_background(monkeypatch, state):
+    monkeypatch.setattr(pg, "check_budget", AsyncMock(return_value=SimpleNamespace(allowed=state != "budget")))
+    review = AsyncMock(return_value=[{
+        "id": u, "judged": state != "unjudged", "restates": state == "repeated",
+        "adds_significance": state != "repeated", "neutral_cliche_free": True,
+    } for u in [URL, URL + "two"]])
+    if state == "error":
+        review.side_effect = RuntimeError("review unavailable")
+    monkeypatch.setattr(pg, "judge_lines", review)
+    paragraph = "The central bank oversees national monetary policy."
+    payloads = {URL: {"background": paragraph, "terms": [TERM]},
+                URL + "two": {"background": paragraph, "terms": []}}
+    await pg._review_backgrounds(payloads, [ARTICLE, {**ARTICLE, "source_url": URL + "two"}])
+    assert payloads[URL]["terms"] == [TERM]
+    if state == "approved":
+        assert payloads[URL]["background"] == paragraph
+        assert payloads[URL + "two"]["background"] == paragraph
+    else:
+        assert payloads[URL]["background"] == ""
+        assert URL + "two" not in payloads
 
 
 def test_primer_does_not_repeat_term_definition_or_truncate_long_definitions():

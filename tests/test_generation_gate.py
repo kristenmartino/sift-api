@@ -118,7 +118,7 @@ class TestPrimerParse:
         return [{
             "source_url": "https://example.com/p1",
             "title": "AI startups raise record funding",
-            "summary": "Venture funding for AI startups hit a record this quarter.",
+            "summary": "Venture funding for AI startups hit a record this quarter despite some down rounds.",
         }]
 
     def test_cliche_background_blanked_terms_kept(self):

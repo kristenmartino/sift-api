@@ -167,6 +167,13 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
 def _passage_tokens(text: str) -> str:
     return " " + " ".join(re.findall(r"\w+", text.casefold())) + " "
 
+
+def term_in_source(term: str, source_text: str) -> bool:
+    """Terms must occur in the generator's inputs, tolerating a final plural."""
+    needle = _passage_tokens(term)
+    haystack = _passage_tokens(source_text)
+    return needle in haystack or (needle.rstrip() + "s ") in haystack
+
 # Strings models sometimes emit to mean "no line" — treated as a drop.
 _NULL_TOKENS = frozenset({"null", "none", "n/a", "na", "-", "—", "(none)", "[none]"})
 

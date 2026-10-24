@@ -161,8 +161,8 @@ An entry below describes what was true on its date and is never edited to stay c
   guard these failures. Automatic significance notes are withheld because the
   classifier has no source evidence beyond the headline and summary; importance,
   tone and genre remain independent. A focused, cost-guarded Sonnet check
-  removes semantic repetition in surviving outlet notes; unapproved notes stay
-  blank. Six labeled cases passed two live runs. This does not enable the
+  removes semantic repetition in optional backgrounds and surviving outlet notes; unapproved notes stay
+  blank. Eight labeled note/background cases passed two live runs. This does not enable the
   contingent general factuality judge.
 
 - **2026-10-24** — Feed copy follows one versioned standard across summaries,

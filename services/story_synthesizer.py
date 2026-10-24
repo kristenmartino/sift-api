@@ -263,7 +263,7 @@ def _fallback(articles: list[dict]) -> dict:
         return {"headline": "", "summary": "", "framings": [], "_failed": True}
     return {
         "headline": articles[0].get("title", ""),
-        "summary": articles[0].get("summary", ""),
+        "summary": gate_summary(articles[0].get("summary", "")),
         "framings": [],
         "_failed": True,
     }

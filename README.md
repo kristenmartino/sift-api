@@ -40,8 +40,8 @@ repetition, limits terms and withholds unsupported figures or prior-plan claims.
 Automatic `why_it_matters` notes are withheld: the classification stage receives
 only the headline and summary and has no independent evidence for another fact.
 Importance, tone and genre still update. Existing editorially reviewed notes are
-not bulk-cleared. Surviving source passages receive a focused Sonnet redundancy
-review; unavailable or budget-blocked review leaves notes blank. This check is
+not bulk-cleared. Optional backgrounds and surviving source passages receive
+focused Sonnet novelty/redundancy review; unavailable or budget-blocked review leaves notes blank. This check is
 metered through the existing judge cost ledger. The legacy `WHY_IT_MATTERS_JUDGE_ENABLED` setting cannot override
 this evidence requirement; `services/judge.py` remains an offline evaluation tool.
 

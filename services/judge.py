@@ -66,6 +66,27 @@ def _build_items_text(items: list[dict]) -> str:
 
 
 def build_judge_prompt(items: list[dict], field: str = "why_it_matters") -> str:
+    if field == "background_novelty":
+        return f"""Judge whether each news-card background (LINE) earns its place.
+TITLE and SUMMARY describe the news the reader has already read.
+r = true if the background only paraphrases that news, defines a familiar
+proper name, or gives a general overview without teaching a specific mechanism,
+institutional role, procedure or difficult concept beyond the summary.
+a = true only when a useful specific explanation remains beyond that news.
+n = true when the explanation avoids generic significance, filler and editorial
+claims. Shared topic vocabulary alone is not repetition.
+
+Example: a summary already calls Impulso Morelia a post-production section of
+the film festival and states its funding award. Explaining that this section
+gives filmmakers funding to finish and promote films repeats that news: r=true,
+a=false. By contrast, explaining what the Director of National Intelligence
+oversees when a summary only names the DNI's memo adds an institutional role:
+r=false, a=true.
+
+Return ONLY a JSON array with one entry per numbered item:
+[{{"i":1,"r":true,"a":false,"n":true,"why":"repeats the funding award context"}}]
+Use booleans and a reason of at most 12 words.
+{_build_items_text(items)}"""
     if field == "framing":
         return f"""Compare each source NOTE (LINE) with the shared story TITLE and SUMMARY.
 The note is already an exact passage from a supplied source. Your task is only

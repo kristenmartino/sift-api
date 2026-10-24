@@ -11,7 +11,8 @@ the same standard. Changing a model does not remove it.
 - Optional notes must add information. Automatic significance notes stay blank
   because that stage has only a headline and summary, with no additional evidence.
 - Background explains a specific mechanism or procedure beyond the news; terms
-  must be useful, with at most four definitions of at most 25 words each.
+  must occur in the supplied headline/summary and be useful, with at most four
+  definitions of at most 25 words each.
 - Coverage notes copy a distinct contiguous source passage in at most 25 words. An
   excerpt cannot prove that the full article omitted a fact.
 - Keep real sources even when their notes are blank; do not invent sources or
@@ -32,7 +33,10 @@ Both real-time and scheduled primer results use `_parse_primers`. Scheduled
 results fetch the matching article reference once on completion, before writing.
 If that reference cannot be read, optional primer copy is withheld. Context
 results always withhold automatic significance notes while retaining scores.
-Neither change introduces an idle database poll.
+Nonempty background paragraphs also pass a focused `background_novelty` check
+through the existing Sonnet judge operation. A failed or budget-blocked check
+blanks the paragraph while retaining useful definitions. Neither path introduces
+an idle database poll.
 
 The shared story synthesizer covers initial clusters, new-outlet updates, and
 failed-synthesis retries. It gates the summary and builds framing rows from the
@@ -42,7 +46,7 @@ result counts. Surviving source passages also receive a focused semantic
 redundancy review through `judge_lines(field="framing")`. It uses the existing
 Sonnet judge operation and cost ledger. If the cost guard blocks it, the result
 is malformed, or the reviewer cannot approve a note, that note stays blank.
-This is a new paid check for optional outlet-note repetition, not a general
+These are paid checks for optional paragraph/notes novelty, not a general
 factuality certification.
 
 ## Regression checks
