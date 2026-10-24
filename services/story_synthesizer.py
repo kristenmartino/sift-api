@@ -56,8 +56,27 @@ Generate:
 2. summary: A 2-3 sentence synthesis combining the most important facts from all sources.
 3. framings: For each source, provide:
    - source_name: exact name as given above
-   - framing: One sentence describing this outlet's angle or emphasis
+   - framing: One short sentence naming a specific detail, quoted claim, \
+source, or explanation that distinguishes this outlet's supplied coverage. \
+Return an empty string when no distinct emphasis is supported by the input.
    - tone: One of "neutral", "urgent", "analytical", "critical", "optimistic"
+
+Rules for framing notes:
+- Compare the supplied headlines and summaries, not the outlet's reputation \
+or political-lean rating. You have not read the full articles.
+- Name the actual difference: a named document, a specific figure, an attributed \
+claim, or a procedural explanation. "Frames it within broader tensions" and \
+"contextualizes wider escalation concerns" do not identify a difference.
+- Even if an input summary uses those phrases, do not recycle them as a framing \
+note. "Reflects escalating tensions between the U.S. and Iran" still supplies \
+no distinct reported detail; return "" for that outlet. A shorter list of real \
+differences is better than making a general observation sound analytical.
+- Keep each non-empty framing to 25 words or fewer. State the detail directly, \
+without phrases such as "broader concerns", "within the context", or "highlights the importance".
+- Do not give every outlet a different angle just to fill the list. Keep one \
+entry per source, with framing "" and tone "neutral" when no difference is apparent.
+- Do not assert that an outlet omitted a fact merely because its supplied \
+summary does not mention it. Do not infer motive from word choice.
 
 Rules about people and legal matters — these override everything above:
 - Use only what the articles above state. Do not add facts, motives, or history \

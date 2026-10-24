@@ -72,21 +72,34 @@ BATCH_KIND = "primer"  # identifier persisted to api_batches.kind
 # Tightened in 2026-05-08 to 0-4 with a hard anti-pattern list — better to
 # skip than to define an obvious word.
 _PROMPT_HEADER = """You are writing the "What you should know first" panel for a civic-literacy news app. \
-For each article below, write a brief teaching primer for a smart American adult who may have missed key context.
+For each article below, explain only the background a reader needs to understand this particular story.
 
 Two things per article:
 
-1. background — ONE short paragraph (max 60 words) of context the reader \
-needs before reading the article. Cover what's at stake, who the players are, or what came before — whichever \
-the reader most likely doesn't already know. Conversational tone. Active voice. Contractions OK. \
+1. background — ONE short paragraph (max 60 words). Explain a specific procedure, \
+institutional role, rule, or earlier event that the headline and summary leave unexplained. \
+Use the fewest sentences needed. Active voice. Contractions OK. \
 NEVER editorialize, NEVER take a political side, NEVER tell the reader what to think. \
 Avoid vague-significance clichés and filler — phrasings like "raises serious questions", "a turning point", \
 "a wake-up call", "sends a message", or "remains to be seen" add no information. State concrete facts only; \
 if you have no real background to add, return an empty string (better empty than filler).
 
+Check every sentence before returning it:
+- It must add a specific explanation beyond the headline and summary. Do not paraphrase either.
+- Do not add a general observation that could follow almost any story on this topic: \
+"Intelligence agencies regularly assess threats" or "multiple powers have competing interests" \
+teaches the reader nothing about a particular event. Omit that sentence.
+- Name the procedure, institution, rule, or earlier event you are explaining. \
+Do not pad a useful explanation with an opening overview or a closing statement about importance.
+- One useful sentence is enough. Zero is acceptable. Do not fill the word allowance.
+- Do not add numbers, dates, current officeholders, or counts of agency members \
+from memory. Use those specifics only when the supplied article states them. \
+For institutional background, explain the stable role or procedure without an unverified statistic.
+
 2. terms — 0 to 4 key terms from the article that a college-educated reader \
 would actually need to look up to understand the story. NOT proper nouns. Each term gets a max-25-word \
 plain-language definition that an 8th-grader could understand.
+Define the term without adding procedural conditions or guarantees that are not established.
 
 The bar is HIGH. Better to return zero terms than to define an obvious word. Default to fewer terms.
 
