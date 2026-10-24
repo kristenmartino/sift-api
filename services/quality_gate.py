@@ -273,6 +273,11 @@ _CONCRETE_CLOSER_RE = re.compile(
     r"raised by|cited by|voiced by|expressed by|citing)\b",
     re.IGNORECASE,
 )
+_ARTICLE_OMISSION_RE = re.compile(
+    r"\b(?:the|this) (?:article|story|summary|coverage|headline|outlet) "
+    r"(?:does not|doesn't|fails to) (?:mention|specify|address|explain|detail|provide)\b",
+    re.IGNORECASE,
+)
 
 
 def _is_generic_summary_closer(sentence: str) -> bool:
@@ -283,7 +288,8 @@ def _is_generic_summary_closer(sentence: str) -> bool:
     conclusion must all be present, with no figure, quote or attributed finding.
     """
     return bool(
-        _GENERIC_CLOSER_RE.search(sentence.strip())
+        (_GENERIC_CLOSER_RE.search(sentence.strip())
+         or _ARTICLE_OMISSION_RE.match(sentence.strip()))
         and not _CONCRETE_CLOSER_RE.search(sentence)
     )
 
@@ -314,6 +320,10 @@ def gate_framing(framing: str | None, *, source_text: str) -> str:
     question) may survive; it must appear in the supplied source text too.
     """
     text = (framing or "").strip()
+    # Generated summaries can themselves contain this meta-claim. Repeating
+    # it upstream does not turn excerpt silence into a verified omission.
+    if _ARTICLE_OMISSION_RE.search(text):
+        return ""
     omissions = list(_COVERAGE_OMISSION_RE.finditer(text))
     source_lower = source_text.lower()
     if any(match.group(0).lower() not in source_lower for match in omissions):

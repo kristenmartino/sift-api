@@ -53,6 +53,13 @@ def test_an_explicitly_reported_omission_is_not_lost():
     assert gate_framing(fact, source_text=fact) == fact
 
 
+def test_a_generated_summary_is_not_proof_of_an_outlet_omission():
+    unsupported = 'The article does not specify what conditions would elevate the risk.'
+    assert gate_framing('Notes the article does not specify conditions that elevate risk.', source_text=unsupported) == ''
+    fact = 'Experts assess the public risk as low.'
+    assert gate_summary(fact + ' ' + unsupported) == fact
+
+
 @pytest.mark.asyncio
 async def test_synthesis_applies_copy_guards_and_preserves_empty_source_row():
     data = {'headline': 'Officials reportedly plan talks, sources say',
