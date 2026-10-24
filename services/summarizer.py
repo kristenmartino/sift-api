@@ -275,6 +275,7 @@ def _build_prompt(batch: list[RSSArticle]) -> str:
     return f"""Summarize each news article in 1-2 concise factual sentences. Report what happened and the specific details supplied by the source. One useful sentence is enough.
 
 Do not append a generic statement about why the story matters. "The development signals escalating tensions", "The move raises questions", and "The incident marks a notable event" add no reported fact. Omit them. Do not narrate the article with "The article explores/examines/discusses"; state the supplied facts directly. Keep attributed opinion attributed, and do not invent a detail, causal link, prediction, or broader implication to fill the second sentence.
+Do not infer an omission from the short input: "The article does not specify..." is not a reported fact. Leave it out. A missing detail in an excerpt does not prove it is missing from the full article.
 
 Also classify each article into exactly ONE category:
 - "top" — reserved for stories of major, broad public significance: breaking news of national or international consequence, or stories that genuinely cut across several of the categories below. A story is NOT "top" merely because it is dramatic, violent, or shocking. Single-incident crime, accident, or death stories (a killing, a shooting, an assault charge, a fatal crash, a trial) are never "top" — classify them into the closest topical category instead
