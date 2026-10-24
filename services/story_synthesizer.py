@@ -7,6 +7,7 @@ import anthropic
 
 from app.config import settings
 from services.model_registry import resolve
+from services.copy_rules import COPY_RULES, COPY_RULES_VERSION
 from services.quality_gate import clean_generated_headline, gate_framing, gate_summary
 from services.usage_tracker import log_usage
 
@@ -49,7 +50,9 @@ async def synthesize_story(
             f"   {article['summary']}\n"
         )
 
-    prompt = f"""These {len(articles)} articles were grouped automatically. Use only the shared event supported by their supplied text; do not invent a common event or causal link between merely related reports:
+    prompt = f"""{COPY_RULES}
+
+These {len(articles)} articles were grouped automatically. Use only the shared event supported by their supplied text; do not invent a common event or causal link between merely related reports:
 {articles_text}
 
 Generate:
@@ -142,20 +145,13 @@ Return ONLY a JSON object:
             result["summary"] = gate_summary(result["summary"])
             if not result["summary"]:
                 return _fallback(articles)
-            # Validate framings
-            framings = result.get("framings", [])
-            valid_tones = {"neutral", "urgent", "analytical", "critical", "optimistic"}
-            for f in framings:
-                source_text = " ".join(
-                    f"{a['title']} {a['summary']}" for a in articles
-                    if a["source_name"] == f.get("source_name")
-                )
-                f["framing"] = gate_framing(f.get("framing"), source_text=source_text)
-                if not f["framing"]:
-                    f["tone"] = "neutral"
-                if f.get("tone") not in valid_tones:
-                    f["tone"] = "neutral"
-            result["framings"] = framings
+            raw_framings = result.get("framings", [])
+            result["framings"] = _gate_framings(raw_framings, articles, result["summary"])
+            logger.info(json.dumps({
+                "event": "story_copy_gated", "copy_rules_version": COPY_RULES_VERSION,
+                "source_rows": len(result["framings"]),
+                "nonempty_notes": sum(bool(f["framing"]) for f in result["framings"]),
+            }))
             return result
 
         logger.warning("Synthesis returned incomplete JSON, using fallback")
@@ -163,6 +159,30 @@ Return ONLY a JSON object:
     except Exception as e:
         logger.error("Story synthesis failed: %s", e)
         return _fallback(articles)
+
+
+def _gate_framings(raw: object, articles: list[dict], summary: str) -> list[dict]:
+    """Build rows from real inputs, not the model's invented/duplicate names.
+
+Empty notes retain their source. A second entry for the same source can supply
+the first valid note, but cannot inflate the row count or overwrite it.
+"""
+    rows = {a["source_name"]: {"source_name": a["source_name"], "framing": "", "tone": "neutral"}
+            for a in articles}
+    valid_tones = {"neutral", "urgent", "analytical", "critical", "optimistic"}
+    for f in raw if isinstance(raw, list) else []:
+        if not isinstance(f, dict) or not isinstance(f.get("source_name"), str):
+            continue
+        if f["source_name"] not in rows:
+            continue
+        name = f["source_name"]
+        if rows[name]["framing"]:
+            continue
+        source_text = " ".join(f"{a['title']} {a['summary']}" for a in articles if a["source_name"] == name)
+        note = gate_framing(f.get("framing"), source_text=source_text, summary=summary)
+        tone = f.get("tone")
+        rows[name].update(framing=note, tone=tone if note and isinstance(tone, str) and tone in valid_tones else "neutral")
+    return list(rows.values())
 
 
 def _max_tokens_for(article_count: int) -> int:

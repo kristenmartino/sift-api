@@ -11,6 +11,7 @@ from app.config import settings
 from app.models import RSSArticle
 from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
+from services.copy_rules import COPY_RULES
 from services.model_registry import resolve
 from services.quality_gate import gate_summary
 from services.index_alignment import (
@@ -273,6 +274,8 @@ def _build_prompt(batch: list[RSSArticle]) -> str:
         articles_text += f"\n{i}. Title: {article.title}\n   Source: {article.source_name}\n   Content: {content}\n"
 
     return f"""Summarize each news article in 1-2 concise factual sentences. Report what happened and the specific details supplied by the source. One useful sentence is enough.
+
+{COPY_RULES}
 
 Do not append a generic statement about why the story matters. "The development signals escalating tensions", "The move raises questions", and "The incident marks a notable event" add no reported fact. Omit them. Do not narrate the article with "The article explores/examines/discusses"; state the supplied facts directly. Keep attributed opinion attributed, and do not invent a detail, causal link, prediction, or broader implication to fill the second sentence.
 Do not infer an omission from the short input: "The article does not specify..." is not a reported fact. Leave it out. A missing detail in an excerpt does not prove it is missing from the full article.

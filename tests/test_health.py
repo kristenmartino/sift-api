@@ -28,6 +28,8 @@ class TestHealthEndpoint:
         assert data["status"] == "degraded"
         assert data["version"] == "1.0.0"
         assert data["db_connected"] is False
+        from services.copy_rules import COPY_RULES_VERSION
+        assert data["copy_rules_version"] == COPY_RULES_VERSION
 
     def test_health_makes_no_query(self, client):
         """The default /health path must not touch Postgres.

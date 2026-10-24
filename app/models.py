@@ -87,6 +87,7 @@ class HealthResponse(BaseModel):
     # CLAUDE.md's rule about deploys applies just as well here: read it, do not
     # infer it.
     model_overrides: dict[str, str] | None = None
+    copy_rules_version: str | None = None
 
 
 # --- Errors ---

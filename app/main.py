@@ -287,6 +287,8 @@ async def health(deep: bool = False):
     run_at = pipeline_clock.last_pipeline_run()
     last_run = run_at.isoformat() if run_at else None
 
+    from services.copy_rules import COPY_RULES_VERSION
+
     scheduler_running = (
         settings.environment == "production" or None
     )
@@ -302,4 +304,5 @@ async def health(deep: bool = False):
         last_pipeline_run=last_run,
         scheduler_running=scheduler_running if scheduler_running else None,
         model_overrides=overrides or None,
+        copy_rules_version=COPY_RULES_VERSION,
     )

@@ -19,13 +19,20 @@ This service compiles **three** LangGraph `StateGraph`s: the ingestion **pipelin
 
 User-facing reads happen in the Next.js frontend — this service handles background AI processing and on-demand comparison.
 
-## Content quality gate (`why_it_matters` / `context_primer`)
+## Content quality gate
+
+All new article and story copy follows the shared standard in
+`services/copy_rules.py`; see [Feed copy rules](docs/COPY_RULES.md) for the
+generation paths, write-time safeguards and regression fixtures. `/health`
+reports `copy_rules_version` so production can be checked directly. The checks
+cover article and story summaries, optional significance notes, primer
+background/definitions and per-source story notes.
 
 The per-article `why_it_matters` line and `context_primer.background` paragraph are AI-generated (Claude Haiku, via the Message Batches API). A 500-article audit ([sift#150](https://github.com/kristenmartino/sift/issues/150)) found `why_it_matters` failed two ways — it either restated the summary or hand-waved with vague-significance clichés. The gate (sift-api#90) is **semantic, at generation time**, in three layers:
 
 1. **Generation rubric** (`services/context_generator.py`, `services/primer_generator.py`) — the prompt demands a concrete, *verifiable* stake not already in the title/summary, strictly neutral, no restatement, no clichés, and **returns an empty line when there's no real stake**. An absent line renders nothing — null-over-filler is the intended outcome, not a failure. `why_it_matters` is therefore NULL for a meaningful share of articles by design (it has always been nullable; the UI hides it).
 2. **Deterministic gate** (`services/quality_gate.py`) — a pure, free cliché/restatement check applied in the same poller callback that stores generated copy, as a backstop to the prompt. Clichés (not lexical overlap) are the workhorse.
-3. **LLM judge** (`services/judge.py`) — a Sonnet judge scoring each line on the issue's three axes (restates? adds verifiable significance? neutral + cliché-free?). Runs *offline* by default (the eval's measurement tool). Optionally runs **in the batch-result path** behind `WHY_IT_MATTERS_JUDGE_ENABLED` (default off) to drop the paraphrase/editorial residual the deterministic gate can't catch — dropping on restatement or non-neutrality only, respecting the cost guard. Background paragraphs are cliché-trimmed only when short, so an informative paragraph with a stray clause is kept.
+3. **LLM judge** (`services/judge.py`) — a Sonnet judge scoring each line on the issue's three axes (restates? adds verifiable significance? neutral + cliché-free?). Runs *offline* by default (the eval's measurement tool). Optionally runs **in the batch-result path** behind `WHY_IT_MATTERS_JUDGE_ENABLED` (default off) to drop the paraphrase/editorial residual the deterministic gate can't catch — dropping on restatement or non-neutrality only, respecting the cost guard. Background paragraphs are checked against the article and term definitions for near-verbatim repetition; cliché-only drops apply to short paragraphs, preserving informative longer explanations.
 
 ```bash
 # Eval: baseline existing copy vs. the new rubric, before/after rates (judge = API spend)
@@ -90,7 +97,7 @@ All endpoints are available at both `/v1/...` (preferred) and legacy paths (for 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | Service info + available endpoints |
-| GET | `/health` | Health check + DB status + last pipeline run. Also carries `model_overrides` when `LLM_MODEL_OVERRIDES` has moved a stage off its default model — omitted entirely when nothing has |
+| GET | `/health` | Health check + DB status + last pipeline run + `copy_rules_version`. Also carries `model_overrides` when `LLM_MODEL_OVERRIDES` has moved a stage off its default model — omitted entirely when nothing has |
 | GET | `/docs` | Interactive API documentation (Swagger UI) |
 | GET | `/redoc` | Alternative API documentation (ReDoc) |
 | POST | `/v1/pipeline/refresh` | Trigger RSS pipeline (auth required) |

@@ -239,12 +239,11 @@ class TestBackgroundGate:
         )
         assert gate_background(bg) == bg
 
-    def test_background_not_dropped_for_restatement(self):
-        # Unlike why_it_matters, background may reuse topic vocabulary — the
-        # restatement backstop must NOT fire here.
+    def test_background_does_not_repeat_the_summary(self):
         ref = "The Federal Reserve held interest rates steady."
         res = evaluate_background("The Federal Reserve held interest rates steady.", title="", summary=ref)
-        assert not res.dropped
+        assert res.dropped
+        assert res.reason == "restatement"
 
 
 class TestGateSummary:

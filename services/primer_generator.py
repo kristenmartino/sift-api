@@ -40,6 +40,7 @@ from services.index_alignment import (
     with_alignment_retry,
 )
 from services.quality_gate import gate_background
+from services.copy_rules import COPY_RULES
 from services.usage_tracker import log_batch_usage, log_usage
 
 logger = logging.getLogger("sift-api.primer_generator")
@@ -71,7 +72,7 @@ BATCH_KIND = "primer"  # identifier persisted to api_batches.kind
 # vocabulary (tariffs, IPO, child support, pollen season, data center).
 # Tightened in 2026-05-08 to 0-4 with a hard anti-pattern list — better to
 # skip than to define an obvious word.
-_PROMPT_HEADER = """You are writing the "What you should know first" panel for a civic-literacy news app. \
+_PROMPT_HEADER = COPY_RULES + """\nYou are writing the "What you should know first" panel for a civic-literacy news app. \
 For each article below, explain only the background a reader needs to understand this particular story.
 
 Two things per article:
@@ -271,10 +272,8 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
         background = item.get("b", item.get("background", "")) or ""
         terms_raw = item.get("t", item.get("terms", [])) or []
 
-        # Cliché-gate the background (sift-api#90). Lighter touch than
-        # why_it_matters: clichés only, never restatement — and terms are kept
-        # regardless (they're the differentiated value). An "" background just
-        # hides the paragraph.
+        # Both real-time and scheduled results use this parser and reference
+        # check. Empty background keeps useful terms and hides the paragraph.
         article = batch[idx - 1]
         background = gate_background(
             background, title=article.get("title", ""), summary=article.get("summary", ""),
@@ -290,7 +289,15 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
                 term = (t.get("term") or "").strip()
                 definition = (t.get("def") or t.get("definition") or "").strip()
                 if term and definition:
-                    terms.append({"term": term, "definition": definition})
+                    if len(definition.split()) <= 25 and len(terms) < 4:
+                        terms.append({"term": term, "definition": definition})
+
+        # Do not define the same thing in the paragraph and term list.
+        if background and terms:
+            background = gate_background(
+                background,
+                summary=" ".join(f"{t['term']} {t['definition']}" for t in terms),
+            )
 
         # Skip articles that came back fully empty — UI handles NULL too, no
         # need to write an empty record.
@@ -450,37 +457,32 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
             )
             continue
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        # One bounded read only when results complete, never an idle poll.
+        # Without the reference, repetition checks cannot run. Skip optional
+        # enrichment on read failure rather than publishing unchecked copy.
+        try:
+            meta_rows = await pool.fetch(
+                "SELECT source_url, title, summary FROM articles WHERE source_url = ANY($1::text[])", urls,
+            )
+        except Exception as e:
+            logger.error("primer gate metadata read failed for %s: %s", custom_id, e)
+            failed += 1
+            continue
+        meta_by_url = {r["source_url"]: dict(r) for r in meta_rows}
         for idx, entry in entries.items():
-            background = entry.get("b", entry.get("background", "")) or ""
-            terms_raw = entry.get("t", entry.get("terms", [])) or []
-
-            # Cliché-gate the background (sift-api#90). Cliché-only — needs no
-            # title/summary — so no extra DB read here; terms are kept regardless.
-            raw_bg_present = bool(background.strip())
-            background = gate_background(background)
-            if raw_bg_present and not background:
-                bg_dropped += 1
-
-            terms: list[dict] = []
-            if isinstance(terms_raw, list):
-                for t in terms_raw:
-                    if not isinstance(t, dict):
-                        continue
-                    term = (t.get("term") or "").strip()
-                    definition = (t.get("def") or t.get("definition") or "").strip()
-                    if term and definition:
-                        terms.append({"term": term, "definition": definition})
-
-            if not background and not terms:
-                continue  # UI tolerates NULL, no need to write empty record
-
             url = urls[idx - 1]
-            primer_payload = {
-                "background": background,
-                "terms": terms,
-                "generated_at": now_iso,
-            }
+            if url not in meta_by_url:
+                failed += 1
+                continue
+            # Reindex this one proven-aligned result to reuse the exact parser
+            # used by the real-time path, including term and repetition limits.
+            payloads = _parse_primers(json.dumps([{**entry, "i": 1}]), [meta_by_url[url]])
+            primer_payload = payloads.get(url)
+            raw_bg = entry.get("b", entry.get("background", ""))
+            if raw_bg and (not primer_payload or not primer_payload["background"]):
+                bg_dropped += 1
+            if not primer_payload:
+                continue
             try:
                 await pool.execute(
                     """
