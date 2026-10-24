@@ -145,6 +145,27 @@ _QUALIFIER_RE = re.compile(
     r"\b(?:not|no|never|may|might|could|alleged|allegedly|reportedly|"
     r"accused|suspected|proposed|proposal)\b", re.IGNORECASE,
 )
+_SMALL_NUMBERS = dict(zip(
+    "zero one two three four five six seven eight nine ten eleven twelve".split(),
+    map(str, range(13)), strict=True,
+))
+
+
+def unsupported_figures(text: str, source_text: str) -> set[str]:
+    """Reject new numeric tokens, allowing small spelled-out numbers.
+
+    This is a conservative evidence check, not a factual or arithmetic judge.
+    It prevents adding e.g. a population or an inferred election date.
+    """
+    def figures(value):
+        nums = {n.lower() for n in _NUMBER_RE.findall(value)}
+        nums.update(_SMALL_NUMBERS[w] for w in re.findall(r"\b\w+\b", value.lower()) if w in _SMALL_NUMBERS)
+        return nums
+    return {n.lower() for n in _NUMBER_RE.findall(text)} - figures(source_text)
+
+
+def _passage_tokens(text: str) -> str:
+    return " " + " ".join(re.findall(r"\w+", text.casefold())) + " "
 
 # Strings models sometimes emit to mean "no line" — treated as a drop.
 _NULL_TOKENS = frozenset({"null", "none", "n/a", "na", "-", "—", "(none)", "[none]"})
@@ -348,6 +369,8 @@ def gate_framing(framing: str | None, *, source_text: str, summary: str = "") ->
     # it upstream does not turn excerpt silence into a verified omission.
     if _ARTICLE_OMISSION_RE.search(text) or _INPUT_OMISSION_RE.search(text):
         return ""
+    if re.search(r"\bunspecified\b", text, re.IGNORECASE):
+        return ""
     omissions = list(_COVERAGE_OMISSION_RE.finditer(text))
     source_lower = source_text.lower()
     if any(match.group(0).lower() not in source_lower for match in omissions):
@@ -359,6 +382,10 @@ def gate_framing(framing: str | None, *, source_text: str, summary: str = "") ->
     if _GENERIC_NOTE_RE.search(text) and not _CONCRETE_CLOSER_RE.search(text):
         return ""
     if summary and is_near_restatement(text, summary):
+        return ""
+    # Notes are extractive: no added factual claim or invented source angle.
+    # Ignore punctuation and case, but preserve every word and qualifier.
+    if _passage_tokens(text) not in _passage_tokens(source_text):
         return ""
     return text
 
@@ -464,3 +491,19 @@ def evaluate_background(background: str | None, *, title: str = "", summary: str
 def gate_background(background: str | None, *, title: str = "", summary: str = "") -> str:
     """Thin wrapper: cleaned background to store, or "" to drop the paragraph."""
     return evaluate_background(background, title=title, summary=summary).kept or ""
+
+
+def gate_generated_background(background: str | None, *, title: str, summary: str) -> str:
+    """New primers may not invent figures or prior plans from memory.
+
+    Kept separate from the historical corpus evaluator: a documented factual
+    background can be good while a new generation lacks evidence to write it.
+    """
+    text = gate_background(background, title=title, summary=summary)
+    reference = f"{title or ''} {summary or ''}"
+    if unsupported_figures(text, reference):
+        return ""
+    history = re.search(r"\b(?:earlier|previous|prior|original) (?:plans?|approach|policy|rules?)\b", text, re.I)
+    if history and history.group().lower() not in reference.lower():
+        return ""
+    return text

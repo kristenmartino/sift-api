@@ -19,8 +19,6 @@ from services.index_alignment import (
     log_misaligned_sub_batch,
     with_alignment_retry,
 )
-from services.judge import judge_lines, judge_rejects
-from services.quality_gate import gate_why_it_matters
 from services.copy_rules import COPY_RULES
 from services.usage_tracker import log_batch_usage, log_usage
 
@@ -122,33 +120,13 @@ def _build_articles_text(batch: list[dict]) -> str:
 def _build_context_prompt(batch: list[dict]) -> str:
     return f"""{COPY_RULES}
 
-For each article below, provide two independent things.
+For each article below, classify importance, tone and genre.
 
-1. A "why it matters" line (key "c"). ONE neutral sentence, max 18 words, that \
-gives the reader a CONCRETE, VERIFIABLE stake that is NOT already stated in the \
-title or summary — a specific consequence, who is affected, a number, a \
-precedent, or what changes next. Add a fact, not a feeling.
-
-   Hard rules for the line:
-   - Do NOT restate or paraphrase the title or summary. If the only thing you \
-can say is already there, return "" (an empty string).
-   - Apply this to meaning, not just wording. If the summary says troops are \
-being moved because of threats, "Personnel are being relocated due to security \
-threats" adds nothing. Return "". Do not turn a casualty count into an added \
-"stake" by restating it as people killed or wounded.
-   - The supplied title and summary are your evidence. Do not invent a new \
-fact, prediction, or causal link to make the line sound useful. Do not turn \
-"advanced preparations" into an "imminent attack" or a stated risk into an \
-expected outcome. If no additional supported fact remains, return "".
-   - Do NOT editorialize, speculate, or hand-wave. Banned phrasings include: \
-"raises serious questions", "worth watching", "a turning point", "could \
-finally…", "sends a message", "remains to be seen", "a wake-up call", and \
-emotional color like "the most tortured fans finally have hope".
-   - Strictly neutral. Never imply whether something is good or bad.
-   - Vary your sentence openings. Never start with "This matters because".
-   - When in doubt, return "". An empty line is the CORRECT answer when there \
-is no real, neutral, verifiable stake beyond what the summary already says — the \
-card simply shows nothing. Better empty than filler.
+1. The optional "why it matters" field (key "c") must be an empty string.
+This stage receives only a headline and summary: it has no additional evidence
+for a verifiable stake beyond those fields. Do not restate the summary or
+invent a population, consequence, prediction, or causal link. Automatic notes
+remain empty until a separate evidence source is available.
 
 2. An importance score from 1-5 (key "s"), independent of the line above — \
 always provide it, even when the line is empty:
@@ -198,8 +176,8 @@ Articles:
 {_build_articles_text(batch)}
 
 Return a JSON array with one object per article, in the same order.
-Use short keys: i=index, c=why-it-matters line (string; "" when there is no real stake), s=score, t=tone, g=genre.
-[{{"i":1,"c":"Concrete verifiable stake here, or an empty string.","s":3,"t":"neutral","g":"news"}}, ...]
+Use short keys: i=index, c=empty string (no additional evidence), s=score, t=tone, g=genre.
+[{{"i":1,"c":"","s":3,"t":"neutral","g":"news"}}, ...]
 
 Return ONLY the JSON array, no other text."""
 
@@ -215,7 +193,7 @@ async def generate_context(
     client: anthropic.AsyncAnthropic | None = None,
 ) -> dict[str, dict]:
     """
-    Batch-generate 'why it matters' one-liners and importance scores via Claude Haiku.
+    Batch-classify importance, tone and genre; automatic significance stays empty.
 
     Input: list of dicts with keys: source_url, title, summary
     Output: dict mapping source_url -> {"context": str | None, "score": int,
@@ -298,7 +276,6 @@ def _parse_context(text: str, batch: list[dict]) -> dict[str, dict]:
     results: dict[str, dict] = {}
     for idx, item in aligned_entries(parsed, len(batch)).items():
         # Accept short keys (new) and fall back to long keys (legacy prompt form).
-        raw_context = item.get("c", item.get("context", ""))
         score = item.get("s", item.get("score", 3))
 
         # Clamp score to 1-5 (always recorded, independent of the line).
@@ -306,9 +283,9 @@ def _parse_context(text: str, batch: list[dict]) -> dict[str, dict]:
             score = 3
 
         article = batch[idx - 1]
-        gated = gate_why_it_matters(
-            raw_context, title=article.get("title", ""), summary=article.get("summary", ""),
-        )
+        # No independent source beyond the summary; model compliance is not
+        # required for this guarantee. Scores/classification remain independent.
+        gated = None
         results[article["source_url"]] = {
             "context": gated,
             "score": score,
@@ -398,13 +375,9 @@ async def submit_context_batch(articles: list[dict]) -> str | None:
 
 
 async def process_context_batch_results(batch_id: str, results: list[dict]) -> None:
-    """Poller callback. Parses JSONL results, runs the quality gate, and UPDATEs
-    articles with why_it_matters + importance_score.
+    """Store classification; withhold automatic notes without extra evidence.
 
-    The line and score are decoupled: a line dropped by the gate stores NULL
-    why_it_matters while still recording importance_score. title/summary for the
-    gate's restatement check are read from the articles table in one query per
-    sub-batch (the rows exist by now — store_node runs before the batch lands).
+    Queued batches from an older prompt are subject to the same rule.
     """
     # Batch spend was invisible until 2026-08-05 — this path recorded
     # nothing, leaving ~$1/day unattributed between the ledger and the bill.
@@ -482,64 +455,22 @@ async def process_context_batch_results(batch_id: str, results: list[dict]) -> N
             )
             continue
 
-        # One read for the whole sub-batch: title/summary feed the gate.
-        meta_by_url: dict[str, tuple[str, str]] = {}
-        if urls:
-            try:
-                meta_rows = await pool.fetch(
-                    "SELECT source_url, title, summary FROM articles "
-                    "WHERE source_url = ANY($1::text[])",
-                    urls,
-                )
-                meta_by_url = {
-                    r["source_url"]: (r["title"] or "", r["summary"] or "")
-                    for r in meta_rows
-                }
-            except Exception as e:
-                logger.error("context gate metadata read failed for %s: %s", custom_id, e)
-
-        # Deterministic gate first; collect per-row results for this sub-batch.
+        # Ignore legacy/model-generated notes while retaining classification.
         pending: list[dict] = []
         for idx, entry in entries.items():
-            raw_context = entry.get("c", entry.get("context", ""))
             score = entry.get("s", entry.get("score", 3))
             if not isinstance(score, int) or score < 1 or score > 5:
                 score = 3
 
             url = urls[idx - 1]
-            title, summary = meta_by_url.get(url, ("", ""))
-            gated = (gate_why_it_matters(raw_context, title=title, summary=summary)
-                     if url in meta_by_url else None)
+            gated = None  # No additional source evidence for an automatic note.
             if gated is None:
                 dropped += 1
             pending.append({
                 "url": url, "line": gated, "score": score,
                 "tone": _clamp_tone(entry.get("t", entry.get("tone"))),
                 "genre": _clamp_genre(entry.get("g", entry.get("genre"))),
-                "title": title, "summary": summary,
             })
-
-        # Optional runtime judge over the survivors (sift-api#90, off by default).
-        # Catches the paraphrase/editorial residual the cheap gate can't. One
-        # judge call per sub-batch; skipped (lines kept) when the cost guard
-        # blocks it, so judging never blocks storage and a judge error degrades
-        # to the deterministic result.
-        if settings.why_it_matters_judge_enabled:
-            kept = [p for p in pending if p["line"]]
-            if kept:
-                budget = await check_budget(estimate_cost("judge.batch", len(kept)))
-                if budget.allowed:
-                    verdicts = await judge_lines([
-                        {"id": p["url"], "title": p["title"], "summary": p["summary"], "line": p["line"]}
-                        for p in kept
-                    ])
-                    by_url = {v["id"]: v for v in verdicts}
-                    for p in kept:
-                        if judge_rejects(by_url.get(p["url"], {})):
-                            p["line"] = None
-                            judge_dropped += 1
-                else:
-                    logger.info("context runtime judge skipped (%s) for %s", budget.reason, custom_id)
 
         for p in pending:
             try:

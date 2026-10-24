@@ -21,10 +21,10 @@ GOOD_LINE = "The cuts hit farms that grow most of America's winter lettuce and b
 
 
 class TestContextParse:
-    def test_good_line_kept_with_score(self):
+    def test_unsupported_novel_line_is_withheld_but_score_is_kept(self):
         text = json.dumps([{"i": 1, "c": GOOD_LINE, "s": 4}])
         out = _parse_context(text, CTX_BATCH)
-        assert out["https://example.com/1"]["context"] == GOOD_LINE
+        assert out["https://example.com/1"]["context"] is None
         assert out["https://example.com/1"]["score"] == 4
 
     def test_cliche_line_dropped_but_score_recorded(self):
@@ -86,7 +86,7 @@ class TestContextPrompt:
         assert "empty string" in prompt          # the null-over-filler instruction
         assert "do not restate" in prompt
         assert "importance score" in prompt       # score still requested
-        assert "raises serious questions" in prompt  # banned-phrasing example
+        assert "no additional evidence" in prompt
 
     def test_prompt_encodes_the_tone_rubric(self):
         prompt = _build_context_prompt(CTX_BATCH).lower()

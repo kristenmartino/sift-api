@@ -39,7 +39,7 @@ from services.index_alignment import (
     log_misaligned_sub_batch,
     with_alignment_retry,
 )
-from services.quality_gate import gate_background
+from services.quality_gate import gate_background, gate_generated_background
 from services.copy_rules import COPY_RULES
 from services.usage_tracker import log_batch_usage, log_usage
 
@@ -275,7 +275,7 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
         # Both real-time and scheduled results use this parser and reference
         # check. Empty background keeps useful terms and hides the paragraph.
         article = batch[idx - 1]
-        background = gate_background(
+        background = gate_generated_background(
             background, title=article.get("title", ""), summary=article.get("summary", ""),
         )
 

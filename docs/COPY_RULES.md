@@ -8,10 +8,11 @@ the same standard. Changing a model does not remove it.
 - Report concrete source-supported facts directly; one useful sentence is enough.
 - Omit general closing observations about importance, tensions, or implications.
 - Preserve figures, uncertainty, named attribution, and unresolved causality.
-- Optional notes must add information. Empty is the correct result when they do not.
+- Optional notes must add information. Automatic significance notes stay blank
+  because that stage has only a headline and summary, with no additional evidence.
 - Background explains a specific mechanism or procedure beyond the news; terms
   must be useful, with at most four definitions of at most 25 words each.
-- Coverage notes describe a distinct supplied detail in at most 25 words. An
+- Coverage notes copy a distinct contiguous source passage in at most 25 words. An
   excerpt cannot prove that the full article omitted a fact.
 - Keep real sources even when their notes are blank; do not invent sources or
   create multiple rows for repeated articles from the same supplied source name.
@@ -20,7 +21,9 @@ the same standard. Changing a model does not remove it.
 ## Enforcement
 
 `services/quality_gate.py` removes recognizable generic summary closers,
-unsupported omission claims, cliché notes, and near-verbatim repetition. A new
+unsupported omission claims, cliché notes, and near-verbatim repetition. New
+summary figures must appear in their supplied inputs; an invented figure leaves
+story synthesis retryable or re-asks the article batch. A new
 figure is protected from the repetition check. Quotes and attributed findings
 have retention controls in the regression suite. Overlength optional notes are
 omitted rather than truncated, which could cut off a qualification.
@@ -28,14 +31,19 @@ omitted rather than truncated, which could cut off a qualification.
 Both real-time and scheduled primer results use `_parse_primers`. Scheduled
 results fetch the matching article reference once on completion, before writing.
 If that reference cannot be read, optional primer copy is withheld. Context
-results similarly withhold unchecked significance notes while retaining scores.
-Neither change introduces an idle database poll or a new model call.
+results always withhold automatic significance notes while retaining scores.
+Neither change introduces an idle database poll.
 
 The shared story synthesizer covers initial clusters, new-outlet updates, and
 failed-synthesis retries. It gates the summary and builds framing rows from the
 actual source inputs, fills missing sources with blank notes, and ignores
 invented or duplicate source rows. `story_copy_gated` logs the rule version and
-result counts.
+result counts. Surviving source passages also receive a focused semantic
+redundancy review through `judge_lines(field="framing")`. It uses the existing
+Sonnet judge operation and cost ledger. If the cost guard blocks it, the result
+is malformed, or the reviewer cannot approve a note, that note stays blank.
+This is a new paid check for optional outlet-note repetition, not a general
+factuality certification.
 
 ## Regression checks
 
@@ -47,7 +55,8 @@ handlers, and story synthesizer, with controls for useful copy and source links.
 
 These are generation rules and conservative deterministic checks, not a claim
 that regex can validate every fact or detect every semantic paraphrase. The
-existing optional LLM judge remains off by default; its evaluation requirements
-and cost guard have not changed. New failure patterns should be added with a
+general LLM judge remains available for offline evaluation. The focused source-
+note redundancy check above runs automatically; the legacy significance-judge
+flag cannot enable notes without additional evidence. New failure patterns should be added with a
 failure fixture and a retention control before expanding a filter. Historical
 records are not rewritten by these safeguards.

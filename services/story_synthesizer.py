@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 import anthropic
 
 from app.config import settings
 from services.model_registry import resolve
 from services.copy_rules import COPY_RULES, COPY_RULES_VERSION
-from services.quality_gate import clean_generated_headline, gate_framing, gate_summary
+from services.judge import judge_lines
+from services.cost_guard import check_budget
+from services.cost_estimates import estimate_cost
+from services.quality_gate import clean_generated_headline, gate_framing, gate_summary, unsupported_figures
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_synthesizer")
@@ -50,7 +54,14 @@ async def synthesize_story(
             f"   {article['summary']}\n"
         )
 
+    unresolved = bool(re.search(r"\bwhether\b.{0,120}\b(?:caused|contributed)\b", articles_text, re.I))
+    causality_rule = (
+        "The supplied reports explicitly leave causality unresolved. Describe the event and later outcome separately in the headline. "
+        "Do not call a death 'linked to', 'from', or 'caused by' the event. The summary must explicitly retain the unresolved cause."
+        if unresolved else ""
+    )
     prompt = f"""{COPY_RULES}
+{causality_rule}
 
 These {len(articles)} articles were grouped automatically. Use only the shared event supported by their supplied text; do not invent a common event or causal link between merely related reports:
 {articles_text}
@@ -60,8 +71,8 @@ Generate:
 2. summary: At most two concise factual sentences combining the supported facts. One useful sentence is enough. Do not append a general observation about significance, broader tensions or implications, or commentary about how sources differ.
 3. framings: For each source, provide:
    - source_name: exact name as given above
-   - framing: One short sentence naming a specific detail, quoted claim, \
-source, or explanation that distinguishes this outlet's supplied coverage. \
+   - framing: Copy a contiguous passage from this source's headline or summary \
+that adds a specific detail beyond the shared summary. Maximum 25 words. \
 Return an empty string when no distinct emphasis is supported by the input.
    - tone: One of "neutral", "urgent", "analytical", "critical", "optimistic"
 
@@ -145,8 +156,19 @@ Return ONLY a JSON object:
             result["summary"] = gate_summary(result["summary"])
             if not result["summary"]:
                 return _fallback(articles)
+            supplied = " ".join(f"{a['title']} {a['summary']}" for a in articles)
+            if unsupported_figures(result["headline"] + " " + result["summary"], supplied):
+                logger.warning("Story copy added an unsupported figure; leaving synthesis retryable")
+                return _fallback(articles)
+            if unresolved and (
+                re.search(r"\b(?:death|fatalit\w*)\b.{0,40}\b(?:linked to|from|caused by|due to)\b|\b(?:killed|fatal|deadly)\b", result["headline"], re.I)
+                or not re.search(r"\bwhether\b.{0,120}\b(?:caused|contributed)\b|\bcause\b.{0,40}\b(?:unknown|unclear|unresolved)\b", result["summary"], re.I)
+            ):
+                logger.warning("Story copy resolved an explicitly uncertain cause; leaving synthesis retryable")
+                return _fallback(articles)
             raw_framings = result.get("framings", [])
             result["framings"] = _gate_framings(raw_framings, articles, result["summary"])
+            await _review_framings(result, client)
             logger.info(json.dumps({
                 "event": "story_copy_gated", "copy_rules_version": COPY_RULES_VERSION,
                 "source_rows": len(result["framings"]),
@@ -159,6 +181,33 @@ Return ONLY a JSON object:
     except Exception as e:
         logger.error("Story synthesis failed: %s", e)
         return _fallback(articles)
+
+
+async def _review_framings(result: dict, client) -> None:
+    """Only distinct notes may publish; unavailable review leaves blank rows.
+
+    This is a redundancy check, not the contingent general factuality judge.
+    Source grounding is enforced separately by exact-passage checks.
+    """
+    notes = [f for f in result["framings"] if f["framing"]]
+    if not notes:
+        return
+    verdicts = []
+    try:
+        budget = await check_budget(estimate_cost("judge.batch", len(notes)))
+        if budget.allowed:
+            verdicts = await judge_lines([
+                {"id": f["source_name"], "title": result["headline"], "summary": result["summary"], "line": f["framing"]}
+                for f in notes
+            ], field="framing", client=client)
+        by_source = {v["id"]: v for v in verdicts}
+    except Exception as e:
+        logger.error("Story note review unavailable; withholding optional notes: %s", e)
+        by_source = {}
+    for f in notes:
+        v = by_source.get(f["source_name"], {})
+        if not (v.get("judged") and v.get("restates") is False and v.get("adds_significance") is True and v.get("neutral_cliche_free") is True):
+            f.update(framing="", tone="neutral")
 
 
 def _gate_framings(raw: object, articles: list[dict], summary: str) -> list[dict]:
