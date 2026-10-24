@@ -129,6 +129,14 @@ precedent, or what changes next. Add a fact, not a feeling.
    Hard rules for the line:
    - Do NOT restate or paraphrase the title or summary. If the only thing you \
 can say is already there, return "" (an empty string).
+   - Apply this to meaning, not just wording. If the summary says troops are \
+being moved because of threats, "Personnel are being relocated due to security \
+threats" adds nothing. Return "". Do not turn a casualty count into an added \
+"stake" by restating it as people killed or wounded.
+   - The supplied title and summary are your evidence. Do not invent a new \
+fact, prediction, or causal link to make the line sound useful. Do not turn \
+"advanced preparations" into an "imminent attack" or a stated risk into an \
+expected outcome. If no additional supported fact remains, return "".
    - Do NOT editorialize, speculate, or hand-wave. Banned phrasings include: \
 "raises serious questions", "worth watching", "a turning point", "could \
 finally…", "sends a message", "remains to be seen", "a wake-up call", and \

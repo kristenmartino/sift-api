@@ -311,3 +311,27 @@ class TestGateSummary:
     def test_find_refusal_names_the_phrase_it_matched(self):
         assert find_refusal("Unable to summarize this one.") == "Unable to summarize"
         assert find_refusal("The Fed held rates steady.") is None
+
+
+def test_attribution_words_do_not_make_a_repeated_fact_a_new_stake():
+    line = "Advisers assess Iran is on the brink of collapse according to the administration's stated belief."
+    result = evaluate_why_it_matters(
+        line,
+        title="Trump's gamble to end the Iran war",
+        summary="The administration is considering sanctions and strikes against Iran, with advisers believing the country is on the brink of collapse.",
+    )
+    assert result.kept is None
+    assert result.reason == "restatement"
+
+
+def test_new_speaker_or_deadline_is_not_treated_as_attribution_filler():
+    for line in (
+        "A court, rather than the agency, will decide whether the deadline applies.",
+        "The deadline applies to 15 additional agencies, according to the report.",
+    ):
+        result = evaluate_why_it_matters(
+            line,
+            title="Agency announces deadline",
+            summary="The agency announced a new deadline for applications.",
+        )
+        assert result.kept == line

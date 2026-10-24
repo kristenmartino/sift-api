@@ -144,6 +144,15 @@ _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
 # Strings models sometimes emit to mean "no line" — treated as a drop.
 _NULL_TOKENS = frozenset({"null", "none", "n/a", "na", "-", "—", "(none)", "[none]"})
 
+# Attribution verbs do not turn an otherwise repeated fact into an added stake.
+# Keep speaker nouns, names, numbers, and qualifications out of this set.
+_ATTRIBUTION_WORDS = frozenset({
+    "according", "assess", "assesses", "assessed", "assessment",
+    "believe", "believes", "believing", "belief",
+    "say", "says", "said", "state", "states", "stated",
+    "statement", "statements", "report", "reports", "reported", "reporting",
+})
+
 
 def _clean(text: str | None) -> str:
     """Trim whitespace and a single layer of wrapping quotes."""
@@ -255,7 +264,13 @@ def is_near_restatement(
     issue is explicit that lexical overlap is too weak to be THE gate — this only
     catches the egregious tail the prompt+cliché checks would otherwise miss.
     """
-    return lexical_novelty(line, reference) <= max_novelty
+    if lexical_novelty(line, reference) <= max_novelty:
+        return True
+    # "Advisers assess ... according to the administration's stated belief"
+    # can pass a word-overlap check while adding only attribution scaffolding.
+    line_words = {w.removesuffix("'s").removesuffix("’s") for w in _content_words(line)}
+    reference_words = {w.removesuffix("'s").removesuffix("’s") for w in _content_words(reference)}
+    return (line_words - reference_words) <= _ATTRIBUTION_WORDS
 
 
 @dataclass(frozen=True)
