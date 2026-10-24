@@ -101,6 +101,13 @@ def test_a_new_qualification_is_not_deleted_as_repetition():
     assert gate_framing(qualified, source_text=qualified, summary=statement) == qualified
 
 
+@pytest.mark.parametrize(("old", "new"), [("$100M", "$200M"), ("$1.2bn", "$1.8bn")])
+def test_abbreviated_figures_are_not_mistaken_for_repeated_facts(old, new):
+    reference = f"The company plans to invest {old} in the factory."
+    detail = f"The company plans to invest {new} in the factory."
+    assert gate_framing(detail, source_text=detail, summary=reference) == detail
+
+
 def test_useful_financial_mechanism_is_not_a_generic_significance_line():
     bg = "Bond yields rise when investors demand higher returns, reflecting perceived risk and increasing government borrowing costs."
     assert gate_background(bg, title=ARTICLE["title"], summary=SUMMARY) == bg

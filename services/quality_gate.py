@@ -140,7 +140,7 @@ MIN_SUMMARY_WORDS = 10
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
-_NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)*(?:%|\b)")
+_NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)*(?:%|[KMBT]\b)?", re.IGNORECASE)
 _QUALIFIER_RE = re.compile(
     r"\b(?:not|no|never|may|might|could|alleged|allegedly|reportedly|"
     r"accused|suspected|proposed|proposal)\b", re.IGNORECASE,
@@ -375,7 +375,7 @@ def is_near_restatement(
     catches the egregious tail the prompt+cliché checks would otherwise miss.
     """
     # A changed figure is a different fact, even if every word matches.
-    if set(_NUMBER_RE.findall(line)) - set(_NUMBER_RE.findall(reference)):
+    if {n.lower() for n in _NUMBER_RE.findall(line)} - {n.lower() for n in _NUMBER_RE.findall(reference)}:
         return False
     if {q.lower() for q in _QUALIFIER_RE.findall(line)} - {q.lower() for q in _QUALIFIER_RE.findall(reference)}:
         return False
