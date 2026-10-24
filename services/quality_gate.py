@@ -158,10 +158,10 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
     It prevents adding e.g. a population or an inferred election date.
     """
     def figures(value):
-        nums = {n.lower() for n in _NUMBER_RE.findall(value)}
+        nums = {n.lower().replace(",", "") for n in _NUMBER_RE.findall(value)}
         nums.update(_SMALL_NUMBERS[w] for w in re.findall(r"\b\w+\b", value.lower()) if w in _SMALL_NUMBERS)
         return nums
-    return {n.lower() for n in _NUMBER_RE.findall(text)} - figures(source_text)
+    return {n.lower().replace(",", "") for n in _NUMBER_RE.findall(text)} - figures(source_text)
 
 
 def _passage_tokens(text: str) -> str:
