@@ -7,15 +7,17 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services import context_generator as cg, primer_generator as pg
+from services import story_synthesizer as ss
 from services.copy_rules import COPY_RULES
 from services.quality_gate import gate_background, gate_framing, gate_summary, gate_why_it_matters
+from services.index_alignment import AlignmentError
 from services.story_synthesizer import synthesize_story
 from services.summarizer import _build_prompt, _parse_summaries
 
 URL = "https://example.com/one"
 SUMMARY = "The central bank held its policy rate at 4.25%."
 ARTICLE = {"source_url": URL, "title": "Bank holds rates", "summary": SUMMARY, "source_name": "A"}
-TERM = {"term": "basis point", "definition": "One hundredth of a percentage point."}
+TERM = {"term": "policy rate", "definition": "The central bank's target rate for short-term lending."}
 
 
 def response(data):
@@ -62,8 +64,56 @@ async def test_every_generator_includes_the_same_copy_standard():
 def test_article_parser_keeps_the_fact_and_drops_the_closer():
     parsed = _parse_summaries(json.dumps([{
         "i": 1, "s": SUMMARY + " This move highlights broader concerns about the economy.", "c": "business",
-    }]), [SimpleNamespace(**ARTICLE)])
+    }]), [SimpleNamespace(**ARTICLE, raw_content=SUMMARY)])
     assert parsed[URL]["summary"] == SUMMARY
+
+
+def test_article_parser_rejects_a_population_not_in_the_source():
+    source = SimpleNamespace(**ARTICLE, raw_content="Nigeria recorded its first case in the current Ebola outbreak.")
+    with pytest.raises(AlignmentError, match="unsupported figure"):
+        _parse_summaries(json.dumps([{"i": 1, "s": "Nigeria's outbreak affects a nation of 223 million.", "c": "health"}]), [source])
+
+
+def test_spelled_out_source_figures_can_be_written_as_digits():
+    source = SimpleNamespace(**ARTICLE, raw_content="The company launched four rockets.")
+    parsed = _parse_summaries(json.dumps([{"i": 1, "s": "The company launched 4 rockets.", "c": "science"}]), [source])
+    assert parsed[URL]["summary"] == "The company launched 4 rockets."
+
+
+def test_automatic_context_cannot_add_a_new_population_or_repackage_the_summary():
+    for line in ["Nigeria has 223 million people.", SUMMARY, "A new era for banking."]:
+        parsed = cg._parse_context(json.dumps([{"i": 1, "c": line, "s": 4}]), [ARTICLE])
+        assert parsed[URL]["context"] is None
+        assert parsed[URL]["score"] == 4
+
+
+@pytest.mark.asyncio
+async def test_story_cannot_infer_an_election_date_from_the_event_name():
+    client = AsyncMock()
+    client.messages.create.return_value = response({
+        "headline": "Talks planned after elections", "summary": "Talks are planned after the November 3 midterm elections.",
+    })
+    inputs = [{**ARTICLE, "title": "Talks after elections", "summary": "Talks are planned after midterm elections.", "source_name": n} for n in ["A", "B"]]
+    result = await synthesize_story(inputs, client=client)
+    assert result["_failed"] is True
+    assert "November 3" not in result["summary"]
+
+
+def test_a_paraphrased_angle_or_unspecified_location_is_not_a_source_passage():
+    assert gate_framing("Explicitly states public risk assessment as low from disease experts.",
+                        source_text="Experts say the public risk is low.") == ""
+    assert gate_framing("The location is unspecified.", source_text="The location is unspecified.") == ""
+
+
+def test_primer_does_not_invent_earlier_plans_or_a_population():
+    article = {**ARTICLE, "title": "NASA updates lander plans", "summary": "NASA revised its lunar lander plans."}
+    for bg in ["Earlier plans relied on a single lander.", "NASA employs 18000 people."]:
+        assert pg._parse_primers(json.dumps([{"i": 1, "b": bg, "t": []}]), [article]) == {}
+
+
+def test_primer_does_not_define_a_term_absent_from_its_inputs():
+    unrelated = {"term": "zoonotic spillover", "definition": "Transmission of a disease from animals to humans."}
+    assert pg._parse_primers(json.dumps([{"i": 1, "b": "", "t": [unrelated]}]), [ARTICLE]) == {}
 
 
 @pytest.mark.parametrize("line", [
@@ -114,7 +164,10 @@ def test_useful_financial_mechanism_is_not_a_generic_significance_line():
 
 
 @pytest.mark.asyncio
-async def test_story_rows_keep_actual_sources_once_and_reject_invented_ones():
+async def test_story_rows_keep_actual_sources_once_and_reject_invented_ones(monkeypatch):
+    monkeypatch.setattr(ss, "judge_lines", AsyncMock(return_value=[{
+        "id": "A", "judged": True, "restates": False, "adds_significance": True, "neutral_cliche_free": True,
+    }]))
     client = AsyncMock()
     client.messages.create.return_value = response({
         "headline": "Officials reportedly plan talks, sources say", "summary": SUMMARY,
@@ -124,12 +177,39 @@ async def test_story_rows_keep_actual_sources_once_and_reject_invented_ones():
             {"source_name": "Ghost outlet", "framing": "An invented angle.", "tone": "urgent"},
         ],
     })
-    result = await synthesize_story([ARTICLE, {**ARTICLE, "source_name": "B"}, ARTICLE], client=client)
+    source_a = {**ARTICLE, "summary": SUMMARY + " The bank also changed its reserve requirements."}
+    result = await synthesize_story([source_a, {**ARTICLE, "source_name": "B"}, source_a], client=client)
     assert result["headline"] == "Officials reportedly plan talks"
     assert result["framings"] == [
         {"source_name": "A", "framing": "The bank also changed its reserve requirements.", "tone": "analytical"},
         {"source_name": "B", "framing": "", "tone": "neutral"},
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["budget", "error", "unjudged", "repeated"])
+async def test_optional_notes_are_withheld_when_review_cannot_approve_them(monkeypatch, failure):
+    monkeypatch.setattr(ss, "check_budget", AsyncMock(return_value=SimpleNamespace(allowed=failure != "budget")))
+    review = AsyncMock(return_value=[{"id": "A", "judged": failure != "unjudged", "restates": True,
+                                    "adds_significance": False, "neutral_cliche_free": True}])
+    if failure == "error":
+        review.side_effect = RuntimeError("review unavailable")
+    monkeypatch.setattr(ss, "judge_lines", review)
+    result = {"headline": "Bank update", "summary": SUMMARY,
+              "framings": [{"source_name": "A", "framing": "A real source detail.", "tone": "analytical"}]}
+    await ss._review_framings(result, None)
+    assert result["framings"] == [{"source_name": "A", "framing": "", "tone": "neutral"}]
+    if failure == "budget":
+        review.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_explicitly_unresolved_cause_cannot_become_a_causal_headline():
+    inputs = [{**ARTICLE, "source_name": n, "summary": "Investigators are studying whether the virus contributed to the death."} for n in ["A", "B"]]
+    client = AsyncMock()
+    client.messages.create.return_value = response({"headline": "First death linked to virus", "summary": "A patient died."})
+    result = await synthesize_story(inputs, client=client)
+    assert result["_failed"] is True
 
 
 @pytest.mark.asyncio
@@ -169,6 +249,30 @@ async def test_context_without_reference_keeps_score_but_omits_unchecked_note(mo
     args = pool.execute.call_args.args
     assert args[1] is None
     assert args[2] == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["approved", "repeated", "unjudged", "budget", "error"])
+async def test_primer_novelty_review_retains_terms_and_withholds_unapproved_background(monkeypatch, state):
+    monkeypatch.setattr(pg, "check_budget", AsyncMock(return_value=SimpleNamespace(allowed=state != "budget")))
+    review = AsyncMock(return_value=[{
+        "id": u, "judged": state != "unjudged", "restates": state == "repeated",
+        "adds_significance": state != "repeated", "neutral_cliche_free": True,
+    } for u in [URL, URL + "two"]])
+    if state == "error":
+        review.side_effect = RuntimeError("review unavailable")
+    monkeypatch.setattr(pg, "judge_lines", review)
+    paragraph = "The central bank oversees national monetary policy."
+    payloads = {URL: {"background": paragraph, "terms": [TERM]},
+                URL + "two": {"background": paragraph, "terms": []}}
+    await pg._review_backgrounds(payloads, [ARTICLE, {**ARTICLE, "source_url": URL + "two"}])
+    assert payloads[URL]["terms"] == [TERM]
+    if state == "approved":
+        assert payloads[URL]["background"] == paragraph
+        assert payloads[URL + "two"]["background"] == paragraph
+    else:
+        assert payloads[URL]["background"] == ""
+        assert URL + "two" not in payloads
 
 
 def test_primer_does_not_repeat_term_definition_or_truncate_long_definitions():

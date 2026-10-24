@@ -39,8 +39,9 @@ from services.index_alignment import (
     log_misaligned_sub_batch,
     with_alignment_retry,
 )
-from services.quality_gate import gate_background
+from services.quality_gate import gate_background, gate_generated_background, term_in_source
 from services.copy_rules import COPY_RULES
+from services.judge import judge_lines
 from services.usage_tracker import log_batch_usage, log_usage
 
 logger = logging.getLogger("sift-api.primer_generator")
@@ -234,6 +235,7 @@ async def generate_primers(
         except Exception as e:
             logger.error("Primer generation failed for batch %d: %s", batch_index, e)
 
+    await _review_backgrounds(results, articles, client=client)
     logger.info("Generated primers for %d/%d articles", len(results), len(articles))
     return results
 
@@ -275,7 +277,7 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
         # Both real-time and scheduled results use this parser and reference
         # check. Empty background keeps useful terms and hides the paragraph.
         article = batch[idx - 1]
-        background = gate_background(
+        background = gate_generated_background(
             background, title=article.get("title", ""), summary=article.get("summary", ""),
         )
 
@@ -289,7 +291,8 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
                 term = (t.get("term") or "").strip()
                 definition = (t.get("def") or t.get("definition") or "").strip()
                 if term and definition:
-                    if len(definition.split()) <= 25 and len(terms) < 4:
+                    if (len(definition.split()) <= 25 and len(terms) < 4
+                            and term_in_source(term, f"{article.get('title', '')} {article.get('summary', '')}")):
                         terms.append({"term": term, "definition": definition})
 
         # Do not define the same thing in the paragraph and term list.
@@ -311,6 +314,30 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
         }
 
     return results
+
+
+async def _review_backgrounds(payloads: dict[str, dict], articles: list[dict], *, client=None) -> None:
+    """Withhold unapproved optional paragraphs, retaining useful definitions."""
+    meta = {a["source_url"]: a for a in articles}
+    items = [{"id": url, "title": meta[url].get("title", ""), "summary": meta[url].get("summary", ""),
+              "line": p["background"]} for url, p in payloads.items() if p["background"]]
+    if not items:
+        return
+    approved = set()
+    try:
+        budget = await check_budget(estimate_cost("judge.batch", len(items)))
+        if budget.allowed:
+            verdicts = await judge_lines(items, field="background_novelty", client=client)
+            approved = {v["id"] for v in verdicts if v.get("judged") and v.get("restates") is False
+                        and v.get("adds_significance") is True and v.get("neutral_cliche_free") is True}
+    except Exception as e:
+        logger.error("Primer novelty review unavailable; withholding backgrounds: %s", e)
+    for item in items:
+        url = item["id"]
+        if url not in approved:
+            payloads[url]["background"] = ""
+            if not payloads[url]["terms"]:
+                del payloads[url]
 
 
 def _extract_json_array(text: str) -> list[dict] | None:
@@ -469,6 +496,7 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
             failed += 1
             continue
         meta_by_url = {r["source_url"]: dict(r) for r in meta_rows}
+        pending_payloads = {}
         for idx, entry in entries.items():
             url = urls[idx - 1]
             if url not in meta_by_url:
@@ -483,6 +511,9 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
                 bg_dropped += 1
             if not primer_payload:
                 continue
+            pending_payloads[url] = primer_payload
+        await _review_backgrounds(pending_payloads, list(meta_by_url.values()))
+        for url, primer_payload in pending_payloads.items():
             try:
                 await pool.execute(
                     """

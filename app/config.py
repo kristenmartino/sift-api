@@ -32,11 +32,10 @@ class Settings(BaseSettings):
     daily_ai_cost_limit_usd: float = 10.0
     ai_cost_alert_threshold_ratio: float = 0.8
 
-    # Runtime LLM-judge for why_it_matters (sift-api#90) — OFF by default. When
-    # enabled, each generated line that survives the deterministic gate is judged
-    # (Sonnet) in the batch-result path and dropped if it restates or
-    # editorializes — catching the paraphrase residual the cheap gate can't.
-    # Adds a paid call per kept line; respects the cost guard above.
+    # Legacy setting retained for environment compatibility. Automatic notes
+    # are now withheld regardless of this flag: this stage only receives the
+    # headline/summary, with no independent evidence for an additional stake.
+    # services.judge remains available for offline evaluation.
     why_it_matters_judge_enabled: bool = False
 
     # Regex pre-gate on the LLM entity linker — ON by default, set false to

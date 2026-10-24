@@ -1,10 +1,7 @@
-"""Integration tests for the flag-gated runtime judge in the context batch path
-(sift-api#90 follow-up).
+"""Automatic significance notes stay blank with only headline/summary evidence.
 
-Mocks the DB pool, the judge, and the cost guard so we can assert the wiring in
-process_context_batch_results: when the flag is on, a judge-rejected line is
-NULLed while its score is still written; when off or budget-blocked, the
-deterministically-gated line is kept untouched.
+The legacy judge flag and budget availability cannot re-enable unsupported
+notes. Importance scores must still be written.
 """
 from __future__ import annotations
 
@@ -15,7 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.config import settings
-from services import context_generator as cg
+from services import context_generator as cg, judge as judge_service
 
 URL1 = "https://example.com/keep"
 URL2 = "https://example.com/judge-drop"
@@ -60,12 +57,12 @@ def _wire(monkeypatch, pool, *, budget_allowed=True):
 
 
 @pytest.mark.asyncio
-async def test_judge_drops_rejected_line_keeps_score(monkeypatch):
+async def test_old_judge_flag_cannot_publish_a_note_without_evidence(monkeypatch):
     monkeypatch.setattr(settings, "why_it_matters_judge_enabled", True)
     pool = FakePool()
     _wire(monkeypatch, pool)
-    # URL2 is judged a restatement -> dropped; URL1 passes.
-    monkeypatch.setattr(cg, "judge_lines", AsyncMock(return_value=[
+    # Even a positive legacy judge result cannot establish missing evidence.
+    monkeypatch.setattr(judge_service, "judge_lines", AsyncMock(return_value=[
         {"id": URL1, "judged": True, "restates": False, "neutral_cliche_free": True},
         {"id": URL2, "judged": True, "restates": True, "neutral_cliche_free": True},
     ]))
@@ -73,38 +70,38 @@ async def test_judge_drops_rejected_line_keeps_score(monkeypatch):
     await cg.process_context_batch_results("batch-1", _results())
 
     writes = {u[4]: u for u in pool.updates}
-    assert writes[URL1][0] == LINE1          # kept
+    assert writes[URL1][0] is None          # withheld
     assert writes[URL2][0] is None           # judge-dropped -> NULL line
     assert writes[URL2][1] == 4              # ...but score still recorded
 
 
 @pytest.mark.asyncio
-async def test_flag_off_keeps_lines_and_skips_judge(monkeypatch):
+async def test_flag_off_withholds_notes_and_skips_judge(monkeypatch):
     monkeypatch.setattr(settings, "why_it_matters_judge_enabled", False)
     pool = FakePool()
     _wire(monkeypatch, pool)
     judge = AsyncMock()
-    monkeypatch.setattr(cg, "judge_lines", judge)
+    monkeypatch.setattr(judge_service, "judge_lines", judge)
 
     await cg.process_context_batch_results("batch-1", _results())
 
     judge.assert_not_called()
     writes = {u[4]: u for u in pool.updates}
-    assert writes[URL1][0] == LINE1
-    assert writes[URL2][0] == LINE2
+    assert writes[URL1][0] is None
+    assert writes[URL2][0] is None
 
 
 @pytest.mark.asyncio
-async def test_budget_block_skips_judge_keeps_lines(monkeypatch):
+async def test_budget_block_still_withholds_notes(monkeypatch):
     monkeypatch.setattr(settings, "why_it_matters_judge_enabled", True)
     pool = FakePool()
     _wire(monkeypatch, pool, budget_allowed=False)
     judge = AsyncMock()
-    monkeypatch.setattr(cg, "judge_lines", judge)
+    monkeypatch.setattr(judge_service, "judge_lines", judge)
 
     await cg.process_context_batch_results("batch-1", _results())
 
     judge.assert_not_called()              # budget blocked -> never judged
     writes = {u[4]: u for u in pool.updates}
-    assert writes[URL1][0] == LINE1        # deterministic result kept
-    assert writes[URL2][0] == LINE2
+    assert writes[URL1][0] is None        # withheld without additional source evidence
+    assert writes[URL2][0] is None

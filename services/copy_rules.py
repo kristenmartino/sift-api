@@ -4,7 +4,7 @@ Field-specific prompts still define the output shape. Keep the common rules
 here so a model or prompt change cannot silently omit them from one stage.
 """
 
-COPY_RULES_VERSION = "2026-10-24.1"
+COPY_RULES_VERSION = "2026-10-24.2"
 
 COPY_RULES = """Sift copy rules:
 - State supported facts directly. One useful sentence is enough. Never fill a
@@ -15,6 +15,8 @@ COPY_RULES = """Sift copy rules:
   Keep opinion attributed as opinion. A proposal is not an adopted policy;
   an event preceding a death does not establish the cause of death.
 - Do not invent history, motives, causal links, predictions, or missing facts.
+  Every figure and calendar date must appear in the supplied text. Do not
+  infer a date from an event name such as "midterm elections".
   An excerpt's silence cannot establish what the full article omitted. Even
   an upstream generated summary's omission claim is not proof. Never write
   "not mentioned in the other input" as a coverage difference.
@@ -24,7 +26,10 @@ COPY_RULES = """Sift copy rules:
 - Background must explain a specific mechanism, procedure, institution, or
   difficult term beyond the summary. Do not repeat the news or a definition
   already in the terms list. Omit general topic overviews and obvious terms.
-- Story notes must name a distinct reported detail in at most 25 words.
+- Story notes must copy a distinct, contiguous passage from that source's
+  supplied headline or summary, in at most 25 words. Do not add an introduction
+  such as "emphasizes" or "explicitly states". Do not describe an unspecified
+  location or other missing information as an outlet's angle.
   Do not assign an angle to every outlet. Blank notes are correct when the
   supplied inputs offer no difference. Keep every real source, once, even
   when its note is empty; never invent a source. Related reports need not

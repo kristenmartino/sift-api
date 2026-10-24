@@ -181,7 +181,11 @@ class TestContextBatchPath:
 
 class TestPrimerLivePath:
     @pytest.mark.asyncio
-    async def test_duplicate_index_is_retried_and_the_retry_is_used(self):
+    async def test_duplicate_index_is_retried_and_the_retry_is_used(self, monkeypatch):
+        monkeypatch.setattr(pg, "judge_lines", AsyncMock(return_value=[
+            {"id": u, "judged": True, "restates": False, "adds_significance": True, "neutral_cliche_free": True}
+            for u in [URL1, URL2]
+        ]))
         client = _mock_client(
             json.dumps([{"i": 1, "b": GOOD_BACKGROUND, "t": []}, {"i": 1, "b": GOOD_BACKGROUND, "t": []}]),
             json.dumps([{"i": 1, "b": GOOD_BACKGROUND, "t": []}, {"i": 2, "b": GOOD_BACKGROUND, "t": []}]),
@@ -202,6 +206,10 @@ class TestPrimerBatchPath:
     async def test_aligned_sub_batch_is_written(self, monkeypatch):
         pool = FakePool("primer-0")
         monkeypatch.setattr(pg, "get_pool", AsyncMock(return_value=pool))
+        monkeypatch.setattr(pg, "judge_lines", AsyncMock(return_value=[
+            {"id": u, "judged": True, "restates": False, "adds_significance": True, "neutral_cliche_free": True}
+            for u in [URL1, URL2]
+        ]))
 
         await pg.process_primer_batch_results("batch-1", _batch_results(
             "primer-0",

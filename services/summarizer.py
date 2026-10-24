@@ -13,7 +13,7 @@ from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.copy_rules import COPY_RULES
 from services.model_registry import resolve
-from services.quality_gate import gate_summary
+from services.quality_gate import gate_summary, unsupported_figures
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
     AlignmentError,
@@ -371,6 +371,10 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
         # (#118). May legitimately empty the summary; store_node writes "" and
         # the feed skips it, which beats showing the apology.
         summary = gate_summary(summary)
+        article = batch[idx - 1]
+        source_text = article.title + " " + _truncate(re.sub(r"<[^>]+>", "", article.raw_content or ""), 500)
+        if unsupported_figures(summary, source_text):
+            raise AlignmentError(f"summary added an unsupported figure at index {idx}")
 
         results[batch[idx - 1].source_url] = {"summary": summary, "category": category}
 
