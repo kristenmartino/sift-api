@@ -293,7 +293,7 @@ def gate_summary(summary: str | None) -> str:
     )
     sentences = _SENTENCE_SPLIT_RE.split(text)
     sentences = [sentence for sentence in sentences if not (
-        preview.match(sentence) and not re.search(r"\b(?:predicts? that|will win|wins? by|favou?red by|odds of)\b", sentence, re.I))]
+        preview.match(sentence) and not re.search(r"\b(?:predicts? that|will win|wins? by|favou?red by|odds of|expects?|forecasts?|projects?|estimates?)\b|\d+(?:\.\d+)?\s*(?:%|percent\b)", sentence, re.I))]
     text = " ".join(sentences).strip()
     if any(_is_generic_summary_closer(sentence) for sentence in sentences):
         text = " ".join(

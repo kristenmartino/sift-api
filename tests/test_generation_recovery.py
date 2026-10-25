@@ -137,3 +137,9 @@ def test_explicit_unavailable_summary_keeps_its_aligned_index():
     from services.summarizer import _parse_summaries
     result=_parse_summaries(json.dumps([{"i":1,"s":"","c":"general","u":True}]),[A])
     assert result[A.source_url] == {"summary":"", "category":"general", "_unavailable":True}
+
+
+def test_concrete_forecast_is_not_a_preview():
+    from services.quality_gate import gate_summary
+    text="The Fed provides predictions of 2% inflation in 2027."
+    assert gate_summary(text) == text
