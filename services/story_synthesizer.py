@@ -12,7 +12,7 @@ from services.copy_rules import COPY_RULES, COPY_RULES_VERSION
 from services.judge import judge_lines
 from services.cost_guard import check_budget
 from services.cost_estimates import estimate_cost
-from services.quality_gate import clean_generated_headline, gate_framing, gate_summary, unsupported_figures
+from services.quality_gate import clean_generated_headline, gate_framing, gate_summary, unsupported_figures, takeover_role_conflict
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_synthesizer")
@@ -101,6 +101,9 @@ notes rather than paraphrasing the shared summary for each outlet.
 - In headlines, retain uncertainty once: use "reportedly" or "sources say", \
 not "reportedly ... sources say". Do not repeat "court says" after "court rules".
 
+Keep buyer and target roles unchanged. "A nears a takeover of B" means A would
+buy B, not that B is acquiring A. Preserve preliminary talks as talks.
+
 Rules about people and legal matters — these override everything above:
 - Use only what the articles above state. Do not add facts, motives, or history \
 that are not in the text you were given.
@@ -157,6 +160,9 @@ Return ONLY a JSON object:
             if not result["summary"]:
                 return _fallback(articles)
             supplied = " ".join(f"{a['title']} {a['summary']}" for a in articles)
+            if any(takeover_role_conflict(result["headline"] + " " + result["summary"], a["title"]) for a in articles):
+                logger.warning("Story copy reversed supplied takeover roles; leaving synthesis retryable")
+                return _fallback(articles)
             if unsupported_figures(result["headline"] + " " + result["summary"], supplied):
                 logger.warning("Story copy added an unsupported figure; leaving synthesis retryable")
                 return _fallback(articles)

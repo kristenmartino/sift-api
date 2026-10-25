@@ -158,9 +158,10 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
     This is a conservative evidence check, not a factual or arithmetic judge.
     It prevents adding e.g. a population or an inferred election date.
     """
-    pattern = re.compile(r"\b(\d+(?:[.,]\d+)*)(?:\s*(thousand|million|billion|trillion)\b|([kmbt])\b|\s*(%|percent\b|per cent\b))?", re.I)
+    pattern = re.compile(r"\b(\d+(?:[.,]\d+)*)(?:\s*(thousand|million|billion|trillion|mn|bn|tn|mln|bln|trn)\b|([kmbt])\b|\s*(%|percent\b|per cent\b))?", re.I)
     scales = {"k": 3, "thousand": 3, "m": 6, "million": 6,
-              "b": 9, "billion": 9, "t": 12, "trillion": 12}
+              "b": 9, "billion": 9, "t": 12, "trillion": 12,
+              "mn": 6, "mln": 6, "bn": 9, "bln": 9, "tn": 12, "trn": 12}
     def tokens(value):
         out = []
         for match in pattern.finditer(value):
@@ -181,6 +182,26 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
                  for w in re.findall(r"\b\w+\b", source_text.lower()) if w in _SMALL_NUMBERS)
     return {raw for raw, canonical in tokens(text) if canonical not in known}
 
+
+
+def takeover_role_conflict(summary: str, source_title: str) -> bool:
+    """Catch the explicit 'A nears takeover of B' -> 'A taken over by B' reversal.
+
+    This is a narrow grammatical contradiction check, not a transaction parser
+    or a general factuality verdict. Unknown/ambiguous forms are left alone.
+    """
+    source = re.search(r"^(.+?)\s+(?:nears?|plans?|seeks?|eyes?)\b.{0,90}\b(?:takeover|acquisition)\s+of\s+(.+)", source_title, re.I)
+    direction = re.search(r"\b(?:takeover|acquisition)\s+by\b", summary, re.I)
+    if not source or not direction or re.search(r"\b(?:not|never|denied)\b", summary, re.I):
+        return False
+    buyer, target = source.groups()
+    target = re.split(r"[:|]", target)[0].strip()
+    target = re.sub(r"^(?:[\w&'.-]+-(?:backed|based|listed)\s+)+", "", target, flags=re.I)
+    def contains(text, name):
+        phrase = " ".join(re.findall(r"\w+", name.casefold()))
+        return bool(phrase) and f" {phrase} " in " " + " ".join(re.findall(r"\w+", text.casefold())) + " "
+    before, after = summary[:direction.start()], summary[direction.end():]
+    return contains(before, buyer) and contains(after, target) and not contains(after, buyer)
 
 
 def _passage_tokens(text: str) -> str:

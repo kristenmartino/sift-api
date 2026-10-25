@@ -13,7 +13,7 @@ from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.copy_rules import COPY_RULES
 from services.model_registry import resolve
-from services.quality_gate import gate_summary, unsupported_figures
+from services.quality_gate import gate_summary, unsupported_figures, takeover_role_conflict
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
     AlignmentError,
@@ -281,6 +281,9 @@ def _build_prompt(batch: list[RSSArticle]) -> str:
 Do not append a generic statement about why the story matters. "The development signals escalating tensions", "The move raises questions", and "The incident marks a notable event" add no reported fact. Omit them. Do not narrate the article with "The article explores/examines/discusses"; state the supplied facts directly. Keep attributed opinion attributed, and do not invent a detail, causal link, prediction, or broader implication to fill the second sentence.
 Do not infer an omission from the short input: "The article does not specify..." is not a reported fact. Leave it out. A missing detail in an excerpt does not prove it is missing from the full article.
 
+Keep transaction roles unchanged. "A nears a takeover of B" means A would buy B;
+it does not mean A is being acquired by B. Preserve preliminary talks as talks.
+
 Also classify each article into exactly ONE category:
 - "top" — reserved for stories of major, broad public significance: breaking news of national or international consequence, or stories that genuinely cut across several of the categories below. A story is NOT "top" merely because it is dramatic, violent, or shocking. Single-incident crime, accident, or death stories (a killing, a shooting, an assault charge, a fatal crash, a trial) are never "top" — classify them into the closest topical category instead
 - "technology" — tech industry, software, hardware, AI, cybersecurity, social media
@@ -377,6 +380,8 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
         summary = gate_summary(summary)
         article = batch[idx - 1]
         source_text = article.title + " " + _truncate(re.sub(r"<[^>]+>", "", article.raw_content or ""), 500)
+        if takeover_role_conflict(summary, article.title):
+            raise AlignmentError(f"summary reversed takeover roles at index {idx}")
         if unsupported_figures(summary, source_text):
             raise AlignmentError(f"summary added an unsupported figure at index {idx}")
 
