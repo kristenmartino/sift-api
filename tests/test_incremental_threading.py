@@ -583,7 +583,7 @@ async def test_a_retry_that_fails_again_burns_an_attempt_and_writes_nothing_else
     sql = _sql(pool)
     assert "synthesis_attempts = synthesis_attempts + 1" in sql
     assert "SET headline" not in sql
-    assert "synthesis_status" not in sql
+    assert "THEN 'failed' ELSE synthesis_status" in sql  # only stale-version text is unpublished
     assert "updated_at" not in sql
 
 
