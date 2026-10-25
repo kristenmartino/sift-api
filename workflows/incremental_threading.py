@@ -119,6 +119,31 @@ async def _story_outlets(pool, story_id: str) -> set[str]:
     return {r["source_name"] for r in rows if r["source_name"]}
 
 
+async def _move_articles(pool, member_ids: list[str], story_id: str) -> None:
+    """Move members and invalidate every synthesis that loses an input, atomically."""
+    await pool.fetch(
+        """WITH prior AS MATERIALIZED (
+               SELECT id, story_id FROM articles
+                WHERE id = ANY($2::text[]) FOR UPDATE
+           ), moved AS (
+               UPDATE articles SET story_id = $1
+                WHERE id = ANY($2::text[]) AND id IN (SELECT id FROM prior)
+                RETURNING id
+           ), invalidated AS (
+               UPDATE stories s
+                  SET synthesis_status = 'failed', copy_rules_version = NULL,
+                      synthesis_attempts = 0,
+                      article_count = (SELECT count(*) FROM articles a
+                                        WHERE a.story_id = s.id AND a.id <> ALL($2::text[])),
+                      updated_at = NOW()
+                WHERE s.id IN (SELECT prior.story_id FROM prior JOIN moved USING (id)
+                                WHERE prior.story_id IS NOT NULL AND prior.story_id <> $1)
+                RETURNING s.id
+           ) SELECT id FROM invalidated""",
+        story_id, member_ids,
+    )
+
+
 async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     """Attach one article to an existing story. Returns what was done.
 
@@ -129,9 +154,7 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     to say, and re-synthesizing it is exactly the duplicate spend #129 removed.
     """
     outlets_before = await _story_outlets(pool, story_id)
-    await pool.execute(
-        "UPDATE articles SET story_id = $1 WHERE id = $2", story_id, article["id"],
-    )
+    await _move_articles(pool, [article["id"]], story_id)
 
     new_outlet = (article.get("source_name") or "") not in outlets_before
     version = await pool.fetchval("SELECT copy_rules_version FROM stories WHERE id = $1", story_id)
@@ -268,10 +291,7 @@ async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str
         article.get("category"), json.dumps(synthesis.get("framings", [])),
         len(members), image, earliest, status, COPY_RULES_VERSION if status == "complete" else None,
     )
-    await pool.execute(
-        "UPDATE articles SET story_id = $1 WHERE id = ANY($2::text[])",
-        story_id, [m["id"] for m in members],
-    )
+    await _move_articles(pool, [m["id"] for m in members], story_id)
     return "created_synthesis_failed" if status == "failed" else "created"
 
 

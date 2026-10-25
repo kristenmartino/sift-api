@@ -50,7 +50,7 @@ def _pool(fetch_map=None, fetchval=None):
 
 
 def _sql(pool):
-    return "\n".join(str(c.args[0]) for c in pool.execute.call_args_list if c.args)
+    return "\n".join(str(c.args[0]) for c in pool.execute.call_args_list + pool.fetch.call_args_list if c.args and ("UPDATE " in str(c.args[0]) or "INSERT " in str(c.args[0])))
 
 
 def _sweep_pool(targets, members=None, attempts_seen=None):
