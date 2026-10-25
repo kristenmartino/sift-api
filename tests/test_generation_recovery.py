@@ -100,6 +100,10 @@ def test_term_rubric_rejects_live_failure_and_retains_specialist_terms():
 
 @pytest.mark.parametrize(("text", "source", "expected"), [
     ("The budget is £7 million.", "The budget is £7m.", set()),
+    ("The deal is $6 billion.", "The deal is $6bn.", set()),
+    ("The deal is $6B.", "The deal is $6 bln.", set()),
+    ("The deal is $6 million.", "The deal is $6bn.", {"6 million"}),
+    ("The deal is $7 billion.", "The deal is $6bn.", {"7 billion"}),
     ("The cost is 7,000,000.", "The cost is 7 million.", set()),
     ("The cost is 8 million.", "The cost is 7m.", {"8 million"}),
     ("The rate is 7%.", "The rate is 7.", {"7%"}),

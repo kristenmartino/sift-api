@@ -158,9 +158,10 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
     This is a conservative evidence check, not a factual or arithmetic judge.
     It prevents adding e.g. a population or an inferred election date.
     """
-    pattern = re.compile(r"\b(\d+(?:[.,]\d+)*)(?:\s*(thousand|million|billion|trillion)\b|([kmbt])\b|\s*(%|percent\b|per cent\b))?", re.I)
+    pattern = re.compile(r"\b(\d+(?:[.,]\d+)*)(?:\s*(thousand|million|billion|trillion|mn|bn|tn|mln|bln|trn)\b|([kmbt])\b|\s*(%|percent\b|per cent\b))?", re.I)
     scales = {"k": 3, "thousand": 3, "m": 6, "million": 6,
-              "b": 9, "billion": 9, "t": 12, "trillion": 12}
+              "b": 9, "billion": 9, "t": 12, "trillion": 12,
+              "mn": 6, "mln": 6, "bn": 9, "bln": 9, "tn": 12, "trn": 12}
     def tokens(value):
         out = []
         for match in pattern.finditer(value):
