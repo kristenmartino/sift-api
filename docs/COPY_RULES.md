@@ -88,3 +88,9 @@ by B” is rejected by both article and cluster generation. The check preserves
 correct active/passive wording and denied claims; it is not a general transaction
 or factuality validator. Prompts also require buyer/target roles and talks to
 remain as supplied.
+
+Moving an article to a different story atomically invalidates the old story's
+synthesis and resets its retry count. A source can no longer leave an old cluster
+while its figures or notes remain published there. The normal bounded sweep
+resynthesizes the remaining members; the destination is not invalidated by its
+own membership update.

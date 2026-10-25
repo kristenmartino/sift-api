@@ -86,7 +86,7 @@ async def test_obvious_term_is_removed_without_losing_useful_jargon(monkeypatch)
 @pytest.mark.asyncio
 async def test_same_outlet_does_not_reuse_old_rules(monkeypatch):
     pool=AsyncMock()
-    pool.fetch.side_effect=[[{"source_name":"AP"}], [dict(A.model_dump(), id="a", summary=A.raw_content)]]
+    pool.fetch.side_effect=[[{"source_name":"AP"}], [], [dict(A.model_dump(), id="a", summary=A.raw_content)]]
     pool.fetchval.return_value="old"
     synth=AsyncMock(return_value={"headline":"H","summary":"S","framings":[]})
     await _attach(pool,{"id":"a","source_name":"AP"},"story",synth)
@@ -219,3 +219,16 @@ def test_article_parser_rejects_the_observed_takeover_reversal():
                                  "raw_content":"US hospital chain seeks a large deal."})
     with pytest.raises(AlignmentError, match="reversed takeover roles"):
         _parse_summaries(json.dumps([{"i":1,"s":"Bon Secours is nearing a $6 billion takeover by Bain-backed Surgery Partners.","c":"business"}]),[article])
+
+
+@pytest.mark.asyncio
+async def test_membership_moves_invalidate_only_stories_that_lose_inputs():
+    from workflows.incremental_threading import _move_articles
+    pool=AsyncMock()
+    await _move_articles(pool,["moved-member"],"target")
+    query,target,ids=pool.fetch.call_args.args
+    assert target == "target" and ids == ["moved-member"]
+    assert "FOR UPDATE" in query and "prior JOIN moved" in query
+    assert "prior.story_id <> $1" in query
+    assert "synthesis_status = 'failed'" in query and "copy_rules_version = NULL" in query
+    assert "a.id <> ALL($2::text[])" in query
