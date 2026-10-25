@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+import asyncpg
+
 from app import db
 from app.config import settings
 from services.source_review import assess_copy
@@ -22,6 +24,18 @@ async def main(args):
     settings.ai_cost_guard_enabled = True
     if args.daily_cap is not None:
         settings.daily_ai_cost_limit_usd = args.daily_cap
+    db._pool = await asyncpg.create_pool(settings.database_url, min_size=0, max_size=3,
+        ssl="require" if "neon.tech" in settings.database_url else None)
+    try:
+        return await _run_audit(args)
+    finally:
+        if _pending_records:
+            await asyncio.gather(*list(_pending_records), return_exceptions=True)
+        await db._pool.close()
+        db._pool = None
+
+
+async def _run_audit(args):
     if args.regressions:
         rows = json.loads((Path(__file__).parents[1] / "data/eval/source_fidelity_regressions.json").read_text())
     else:
@@ -38,17 +52,11 @@ async def main(args):
         rows += [{"id": s["id"], "title": "Supplied cluster reports",
                   "source": "\n".join(a["title"] + "\n" + (a["summary"] or "") for a in members if a["story_id"] == s["id"]),
                   "copy": s["headline"] + "\n" + s["summary"]} for s in stories]
-    try:
-        result = await assess_copy(rows)
-        failures = [{"id": r["id"], "expected": r.get("expected", "pass"), "actual": result[r["id"]]}
-                    for r in rows if result[r["id"]]["v"] != r.get("expected", "pass")]
-        print(json.dumps({"checked": len(rows), "failures": failures, "verdicts": result}, indent=2))
-        return bool(failures)
-    finally:
-        if _pending_records:
-            await asyncio.gather(*list(_pending_records), return_exceptions=True)
-        if db._pool:
-            await db._pool.close()
+    result = await assess_copy(rows)
+    failures = [{"id": r["id"], "expected": r.get("expected", "pass"), "actual": result[r["id"]]}
+                for r in rows if result[r["id"]]["v"] != r.get("expected", "pass")]
+    print(json.dumps({"checked": len(rows), "failures": failures, "verdicts": result}, indent=2))
+    return bool(failures)
 
 
 if __name__ == "__main__":
