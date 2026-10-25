@@ -103,6 +103,9 @@ def test_term_rubric_rejects_live_failure_and_retains_specialist_terms():
     ("The cost is 7,000,000.", "The cost is 7 million.", set()),
     ("The cost is 8 million.", "The cost is 7m.", {"8 million"}),
     ("The rate is 7%.", "The rate is 7.", {"7%"}),
+    ("The discount is 40%.", "The discount is 40 percent.", set()),
+    ("The discount is 40 per cent.", "The discount is 40%.", set()),
+    ("The discount is 41%.", "The discount is 40 percent.", {"41%"}),
 ])
 def test_equivalent_scales_do_not_block_recovery(text, source, expected):
     from services.quality_gate import unsupported_figures
