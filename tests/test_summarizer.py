@@ -246,9 +246,10 @@ class TestSummarizeArticlesAlignment:
                 {"i": 1, "s": "Right one", "c": "technology"},
                 {"i": 2, "s": "Right two", "c": "business"},
             ),
+            _response({"i":1,"v":"pass"},{"i":2,"v":"pass"}),
         )
         results = await summarize_articles(batch, client=client)
-        assert client.messages.create.await_count == 2
+        assert client.messages.create.await_count == 3
         assert results["https://example.com/article-1"]["summary"] == "Right one"
         assert results["https://example.com/article-2"]["summary"] == "Right two"
 
@@ -290,11 +291,11 @@ class TestSummarizeArticlesAlignment:
         assert any(r.levelno >= logging.WARNING for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_aligned_batch_costs_exactly_one_call(self):
+    async def test_aligned_batch_gets_one_generation_and_one_source_review(self):
         batch = [_make_article(1)]
-        client = _mock_client(_response({"i": 1, "s": "Fine", "c": "top"}))
+        client = _mock_client(_response({"i": 1, "s": "Fine", "c": "top"}), _response({"i":1,"v":"pass"}))
         results = await summarize_articles(batch, client=client)
-        client.messages.create.assert_awaited_once()
+        assert client.messages.create.await_count == 2
         assert results["https://example.com/article-1"]["summary"] == "Fine"
 
     @pytest.mark.asyncio

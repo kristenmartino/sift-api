@@ -287,6 +287,13 @@ def find_refusal(text: str) -> str | None:
     return None
 
 
+def empty_analysis(text: str) -> bool:
+    """Catch observed finding-free filler, retaining an actual metric/update."""
+    vague = re.search(r"\breveals? insights? (?:about|into)\b|\b(?:significant|major) shift in\b.{0,60}\b(?:views|opinion|sentiment)\b|\bdisappointing update\b", text, re.I)
+    concrete = re.search(r"\b\d+(?:\.\d+)?\s*(?:%|snaps?|points?|percent|votes?)\b|\b(?:ruled out|will return|returned|rose to|fell to|increased to|decreased to)\b|[\"“]", text, re.I)
+    return bool(vague and not concrete)
+
+
 def gate_summary(summary: str | None) -> str:
     """Strip generic significance closers and the model's own apologies.
 
@@ -322,10 +329,11 @@ def gate_summary(summary: str | None) -> str:
     text = (summary or "").strip()
     preview = re.compile(
         r"^[A-Z][^.]{0,70}\s+(?:provides?|offers?|presents?)\s+"
-        r"(?:(?:main card|expert|game)\s+)?(?:viewing information|viewing guide|predictions|betting tips)\b"
+        r"(?:(?:main card|expert|game)\s+)?(?:viewing information|viewing guide|predictions|betting tips|hints and answers|clues and answers)\b"
         r"|^[A-Z][^.]{0,70}\s+analyzes?\s+.{0,100}\bmatchup\b", re.I,
     )
     sentences = _SENTENCE_SPLIT_RE.split(text)
+    sentences = [s for s in sentences if not empty_analysis(s)]
     sentences = [sentence for sentence in sentences if not (
         preview.match(sentence) and not re.search(r"\b(?:predicts? that|will win|wins? by|favou?red by|odds of|expects?|forecasts?|projects?|estimates?)\b|\d+(?:\.\d+)?\s*(?:%|percent\b)", sentence, re.I))]
     text = " ".join(sentences).strip()

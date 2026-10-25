@@ -10,6 +10,7 @@ from app.config import settings
 from services.model_registry import resolve
 from services.copy_rules import COPY_RULES, COPY_RULES_VERSION
 from services.judge import judge_lines
+from services.source_review import assess_copy
 from services.cost_guard import check_budget
 from services.cost_estimates import estimate_cost
 from services.quality_gate import clean_generated_headline, gate_framing, gate_summary, unsupported_figures, takeover_role_conflict, interim_result_conflict
@@ -174,6 +175,11 @@ Return ONLY a JSON object:
                 or not re.search(r"\bwhether\b.{0,120}\b(?:caused|contributed)\b|\bcause\b.{0,40}\b(?:unknown|unclear|unresolved)\b", result["summary"], re.I)
             ):
                 logger.warning("Story copy resolved an explicitly uncertain cause; leaving synthesis retryable")
+                return _fallback(articles)
+            review = await assess_copy([{"id": "story", "title": "Supplied story reports",
+                "source": articles_text, "copy": result["headline"] + "\n" + result["summary"]}], client=client)
+            if review.get("story", {}).get("v") != "pass":
+                logger.warning("Story failed source/content review; leaving synthesis retryable")
                 return _fallback(articles)
             raw_framings = result.get("framings", [])
             result["framings"] = _gate_framings(raw_framings, articles, result["summary"])

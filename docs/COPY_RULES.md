@@ -99,3 +99,29 @@ A halftime score must remain an interim lead, not a completed win. Both article
 and story generation reject the observed “defeated … 33-6 at halftime” wording;
 the article batch re-asks and the cluster remains retryable. Final wins and
 explicit halftime leads are retained.
+
+## Source-fidelity review (2026-10-25.3)
+
+Primary article summaries and unified cluster text now receive a budget-checked
+Sonnet review against the actual inputs supplied to generation. It checks named
+people, spelling, relationships, attribution, uncertainty and concrete content,
+including generic wording inherited from older member summaries. Concise copy
+may omit source details; omission alone is not failure. This reviews fidelity to
+inputs, not the independent factual truth of a publisher's claims.
+
+A failed or unavailable article review blanks the candidate and leaves durable
+generation pending. An explicit source-only guide verdict is unavailable until
+changed usable source text arrives. A failed cluster review remains retryable
+and unpublished. The configured daily cap and event-driven scheduling remain.
+
+The Section 338 definition uses a small cited override in
+`services/term_references.py`, based on 19 U.S.C. 1338, instead of allowing a
+generic national-security tariff description. Both real-time and batch primer
+results pass through that parser. The override is not a general legal-reference
+database.
+
+`scripts/audit_source_copy.py --regressions --daily-cap 15` runs labeled failures
+and useful-copy controls through the actual reviewer. Without `--regressions`,
+it checks a bounded recent production sample; it does not modify content.
+Its guard is always enabled, with the environment's configured cap unless an
+operator explicitly provides one. Review errors are failures, not silent passes.

@@ -12,6 +12,7 @@ from app.models import RSSArticle
 from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.copy_rules import COPY_RULES
+from services.source_review import assess_copy
 from services.model_registry import resolve
 from services.quality_gate import gate_summary, unsupported_figures, takeover_role_conflict, interim_result_conflict
 from services.index_alignment import (
@@ -156,6 +157,8 @@ async def summarize_articles(
             logger.error("Summarization failed for batch %d: %s", batch_index, e)
             results.update(_raw_content_fallback(batch))
 
+    await _review_article_results(results, articles, client=client)
+
     logger.info(
         "Summarized %d/%d articles (%d batches fell back after misalignment)",
         len(results),
@@ -163,6 +166,22 @@ async def summarize_articles(
         misaligned_batches,
     )
     return results
+
+
+async def _review_article_results(results: dict[str, dict], articles: list[RSSArticle], *, client=None) -> None:
+    """Unchecked/failed summaries stay pending; source-only guides are unavailable."""
+    items = [{"id": a.source_url, "title": a.title,
+              "source": _truncate(re.sub(r"<[^>]+>", "", a.raw_content or ""), 500),
+              "copy": results[a.source_url]["summary"]}
+             for a in articles if a.source_url in results
+             and results[a.source_url].get("summary") and not results[a.source_url].get("_degraded")]
+    verdicts = await assess_copy(items, client=client)
+    for item in items:
+        verdict = verdicts.get(item["id"], {}).get("v")
+        if verdict != "pass":
+            results[item["id"]] = {"summary": "", "category": FALLBACK_CATEGORY,
+                                   "_unavailable" if verdict == "unavailable" else "_degraded": True}
+            logger.info("Summary withheld after source review: %s %s", item["id"], verdict)
 
 
 async def _summarize_batch_with_retry(

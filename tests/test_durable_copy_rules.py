@@ -58,7 +58,7 @@ async def test_every_generator_includes_the_same_copy_standard():
     client = AsyncMock()
     client.messages.create.return_value = response({"headline": "Bank holds rates", "summary": SUMMARY})
     await synthesize_story([ARTICLE, {**ARTICLE, "source_name": "B"}], client=client)
-    assert COPY_RULES in client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert COPY_RULES in client.messages.create.call_args_list[0].kwargs["messages"][0]["content"]
 
 
 def test_article_parser_keeps_the_fact_and_drops_the_closer():
@@ -185,6 +185,7 @@ async def test_story_rows_keep_actual_sources_once_and_reject_invented_ones(monk
             {"source_name": "Ghost outlet", "framing": "An invented angle.", "tone": "urgent"},
         ],
     })
+    client.messages.create.side_effect = [client.messages.create.return_value, response([{"i":1,"v":"pass"}])]
     source_a = {**ARTICLE, "summary": SUMMARY + " The bank also changed its reserve requirements."}
     result = await synthesize_story([source_a, {**ARTICLE, "source_name": "B"}, source_a], client=client)
     assert result["headline"] == "Officials reportedly plan talks"

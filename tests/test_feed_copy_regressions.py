@@ -69,6 +69,10 @@ async def test_synthesis_applies_copy_guards_and_preserves_empty_source_row():
     client.messages.create.return_value = SimpleNamespace(
         content=[SimpleNamespace(type='text', text=json.dumps(data))], stop_reason='end_turn',
         usage=SimpleNamespace(input_tokens=10, output_tokens=10))
+    generation=client.messages.create.return_value
+    review=SimpleNamespace(content=[SimpleNamespace(type='text',text='[{"i":1,"v":"pass"}]')],
+        stop_reason='end_turn',usage=SimpleNamespace(input_tokens=10,output_tokens=10))
+    client.messages.create.side_effect=[generation,review]
     articles = [{'title': 'Talks planned', 'summary': 'Officials plan talks.',
                  'source_name': name, 'source_url': 'https://example.com/' + name} for name in ['A', 'B']]
     result = await synthesize_story(articles, client=client)

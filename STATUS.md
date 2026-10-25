@@ -155,6 +155,16 @@ An entry below describes what was true on its date and is never edited to stay c
 
 ## Recent decisions (last 7 days)
 
+- **2026-10-25** — Seven live/manual failures exposed gaps beyond numeric and
+  pattern checks: a substituted person, an invented opponent, inherited filler,
+  guide-only narration, name corruption and a misleading legal definition.
+  Rules 2026-10-25.3 add source-fidelity review for article/cluster summaries,
+  fail closed to durable retries, and use a cited Section 338 definition.
+  Reviewer controls explicitly preserve concise summaries that omit details.
+  This supersedes earlier entries limiting runtime review to optional copy;
+  it checks supplied evidence, not the independent truth of reporting. Keep
+  the $15 production cap and the existing schedule. See docs/COPY_RULES.md.
+
 - **2026-10-24** — A live-model canary added a population and an election date
   absent from its inputs, repeated a summary in outlet notes, and inferred
   earlier NASA plans. Numeric evidence checks and extractive source notes now
