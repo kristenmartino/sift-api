@@ -82,3 +82,9 @@ Retry evidence survives an empty or headline-only RSS update. Unavailable entrie
 are reconsidered only when the publisher provides changed, usable content; an
 unchanged guide does not repeatedly consume generation budget. Successful retries
 of both pending and unavailable entries rejoin story threading.
+
+An explicit grammatical reversal of “A nears a takeover of B” into “A's takeover
+by B” is rejected by both article and cluster generation. The check preserves
+correct active/passive wording and denied claims; it is not a general transaction
+or factuality validator. Prompts also require buyer/target roles and talks to
+remain as supplied.

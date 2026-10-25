@@ -195,3 +195,27 @@ async def test_only_changed_usable_unavailable_entries_bypass_url_dedup(monkeypa
     monkeypatch.setattr("services.deduplicator.get_pool",AsyncMock(return_value=pool))
     article=A.model_copy(update={"content_hash":new_hash,"raw_content":body})
     assert await deduplicate([article]) == ([article] if retry else [])
+
+
+@pytest.mark.parametrize(("summary", "conflict"), [
+    ("Bon Secours is nearing a $6 billion takeover by Bain-backed Surgery Partners.", True),
+    ("Bon Secours is nearing an acquisition by Surgery Partners.", True),
+    ("Bon Secours is nearing a takeover of Surgery Partners.", False),
+    ("Surgery Partners is nearing a takeover by Bon Secours.", False),
+    ("The takeover by Bon Secours of Surgery Partners is in talks.", False),
+    ("Bon Secours denied being the target of a takeover by Surgery Partners.", False),
+])
+def test_takeover_roles_preserve_active_passive_and_denied_claims(summary, conflict):
+    from services.quality_gate import takeover_role_conflict
+    title="Bon Secours nears $6bn takeover of Bain-backed Surgery Partners"
+    assert takeover_role_conflict(summary,title) is conflict
+
+
+def test_article_parser_rejects_the_observed_takeover_reversal():
+    import json
+    from services.summarizer import _parse_summaries
+    from services.index_alignment import AlignmentError
+    article=A.model_copy(update={"title":"Bon Secours nears $6bn takeover of Bain-backed Surgery Partners",
+                                 "raw_content":"US hospital chain seeks a large deal."})
+    with pytest.raises(AlignmentError, match="reversed takeover roles"):
+        _parse_summaries(json.dumps([{"i":1,"s":"Bon Secours is nearing a $6 billion takeover by Bain-backed Surgery Partners.","c":"business"}]),[article])
