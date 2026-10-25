@@ -4,13 +4,17 @@ Field-specific prompts still define the output shape. Keep the common rules
 here so a model or prompt change cannot silently omit them from one stage.
 """
 
-COPY_RULES_VERSION = "2026-10-25.1"
+COPY_RULES_VERSION = "2026-10-25.2"
 
 COPY_RULES = """Sift copy rules:
 - State supported facts directly. One useful sentence is enough. Never fill a
   sentence quota with an observation about importance, broader tensions,
   implications, challenges, or what a development highlights or underscores.
 - Do not narrate the text with "the article explores/discusses/examines".
+  If a source is only a viewing guide, prediction teaser, or promotion with no
+  substantive supplied details, return an empty summary. Do not invent its advice.
+  Background cannot add article-specific policy conditions, enforcement steps,
+  venue restrictions, or guarantees absent from the supplied text.
   Preserve specific details, figures, uncertainty, and named attribution.
   Keep opinion attributed as opinion. A proposal is not an adopted policy;
   an event preceding a death does not establish the cause of death.

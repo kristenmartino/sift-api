@@ -377,7 +377,9 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
         if unsupported_figures(summary, source_text):
             raise AlignmentError(f"summary added an unsupported figure at index {idx}")
 
-        results[batch[idx - 1].source_url] = {"summary": summary, "category": category}
+        results[batch[idx - 1].source_url] = {"summary": summary,
+                                                "category": category if summary else FALLBACK_CATEGORY,
+                                                **({"_unavailable": True} if not summary else {})}
 
     return results
 

@@ -33,6 +33,9 @@ Both real-time and scheduled primer results use `_parse_primers`. Scheduled
 results fetch the matching article reference once on completion, before writing.
 If that reference cannot be read, optional primer copy is withheld. Context
 results always withhold automatic significance notes while retaining scores.
+Definitions pass a focused `term_utility` review. Obvious vocabulary and circular
+definitions are withheld. Background review receives retained definitions and
+rejects semantic duplication or article-specific conditions absent from its inputs.
 Nonempty background paragraphs also pass a focused `background_novelty` check
 through the existing Sonnet judge operation. A failed or budget-blocked check
 blanks the paragraph while retaining useful definitions. Neither path introduces
@@ -64,3 +67,13 @@ note redundancy check above runs automatically; the legacy significance-judge
 flag cannot enable notes without additional evidence. New failure patterns should be added with a
 failure fixture and a retention control before expanding a filter. Historical
 records are not rewritten by these safeguards.
+
+## Recovery and provenance
+
+Rules 2026-10-25.2 retain source text for durable retries after budget/provider
+failure. Pending summaries are retried on the ingestion cadence, not a separate
+DB timer. Headline-only or pure promotional/guide inputs are explicitly unavailable.
+`/health.generation` distinguishes this queue from successful RSS ingestion.
+Stories record the rules version and only reuse current-version text. Numeric
+checks allow equivalent scales (7m, 7 million, 7,000,000) while rejecting changed
+values; this remains a figure-evidence check, not verification of a whole claim.

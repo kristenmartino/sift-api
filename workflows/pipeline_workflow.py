@@ -350,8 +350,8 @@ async def store_node(state: PipelineState) -> dict:
         result = summaries.get(article.source_url)
         summary = result["summary"] if result else ""
         category = article.category or "general"
-        generation_status = ("complete" if result and not result.get("_degraded")
-                             else "pending" if _has_summarizable_content(article) else "unavailable")
+        generation_status = ("complete" if result and summary.strip() and not result.get("_degraded")
+                             else "pending" if _has_summarizable_content(article) and not (result or {}).get("_unavailable") else "unavailable")
         why_it_matters = contexts.get(article.source_url)
         importance_score = importance_scores.get(article.source_url)
         embedding = embeddings.get(article.source_url)
