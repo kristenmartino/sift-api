@@ -213,7 +213,7 @@ async def embed_node(state: PipelineState) -> dict:
     from services.embedder import embed_texts
 
     new_articles = [a for a in state.get("new_articles", [])
-                    if state.get("summaries", {}).get(a.source_url)
+                    if state.get("summaries", {}).get(a.source_url, {}).get("summary")
                     and not state["summaries"][a.source_url].get("_degraded")]
     if not new_articles:
         logger.info("embed: no new articles to embed")
@@ -274,7 +274,7 @@ async def link_entities_node(state: PipelineState) -> dict:
     from services.entity_linker import link_articles
 
     new_articles = [a for a in state.get("new_articles", [])
-                    if state.get("summaries", {}).get(a.source_url)
+                    if state.get("summaries", {}).get(a.source_url, {}).get("summary")
                     and not state["summaries"][a.source_url].get("_degraded")]
     if not new_articles:
         return {"entity_links": {}}
