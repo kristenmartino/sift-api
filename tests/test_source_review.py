@@ -108,3 +108,22 @@ def test_committed_semantic_cases_cover_the_failures_and_retention_controls():
     assert [x['proposed_copy'] for x in encoded]==[x['copy'] for x in rows]
     assert {row['expected'] for row in rows}=={'pass','retry','unavailable'}
     assert 'relationships' in prompt and 'inherited verbatim' in prompt
+
+
+@pytest.mark.asyncio
+async def test_standalone_audit_opens_the_cost_ledger_pool_and_always_closes_it(monkeypatch):
+    from scripts import audit_source_copy as audit
+    from app import db
+    pool=AsyncMock()
+    monkeypatch.setattr(audit.asyncpg,'create_pool',AsyncMock(return_value=pool))
+    monkeypatch.setattr(audit.settings,'ai_cost_guard_enabled',False)
+    monkeypatch.setattr(audit.settings,'daily_ai_cost_limit_usd',10)
+    async def assess(rows):
+        assert db._pool is pool
+        assert audit.settings.ai_cost_guard_enabled is True
+        assert audit.settings.daily_ai_cost_limit_usd==15
+        return {r['id']:{'v':r['expected']} for r in rows}
+    monkeypatch.setattr(audit,'assess_copy',assess)
+    assert await audit.main(SimpleNamespace(regressions=True,daily_cap=15)) is False
+    pool.close.assert_awaited_once()
+    assert db._pool is None
