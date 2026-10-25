@@ -125,3 +125,8 @@ and useful-copy controls through the actual reviewer. Without `--regressions`,
 it checks a bounded recent production sample; it does not modify content.
 Its guard is always enabled, with the environment's configured cap unless an
 operator explicitly provides one. Review errors are failures, not silent passes.
+
+Background prose uses the same usefulness bar as glossary entries. It cannot
+reintroduce obvious vocabulary as a paragraph or infer player-acquisition /
+postseason-eligibility guarantees from a trade deadline. Useful institutional
+roles and unfamiliar procedures remain retention controls.

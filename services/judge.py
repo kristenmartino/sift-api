@@ -82,7 +82,15 @@ enforcement steps, venue restrictions, or procedural guarantees absent from
 TITLE/SUMMARY. A generic institutional role can be useful; a guessed condition
 on this specific news event cannot. For example, "Cornell bans frat parties"
 does not support a paragraph claiming a campus-only scope or facility-use rules.
-Shared topic vocabulary alone is not repetition.
+Apply the same usefulness bar as the glossary. A paragraph defining familiar
+ordinary vocabulary (a trade deadline or a red-light camera) is still an obvious
+definition even when that term has no glossary entry: r=true, a=false. Do not
+approve a rejected glossary definition merely because it was moved into prose.
+Do not approve categorical acquisition or postseason-eligibility guarantees
+based only on a trade deadline. Those rules have exceptions and require an
+authoritative reference; set n=false when no such support is supplied.
+A useful institutional role (such as the DNI) or an unfamiliar procedural
+explanation can still pass. Shared topic vocabulary alone is not repetition.
 
 Example: a summary already calls Impulso Morelia a post-production section of
 the film festival and states its funding award. Explaining that this section
