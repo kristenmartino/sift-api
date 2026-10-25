@@ -213,6 +213,26 @@ Requires `stream-unzip` (in `requirements-dev.txt`, not shipped to prod): the
 IRS bulk zips use Deflate64, which Python's `zipfile`, `bsdtar` and macOS
 `ditto` all refuse — and `bsdtar` fails by writing a zero-byte file.
 
+## Generation recovery
+
+Budget/provider failures retain the RSS source in `articles.generation_raw_content`
+and set `generation_status=pending`. The existing ingestion cycle retries up to
+50 queued URLs, including entries no longer present in RSS. Missing source body
+is `unavailable`; it is never promoted from a headline to an invented summary.
+RSS fallback rows remain in `general` and skip paid enrichment. Successful retries
+reset the threading marker and record `copy_rules_version`.
+
+`GET /health` exposes the cached `generation` snapshot (`pending`, `unavailable`,
+`last_completed`); pending summaries make status `degraded`. `?deep=1` refreshes
+these counts explicitly. There is no new periodic database reader. Counts cover
+30 days; the durable retry selector itself has no age cutoff.
+
+Story reuse requires the current copy rules version. Recent unversioned stories
+join the bounded repair sweep; a changed timestamp alone never certifies copy.
+Glossary usefulness is reviewed before background novelty, and novelty review
+includes retained definitions. Unavailable optional review withholds that copy.
+The configured daily spending ceiling is unchanged.
+
 ## Environment variables
 
 | Variable | Required | Description |

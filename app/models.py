@@ -93,6 +93,7 @@ class HealthResponse(BaseModel):
     # infer it.
     model_overrides: dict[str, str] | None = None
     copy_rules_version: str | None = None
+    generation: dict | None = None
 
 
 # --- Errors ---

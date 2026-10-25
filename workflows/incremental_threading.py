@@ -72,6 +72,7 @@ from datetime import datetime
 
 from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
+from services.copy_rules import COPY_RULES_VERSION
 
 logger = logging.getLogger("sift-api.incremental_threading")
 
@@ -132,7 +133,8 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     )
 
     new_outlet = (article.get("source_name") or "") not in outlets_before
-    if not new_outlet:
+    version = await pool.fetchval("SELECT copy_rules_version FROM stories WHERE id = $1", story_id)
+    if not new_outlet and version == COPY_RULES_VERSION:
         await pool.execute(
             """UPDATE stories SET article_count = (
                    SELECT count(*) FROM articles WHERE story_id = $1
@@ -159,9 +161,12 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
         # it stays out of the feed. `synthesis_status` is deliberately not
         # written: every value it could hold is already the right one.
         await pool.execute(
-            """UPDATE stories SET article_count = $2, updated_at = NOW()
+            """UPDATE stories SET article_count = $2,
+                    synthesis_status = CASE WHEN copy_rules_version IS DISTINCT FROM $3
+                                            THEN 'failed' ELSE synthesis_status END,
+                    updated_at = NOW()
                 WHERE id = $1""",
-            story_id, len(members),
+            story_id, len(members), COPY_RULES_VERSION,
         )
         logger.warning(json.dumps({
             "event": "synthesis_failed_on_attach",
@@ -175,10 +180,10 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     await pool.execute(
         """UPDATE stories
               SET headline = $2, summary = $3, framings = $4::jsonb,
-                  article_count = $5, synthesis_status = 'complete', updated_at = NOW()
+                  article_count = $5, synthesis_status = 'complete', copy_rules_version = $6, updated_at = NOW()
             WHERE id = $1""",
         story_id, synthesis["headline"], synthesis["summary"],
-        json.dumps(synthesis.get("framings", [])), len(members),
+        json.dumps(synthesis.get("framings", [])), len(members), COPY_RULES_VERSION,
     )
     return "attached_new_outlet_resynthesized"
 
@@ -254,13 +259,13 @@ async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str
     await pool.execute(
         """
         INSERT INTO stories (id, headline, summary, category, framings, entities,
-            article_count, representative_image_url, published_date, synthesis_status)
-        VALUES ($1, $2, $3, $4, $5::jsonb, '[]'::jsonb, $6, $7, $8, $9)
+            article_count, representative_image_url, published_date, synthesis_status, copy_rules_version)
+        VALUES ($1, $2, $3, $4, $5::jsonb, '[]'::jsonb, $6, $7, $8, $9, $10)
         ON CONFLICT (id) DO NOTHING
         """,
         story_id, synthesis["headline"], synthesis["summary"],
         article.get("category"), json.dumps(synthesis.get("framings", [])),
-        len(members), image, earliest, status,
+        len(members), image, earliest, status, COPY_RULES_VERSION if status == "complete" else None,
     )
     await pool.execute(
         "UPDATE articles SET story_id = $1 WHERE id = ANY($2::text[])",
@@ -311,13 +316,15 @@ async def _sweep_failed(pool, synthesize) -> dict:
     # nobody anything.
     targets = await pool.fetch(
         """SELECT s.id FROM stories s
-            WHERE s.synthesis_status = 'failed'
+            WHERE (s.synthesis_status = 'failed' OR
+                   (s.copy_rules_version IS DISTINCT FROM $4
+                    AND s.updated_at >= NOW() - INTERVAL '48 hours'))
               AND s.synthesis_attempts < $1
               AND (SELECT count(DISTINCT a.source_name)
                      FROM articles a WHERE a.story_id = s.id) >= $2
             ORDER BY s.synthesis_attempts, s.created_at DESC
             LIMIT $3""",
-        MAX_SYNTHESIS_ATTEMPTS, MIN_UNIQUE_OUTLETS, SWEEP_LIMIT,
+        MAX_SYNTHESIS_ATTEMPTS, MIN_UNIQUE_OUTLETS, SWEEP_LIMIT, COPY_RULES_VERSION,
     )
     if not targets:
         return counts
@@ -360,12 +367,12 @@ async def _sweep_failed(pool, synthesize) -> dict:
             await pool.execute(
                 """UPDATE stories
                       SET headline = $2, summary = $3, framings = $4::jsonb,
-                          article_count = $5, synthesis_status = 'complete',
+                          article_count = $5, synthesis_status = 'complete', copy_rules_version = $6,
                           synthesis_attempts = synthesis_attempts + 1,
                           updated_at = NOW()
                     WHERE id = $1""",
                 story_id, synthesis["headline"], synthesis["summary"],
-                json.dumps(synthesis.get("framings", [])), len(members),
+                json.dumps(synthesis.get("framings", [])), len(members), COPY_RULES_VERSION,
             )
             counts["repaired"] += 1
         except Exception as e:  # noqa: BLE001 — one bad story must not stall the sweep

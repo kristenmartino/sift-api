@@ -40,7 +40,7 @@ from services.index_alignment import (
     with_alignment_retry,
 )
 from services.quality_gate import gate_background, gate_generated_background, term_in_source
-from services.copy_rules import COPY_RULES
+from services.copy_rules import COPY_RULES, COPY_RULES_VERSION
 from services.judge import judge_lines
 from services.usage_tracker import log_batch_usage, log_usage
 
@@ -319,8 +319,36 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
 async def _review_backgrounds(payloads: dict[str, dict], articles: list[dict], *, client=None) -> None:
     """Withhold unapproved optional paragraphs, retaining useful definitions."""
     meta = {a["source_url"]: a for a in articles}
+    # Review definitions as well as paragraphs. Both live and Batch API results
+    # arrive here; unavailable review withholds optional, unchecked copy.
+    term_items = []
+    for url, payload in payloads.items():
+        for index, term in enumerate(payload["terms"]):
+            term_items.append({"id": f"{url}#{index}", "title": meta[url].get("title", ""),
+                               "summary": meta[url].get("summary", ""),
+                               "line": f"{term['term']}: {term['definition']}"})
+    approved_terms = set()
+    if term_items:
+        try:
+            budget = await check_budget(estimate_cost("judge.batch", len(term_items)))
+            if budget.allowed:
+                verdicts = await judge_lines(term_items, field="term_utility", client=client)
+                approved_terms = {v["id"] for v in verdicts if v.get("judged")
+                                  and v.get("restates") is False and v.get("adds_significance") is True
+                                  and v.get("neutral_cliche_free") is True}
+        except Exception as e:
+            logger.error("Term utility review unavailable; withholding definitions: %s", e)
+        for url, payload in payloads.items():
+            payload["terms"] = [t for i, t in enumerate(payload["terms"])
+                                if f"{url}#{i}" in approved_terms]
     items = [{"id": url, "title": meta[url].get("title", ""), "summary": meta[url].get("summary", ""),
-              "line": p["background"]} for url, p in payloads.items() if p["background"]]
+              "line": p["background"], "terms": p["terms"]}
+             for url, p in payloads.items() if p["background"]]
+    for url in list(payloads):
+        if not payloads[url]["background"] and not payloads[url]["terms"]:
+            del payloads[url]
+    for payload in payloads.values():
+        payload["copy_rules_version"] = COPY_RULES_VERSION
     if not items:
         return
     approved = set()

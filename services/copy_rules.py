@@ -4,7 +4,7 @@ Field-specific prompts still define the output shape. Keep the common rules
 here so a model or prompt change cannot silently omit them from one stage.
 """
 
-COPY_RULES_VERSION = "2026-10-24.2"
+COPY_RULES_VERSION = "2026-10-25.1"
 
 COPY_RULES = """Sift copy rules:
 - State supported facts directly. One useful sentence is enough. Never fill a
