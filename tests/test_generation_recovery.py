@@ -153,7 +153,8 @@ async def test_failed_legacy_refresh_is_not_left_published():
     pool=AsyncMock()
     pool.fetchval.return_value=0
     async def fetch(sql,*args):
-        if "synthesis_attempts <" in sql:return [{"id":"old"}]
+        if "synthesis_attempts <" in sql:
+            return [{"id":"old"}]
         return [dict(A.model_dump(), id="a", summary=A.raw_content),
                 dict(A.model_dump(), id="b", summary=A.raw_content, source_name="Reuters")]
     pool.fetch.side_effect=fetch
