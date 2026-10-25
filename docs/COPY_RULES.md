@@ -77,3 +77,8 @@ DB timer. Headline-only or pure promotional/guide inputs are explicitly unavaila
 Stories record the rules version and only reuse current-version text. Numeric
 checks allow equivalent scales (7m, 7 million, 7,000,000) while rejecting changed
 values; this remains a figure-evidence check, not verification of a whole claim.
+
+Retry evidence survives an empty or headline-only RSS update. Unavailable entries
+are reconsidered only when the publisher provides changed, usable content; an
+unchanged guide does not repeatedly consume generation budget. Successful retries
+of both pending and unavailable entries rejoin story threading.
