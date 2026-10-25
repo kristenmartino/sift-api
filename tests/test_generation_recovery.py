@@ -103,6 +103,11 @@ def test_term_rubric_rejects_live_failure_and_retains_specialist_terms():
     ("The cost is 7,000,000.", "The cost is 7 million.", set()),
     ("The cost is 8 million.", "The cost is 7m.", {"8 million"}),
     ("The rate is 7%.", "The rate is 7.", {"7%"}),
+    ("The discount is 40%.", "The discount is 40 percent.", set()),
+    ("The discount is 40 per cent.", "The discount is 40%.", set()),
+    ("The discount is 41%.", "The discount is 40 percent.", {"41%"}),
+    ("Version 1.2.3 shipped.", "Version 1.2.3 shipped.", set()),
+    ("Version 1.2.4 shipped.", "Version 1.2.3 shipped.", {"1.2.4"}),
 ])
 def test_equivalent_scales_do_not_block_recovery(text, source, expected):
     from services.quality_gate import unsupported_figures
@@ -134,3 +139,9 @@ def test_explicit_unavailable_summary_keeps_its_aligned_index():
     from services.summarizer import _parse_summaries
     result=_parse_summaries(json.dumps([{"i":1,"s":"","c":"general","u":True}]),[A])
     assert result[A.source_url] == {"summary":"", "category":"general", "_unavailable":True}
+
+
+def test_concrete_forecast_is_not_a_preview():
+    from services.quality_gate import gate_summary
+    text="The Fed provides predictions of 2% inflation in 2027."
+    assert gate_summary(text) == text
