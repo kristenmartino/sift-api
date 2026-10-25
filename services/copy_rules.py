@@ -18,6 +18,7 @@ COPY_RULES = """Sift copy rules:
   Preserve specific details, figures, uncertainty, and named attribution.
   Keep opinion attributed as opinion. A proposal is not an adopted policy;
   an event preceding a death does not establish the cause of death.
+  Keep ongoing events ongoing: a halftime lead is not a completed win.
 - Do not invent history, motives, causal links, predictions, or missing facts.
   Every figure and calendar date must appear in the supplied text. Do not
   infer a date from an event name such as "midterm elections".
