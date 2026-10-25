@@ -51,6 +51,13 @@ def _mock_client(text: str, *, stop_reason: str = "end_turn") -> AsyncMock:
             ),
         )
     )
+    generation = client.messages.create.return_value
+    async def reply(**kwargs):
+        if kwargs["messages"][0]["content"].startswith("SOURCE FIDELITY REVIEW"):
+            return SimpleNamespace(content=[SimpleNamespace(type="text",text='[{"i":1,"v":"pass"}]')],
+                stop_reason="end_turn",usage=SimpleNamespace(input_tokens=10,output_tokens=10))
+        return generation
+    client.messages.create.side_effect = reply
     return client
 
 
@@ -105,7 +112,7 @@ class TestSynthesizeStory:
     async def test_scaled_ceiling_reaches_the_api_call(self):
         client = _mock_client(_GOOD)
         await synthesize_story(_articles(24, outlets=18), client=client)
-        kwargs = client.messages.create.call_args.kwargs
+        kwargs = client.messages.create.call_args_list[0].kwargs
         assert kwargs["max_tokens"] == _max_tokens_for(24)
         assert kwargs["max_tokens"] > 1024
 

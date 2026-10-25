@@ -1,0 +1,128 @@
+[
+  {
+    "id": "x85oii-bad",
+    "title": "Venezuelan opposition leader Machado returns from exile",
+    "source": "Nobel laureate’s arrival poses a challenge to the country’s Trump-backed interim government",
+    "copy": "Venezuelan opposition leader Edmundo González Urrutia has returned from exile, according to the Financial Times headline; the article describes this as posing a challenge to the country's interim government.",
+    "expected": "retry"
+  },
+  {
+    "id": "x85oii-good",
+    "title": "Venezuelan opposition leader Machado returns from exile",
+    "source": "Nobel laureate’s arrival poses a challenge to the country’s Trump-backed interim government",
+    "copy": "Venezuelan opposition leader Machado returned from exile.",
+    "expected": "pass"
+  },
+  {
+    "id": "m2xeik-bad",
+    "title": "Canelo vs Mbilli Undercard Title Fight in Jeopardy",
+    "source": "Lindolfo Delgado does not plan to fly to Saudi Arabia for his IBF super lightweight title fight.",
+    "copy": "Lindolfo Delgado does not plan to fly to Saudi Arabia for his IBF super lightweight title fight against Canelo on the Canelo vs Mbilli undercard.",
+    "expected": "retry"
+  },
+  {
+    "id": "m2xeik-good",
+    "title": "Canelo vs Mbilli Undercard Title Fight in Jeopardy",
+    "source": "Lindolfo Delgado does not plan to fly to Saudi Arabia for his IBF super lightweight title fight.",
+    "copy": "Lindolfo Delgado does not plan to fly to Saudi Arabia for his IBF super lightweight title fight.",
+    "expected": "pass"
+  },
+  {
+    "id": "97h8zh-bad",
+    "title": "Wisconsin Football Week 8 Offensive Snap Count Breakdown and Analysis vs. USC",
+    "source": "What the snap counts tell us about the Badgers' big win over No. 16 USC.",
+    "copy": "Wisconsin's offensive snap counts from its victory over No. 16 USC reveal insights about the team's performance.",
+    "expected": "retry"
+  },
+  {
+    "id": "97h8zh-good",
+    "title": "Wisconsin Football Week 8 Offensive Snap Count Breakdown and Analysis vs. USC",
+    "source": "What the snap counts tell us about the Badgers' big win over No. 16 USC.",
+    "copy": "Wisconsin defeated No. 16 USC.",
+    "expected": "pass"
+  },
+  {
+    "id": "dgj1wo-bad",
+    "title": "NYT Connections Hint Today: Monday, October 26 Clues And Answers",
+    "source": "Looking for today's NYT Connections hints? Some help and the answers for today's game are right here to help keep your streak alive.",
+    "copy": "Forbes provides hints and answers for the New York Times Connections word puzzle game for Monday, October 26.",
+    "expected": "unavailable"
+  },
+  {
+    "id": "a9eb75711fe17e4c-bad",
+    "title": "Supplied cluster reports",
+    "source": "Clippers Injury Report vs. Lakers: LA Continues to Be Without Several Key Contributors\nThe LA Clippers continue to deal with multiple injuries heading into their Friday game against the Lakers, putting them at a disadvantage compared to their opponent.\nLakers encouraged by status of key player’s injury after scary moment\nA key Lakers player suffered a scary injury during a game, though the team expressed cautious optimism about his status. The incident was among the few notable problems the team faced during the game.\nLakers Announce Disappointing Jake LaRavia Update Before Clippers Game\nThe Los Angeles Lakers announced a disappointing update regarding Jake LaRavia's status before their game against the Clippers in the 2026-27 NBA season. The team continues to manage multiple injury issues early in the season.",
+    "copy": "Lakers and Clippers Face Multiple Injuries Ahead of Matchup\nThe LA Clippers continue dealing with multiple injuries heading into their Friday game against the Lakers. The Lakers announced a disappointing update regarding Jake LaRiver's status before the 2026-27 NBA season game against the Clippers.",
+    "expected": "retry"
+  },
+  {
+    "id": "a9eb75711fe17e4c-good",
+    "title": "Supplied cluster reports",
+    "source": "Clippers Injury Report vs. Lakers: LA Continues to Be Without Several Key Contributors\nThe LA Clippers continue to deal with multiple injuries heading into their Friday game against the Lakers, putting them at a disadvantage compared to their opponent.\nLakers encouraged by status of key player’s injury after scary moment\nA key Lakers player suffered a scary injury during a game, though the team expressed cautious optimism about his status. The incident was among the few notable problems the team faced during the game.\nLakers Announce Disappointing Jake LaRavia Update Before Clippers Game\nThe Los Angeles Lakers announced a disappointing update regarding Jake LaRavia's status before their game against the Clippers in the 2026-27 NBA season. The team continues to manage multiple injury issues early in the season.",
+    "copy": "The Clippers are dealing with several injuries ahead of their Friday game against the Lakers.",
+    "expected": "pass"
+  },
+  {
+    "id": "4574bdb62bd13891-bad",
+    "title": "Supplied cluster reports",
+    "source": "California's Proposition 40: What voters need to know about the billionaire wealth tax\nCalifornia's Proposition 40, which would impose a wealth tax on billionaires, is polling as a close race ahead of the November 3 election. The measure represents a significant test of voter appetite for aggressive taxation on ultra-high net worth individuals.\nCalifornia voters’ major shift on billionaire tax revealed in new poll\nA new poll shows a significant shift in California voters' views on Proposition 40, a proposed one-time 5% wealth tax on billionaires.\nAre California voters about to impose 'world's first' tax on billionaires?\nCalifornia voters are deciding whether to impose a tax on billionaires to fund healthcare improvements, potentially creating the world's first such tax. The measure represents a significant test of wealth taxation at the state level.",
+    "copy": "California Proposition 40 wealth tax on billionaires faces close election race\nCalifornia's Proposition 40 would impose a 5% wealth tax on billionaires and is polling as a close race ahead of the November 3 election. A new poll shows a significant shift in California voters' views on the measure.",
+    "expected": "retry"
+  },
+  {
+    "id": "4574bdb62bd13891-good",
+    "title": "Supplied cluster reports",
+    "source": "California's Proposition 40: What voters need to know about the billionaire wealth tax\nCalifornia's Proposition 40, which would impose a wealth tax on billionaires, is polling as a close race ahead of the November 3 election. The measure represents a significant test of voter appetite for aggressive taxation on ultra-high net worth individuals.\nCalifornia voters’ major shift on billionaire tax revealed in new poll\nA new poll shows a significant shift in California voters' views on Proposition 40, a proposed one-time 5% wealth tax on billionaires.\nAre California voters about to impose 'world's first' tax on billionaires?\nCalifornia voters are deciding whether to impose a tax on billionaires to fund healthcare improvements, potentially creating the world's first such tax. The measure represents a significant test of wealth taxation at the state level.",
+    "copy": "California’s Proposition 40 would impose a one-time 5% wealth tax on billionaires.",
+    "expected": "pass"
+  },
+  {
+    "id": "forecast-control",
+    "title": "Revenue forecast",
+    "source": "Analysts forecast revenue growth of 12% next year.",
+    "copy": "Analysts forecast revenue will grow 12% next year.",
+    "expected": "pass"
+  },
+  {
+    "id": "generic-name-bad",
+    "title": "Jane Doe wins council vote",
+    "source": "Jane Doe won a council vote 52-48.",
+    "copy": "Jane Roe won the council vote 52-48.",
+    "expected": "retry"
+  },
+  {
+    "id": "generic-name-good",
+    "title": "Jane Doe wins council vote",
+    "source": "Jane Doe won a council vote 52-48.",
+    "copy": "Jane Doe won the council vote.",
+    "expected": "pass"
+  },
+  {
+    "id": "generic-relationship-bad",
+    "title": "Alice joins Bob’s conference",
+    "source": "Alice spoke on a panel at Bob’s conference.",
+    "copy": "Alice acquired Bob’s conference.",
+    "expected": "retry"
+  },
+  {
+    "id": "generic-relationship-good",
+    "title": "Alice joins Bob’s conference",
+    "source": "Alice spoke on a panel at Bob’s conference.",
+    "copy": "Alice spoke on a panel at Bob’s conference.",
+    "expected": "pass"
+  },
+  {
+    "id": "omission-control",
+    "title": "Council approves zoning change",
+    "source": "The council approved a zoning change 7-2. The mayor praised the vote.",
+    "copy": "The council approved a zoning change.",
+    "expected": "pass"
+  },
+  {
+    "id": "disagreement-control",
+    "title": "Injury reports differ",
+    "source": "Outlet A reports ten injuries. Outlet B reports twelve injuries.",
+    "copy": "Outlets report differing injury counts: A reports ten and B twelve.",
+    "expected": "pass"
+  }
+]

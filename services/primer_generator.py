@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 import anthropic
 
 from app.config import settings
+from services.term_references import reference_definition
 from app.db import get_pool
 from services.batch_client import submit_batch
 from services.cost_estimates import estimate_cost
@@ -290,6 +291,7 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
                     continue
                 term = (t.get("term") or "").strip()
                 definition = (t.get("def") or t.get("definition") or "").strip()
+                definition = reference_definition(term) or definition
                 if term and definition:
                     if (len(definition.split()) <= 25 and len(terms) < 4
                             and term_in_source(term, f"{article.get('title', '')} {article.get('summary', '')}")):
