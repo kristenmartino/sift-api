@@ -28,6 +28,7 @@ Design choices grounded in the audit:
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from dataclasses import dataclass
 
 # Backstop threshold: drop a why_it_matters line whose content words are <=20%
@@ -137,7 +138,7 @@ _REFUSAL_RE = [re.compile(p, re.IGNORECASE) for p in _REFUSAL_SOURCES]
 # leftovers like "No content." rather than to enforce a length policy.
 MIN_SUMMARY_WORDS = 10
 
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<!\bvs\.)(?<=[.!?])\s+", re.I)
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
 _NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)*(?:%|[KMBT]\b)?", re.IGNORECASE)
@@ -157,11 +158,24 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
     This is a conservative evidence check, not a factual or arithmetic judge.
     It prevents adding e.g. a population or an inferred election date.
     """
-    def figures(value):
-        nums = {n.lower().replace(",", "") for n in _NUMBER_RE.findall(value)}
-        nums.update(_SMALL_NUMBERS[w] for w in re.findall(r"\b\w+\b", value.lower()) if w in _SMALL_NUMBERS)
-        return nums
-    return {n.lower().replace(",", "") for n in _NUMBER_RE.findall(text)} - figures(source_text)
+    pattern = re.compile(r"\b(\d+(?:[.,]\d+)*)(?:\s*(thousand|million|billion|trillion)\b|([kmbt])\b|(%))?", re.I)
+    scales = {"k": 3, "thousand": 3, "m": 6, "million": 6,
+              "b": 9, "billion": 9, "t": 12, "trillion": 12}
+    def tokens(value):
+        out = []
+        for match in pattern.finditer(value):
+            number, word, suffix, percent = match.groups()
+            amount = Decimal(number.replace(",", ""))
+            scale = (word or suffix or "").lower()
+            if scale:
+                amount *= 10 ** scales[scale]
+            out.append((match.group().lower().replace(",", ""), (amount, bool(percent))))
+        return out
+    known = {canonical for _, canonical in tokens(source_text)}
+    known.update((Decimal(_SMALL_NUMBERS[w]), False)
+                 for w in re.findall(r"\b\w+\b", source_text.lower()) if w in _SMALL_NUMBERS)
+    return {raw for raw, canonical in tokens(text) if canonical not in known}
+
 
 
 def _passage_tokens(text: str) -> str:
@@ -272,7 +286,15 @@ def gate_summary(summary: str | None) -> str:
     unsummarizable rather than merely using the words.
     """
     text = (summary or "").strip()
+    preview = re.compile(
+        r"^[A-Z][^.]{0,70}\s+(?:provides?|offers?|presents?)\s+"
+        r"(?:(?:main card|expert|game)\s+)?(?:viewing information|viewing guide|predictions|betting tips)\b"
+        r"|^[A-Z][^.]{0,70}\s+analyzes?\s+.{0,100}\bmatchup\b", re.I,
+    )
     sentences = _SENTENCE_SPLIT_RE.split(text)
+    sentences = [sentence for sentence in sentences if not (
+        preview.match(sentence) and not re.search(r"\b(?:predicts? that|will win|wins? by|favou?red by|odds of)\b", sentence, re.I))]
+    text = " ".join(sentences).strip()
     if any(_is_generic_summary_closer(sentence) for sentence in sentences):
         text = " ".join(
             sentence for sentence in sentences

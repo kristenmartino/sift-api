@@ -324,6 +324,9 @@ resolve it.
 
 Return a JSON array with one object per article, in the same order.
 Use short keys: i=index, s=summary, c=category.
+If the input supplies no substantive details beyond a viewing guide, prediction
+teaser or promotion, explicitly return s="", c="general", u=true for that entry.
+Keep every index even for these unavailable summaries.
 [{{"i":1,"s":"1-2 sentence summary","c":"technology"}}, ...]
 
 Return ONLY the JSON array, no other text."""
@@ -365,7 +368,7 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
         # valid index — same evidence of a shift, same all-or-nothing answer.
         # Checked on the RAW text, BEFORE the refusal gate: a refusal is a
         # (bad) answer for this article, not evidence that the batch shifted.
-        if not isinstance(summary, str) or not summary.strip():
+        if not isinstance(summary, str) or (not summary.strip() and entry.get("u") is not True):
             raise AlignmentError(f"empty summary at index {idx}")
 
         # Drop the model's own apologies for articles it could not summarize
@@ -377,7 +380,9 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
         if unsupported_figures(summary, source_text):
             raise AlignmentError(f"summary added an unsupported figure at index {idx}")
 
-        results[batch[idx - 1].source_url] = {"summary": summary, "category": category}
+        results[batch[idx - 1].source_url] = {"summary": summary,
+                                                "category": category if summary else FALLBACK_CATEGORY,
+                                                **({"_unavailable": True} if not summary else {})}
 
     return results
 

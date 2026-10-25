@@ -97,3 +97,40 @@ async def test_same_outlet_does_not_reuse_old_rules(monkeypatch):
 def test_term_rubric_rejects_live_failure_and_retains_specialist_terms():
     prompt=build_judge_prompt([],"term_utility")
     assert '"stock low"' in prompt and "habeas corpus" in prompt
+
+@pytest.mark.parametrize(("text", "source", "expected"), [
+    ("The budget is £7 million.", "The budget is £7m.", set()),
+    ("The cost is 7,000,000.", "The cost is 7 million.", set()),
+    ("The cost is 8 million.", "The cost is 7m.", {"8 million"}),
+    ("The rate is 7%.", "The rate is 7.", {"7%"}),
+])
+def test_equivalent_scales_do_not_block_recovery(text, source, expected):
+    from services.quality_gate import unsupported_figures
+    assert unsupported_figures(text, source) == expected
+
+@pytest.mark.parametrize("text", [
+    "Sports Illustrated provides viewing information for Baylor's Week 8 football game against Kansas.",
+    "Sports Illustrated provides main card predictions for UFC 333 fights including Alexander Volkanovski vs. Merab Dvalishvili.",
+    "Sports Illustrated analyzes the Eagles' Week 7 Monday Night Football matchup against the Cowboys.",
+])
+def test_preview_descriptions_do_not_become_news(text):
+    from services.quality_gate import gate_summary
+    assert gate_summary(text) == ""
+
+
+def test_a_substantive_attributed_prediction_survives():
+    from services.quality_gate import gate_summary
+    text="Sports Illustrated predicts that the Eagles will win by seven points."
+    assert gate_summary(text) == text
+
+
+def test_background_review_rejects_guessed_policy_conditions():
+    prompt=build_judge_prompt([],"background_novelty")
+    assert "venue restrictions" in prompt and "facility-use rules" in prompt
+
+
+def test_explicit_unavailable_summary_keeps_its_aligned_index():
+    import json
+    from services.summarizer import _parse_summaries
+    result=_parse_summaries(json.dumps([{"i":1,"s":"","c":"general","u":True}]),[A])
+    assert result[A.source_url] == {"summary":"", "category":"general", "_unavailable":True}

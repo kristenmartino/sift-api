@@ -77,7 +77,12 @@ proper name, or gives a general overview without teaching a specific mechanism,
 institutional role, procedure or difficult concept beyond the summary.
 a = true only when a useful specific explanation remains beyond that news.
 n = true when the explanation avoids generic significance, filler and editorial
-claims. Shared topic vocabulary alone is not repetition.
+claims. Set n=false if the paragraph adds article-specific policy scope,
+enforcement steps, venue restrictions, or procedural guarantees absent from
+TITLE/SUMMARY. A generic institutional role can be useful; a guessed condition
+on this specific news event cannot. For example, "Cornell bans frat parties"
+does not support a paragraph claiming a campus-only scope or facility-use rules.
+Shared topic vocabulary alone is not repetition.
 
 Example: a summary already calls Impulso Morelia a post-production section of
 the film festival and states its funding award. Explaining that this section
