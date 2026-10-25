@@ -145,3 +145,23 @@ def test_concrete_forecast_is_not_a_preview():
     from services.quality_gate import gate_summary
     text="The Fed provides predictions of 2% inflation in 2027."
     assert gate_summary(text) == text
+
+
+@pytest.mark.asyncio
+async def test_failed_legacy_refresh_is_not_left_published():
+    from workflows.incremental_threading import _sweep_failed
+    pool=AsyncMock()
+    pool.fetchval.return_value=0
+    async def fetch(sql,*args):
+        if "synthesis_attempts <" in sql:return [{"id":"old"}]
+        return [dict(A.model_dump(), id="a", summary=A.raw_content),
+                dict(A.model_dump(), id="b", summary=A.raw_content, source_name="Reuters")]
+    pool.fetch.side_effect=fetch
+    import workflows.incremental_threading as workflow
+    from unittest.mock import patch
+    with patch.object(workflow,"check_budget",AsyncMock(return_value=SimpleNamespace(allowed=True))):
+        await _sweep_failed(pool,AsyncMock(return_value={"_failed":True}))
+    query=pool.execute.call_args.args[0]
+    assert "THEN 'failed' ELSE synthesis_status" in query
+    assert "updated_at" not in query
+    assert pool.execute.call_args.args[-1] == COPY_RULES_VERSION

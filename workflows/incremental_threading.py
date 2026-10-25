@@ -122,8 +122,9 @@ async def _story_outlets(pool, story_id: str) -> set[str]:
 async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     """Attach one article to an existing story. Returns what was done.
 
-    Re-synthesizes only when the article brings an outlet the story did not
-    already have, because `framings` is a per-outlet structure. A story
+    Re-synthesizes when the article brings a new outlet or the stored copy uses
+    older rules. Current-version same-outlet attachments keep the saved text,
+    because `framings` is a per-outlet structure. A story
     gaining its third piece from an outlet it already carries has nothing new
     to say, and re-synthesizing it is exactly the duplicate spend #129 removed.
     """
@@ -358,8 +359,10 @@ async def _sweep_failed(pool, synthesize) -> dict:
                 # bumping it would make a dark story look fresh to every
                 # recency query.
                 await pool.execute(
-                    "UPDATE stories SET synthesis_attempts = synthesis_attempts + 1 "
-                    "WHERE id = $1", story_id,
+                    "UPDATE stories SET synthesis_attempts = synthesis_attempts + 1, "
+                    "synthesis_status = CASE WHEN copy_rules_version IS DISTINCT FROM $2 "
+                    "THEN 'failed' ELSE synthesis_status END WHERE id = $1",
+                    story_id, COPY_RULES_VERSION,
                 )
                 counts["still_failed"] += 1
                 continue
