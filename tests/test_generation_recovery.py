@@ -106,6 +106,8 @@ def test_term_rubric_rejects_live_failure_and_retains_specialist_terms():
     ("The discount is 40%.", "The discount is 40 percent.", set()),
     ("The discount is 40 per cent.", "The discount is 40%.", set()),
     ("The discount is 41%.", "The discount is 40 percent.", {"41%"}),
+    ("Version 1.2.3 shipped.", "Version 1.2.3 shipped.", set()),
+    ("Version 1.2.4 shipped.", "Version 1.2.3 shipped.", {"1.2.4"}),
 ])
 def test_equivalent_scales_do_not_block_recovery(text, source, expected):
     from services.quality_gate import unsupported_figures

@@ -28,7 +28,7 @@ Design choices grounded in the audit:
 from __future__ import annotations
 
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 
 # Backstop threshold: drop a why_it_matters line whose content words are <=20%
@@ -158,14 +158,19 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
     This is a conservative evidence check, not a factual or arithmetic judge.
     It prevents adding e.g. a population or an inferred election date.
     """
-    pattern = re.compile(r"\b(\d+(?:[.,]\d+)*)(?:\s*(thousand|million|billion|trillion)\b|([kmbt])\b|(%|percent\b|per cent\b))?", re.I)
+    pattern = re.compile(r"\b(\d+(?:[.,]\d+)*)(?:\s*(thousand|million|billion|trillion)\b|([kmbt])\b|\s*(%|percent\b|per cent\b))?", re.I)
     scales = {"k": 3, "thousand": 3, "m": 6, "million": 6,
               "b": 9, "billion": 9, "t": 12, "trillion": 12}
     def tokens(value):
         out = []
         for match in pattern.finditer(value):
             number, word, suffix, percent = match.groups()
-            amount = Decimal(number.replace(",", ""))
+            try:
+                amount = Decimal(number.replace(",", ""))
+            except InvalidOperation:
+                # Version/date-like tokens are evidence too, but not decimals.
+                out.append((match.group().lower(), (number, bool(percent))))
+                continue
             scale = (word or suffix or "").lower()
             if scale:
                 amount *= 10 ** scales[scale]
