@@ -57,6 +57,7 @@ async def deduplicate_node(state: PipelineState) -> dict:
 
     articles = state.get("articles", [])
     from services.generation_recovery import pending_articles
+    from services.summarizer import _has_summarizable_content
 
     retries = await pending_articles()
 
@@ -71,7 +72,9 @@ async def deduplicate_node(state: PipelineState) -> dict:
         # for entries that have already aged out of their publisher's RSS feed.
         incoming = {a.source_url: a for a in articles}
         by_url = {a.source_url: a for a in new}
-        by_url.update({a.source_url: incoming.get(a.source_url, a) for a in retries})
+        by_url.update({a.source_url: (incoming[a.source_url]
+                                      if a.source_url in incoming and _has_summarizable_content(incoming[a.source_url])
+                                      else a) for a in retries})
         return {"new_articles": list(by_url.values())}
     except Exception as e:
         logger.error("deduplicate failed: %s", e)
@@ -390,7 +393,7 @@ async def store_node(state: PipelineState) -> dict:
                     generation_status = EXCLUDED.generation_status,
                     generation_attempted_at = NOW(),
                     copy_rules_version = EXCLUDED.copy_rules_version,
-                    threaded_at = CASE WHEN articles.generation_status = 'pending'
+                    threaded_at = CASE WHEN articles.generation_status IN ('pending', 'unavailable')
                                        THEN NULL ELSE articles.threaded_at END,
                     updated_at = NOW()
                 """,

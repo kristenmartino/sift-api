@@ -166,3 +166,28 @@ async def test_failed_legacy_refresh_is_not_left_published():
     assert "THEN 'failed' ELSE synthesis_status" in query
     assert "updated_at" not in query
     assert pool.execute.call_args.args[-1] == COPY_RULES_VERSION
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ["", A.title])
+async def test_thin_rss_update_cannot_erase_saved_retry_evidence(monkeypatch, body):
+    incoming=A.model_copy(update={"raw_content":body})
+    monkeypatch.setattr("services.generation_recovery.pending_articles",AsyncMock(return_value=[A]))
+    monkeypatch.setattr("services.deduplicator.deduplicate",AsyncMock(return_value=[]))
+    out=await pipeline.deduplicate_node({"articles":[incoming]})
+    assert out["new_articles"] == [A]
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "old_hash", "new_hash", "body", "retry"), [
+    ("unavailable", "old", "new", A.raw_content, True),
+    ("unavailable", "same", "same", A.raw_content, False),
+    ("unavailable", "old", "new", "", False),
+    ("complete", "old", "new", A.raw_content, False),
+])
+async def test_only_changed_usable_unavailable_entries_bypass_url_dedup(monkeypatch, status, old_hash, new_hash, body, retry):
+    from services.deduplicator import deduplicate
+    pool=AsyncMock()
+    pool.fetch.return_value=[{"source_url":A.source_url,"content_hash":old_hash,"generation_status":status}]
+    monkeypatch.setattr("services.deduplicator.get_pool",AsyncMock(return_value=pool))
+    article=A.model_copy(update={"content_hash":new_hash,"raw_content":body})
+    assert await deduplicate([article]) == ([article] if retry else [])

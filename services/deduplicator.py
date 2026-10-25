@@ -26,7 +26,7 @@ async def deduplicate(articles: list[RSSArticle]) -> list[RSSArticle]:
     # Single query: fetch any existing row whose URL or content_hash matches.
     rows = await pool.fetch(
         """
-        SELECT source_url, content_hash
+        SELECT source_url, content_hash, generation_status
           FROM articles
          WHERE source_url = ANY($1::text[])
             OR content_hash = ANY($2::text[])
@@ -34,7 +34,16 @@ async def deduplicate(articles: list[RSSArticle]) -> list[RSSArticle]:
         urls,
         hashes,
     )
-    existing_urls = {row["source_url"] for row in rows if row["source_url"]}
+    from services.summarizer import _has_summarizable_content
+
+    by_url = {row["source_url"]: row for row in rows if row["source_url"]}
+    # A permanently identical guide/teaser must not consume money each cycle.
+    # A publisher adding usable text after a headline-only entry deserves a retry.
+    changed_unavailable = {a.source_url for a in articles if a.source_url in by_url
+                           and by_url[a.source_url].get("generation_status") == "unavailable"
+                           and a.content_hash and a.content_hash != by_url[a.source_url]["content_hash"]
+                           and _has_summarizable_content(a)}
+    existing_urls = set(by_url) - changed_unavailable
     existing_hashes = {row["content_hash"] for row in rows if row["content_hash"]}
 
     new_articles: list[RSSArticle] = []
