@@ -127,3 +127,10 @@ def test_a_substantive_attributed_prediction_survives():
 def test_background_review_rejects_guessed_policy_conditions():
     prompt=build_judge_prompt([],"background_novelty")
     assert "venue restrictions" in prompt and "facility-use rules" in prompt
+
+
+def test_explicit_unavailable_summary_keeps_its_aligned_index():
+    import json
+    from services.summarizer import _parse_summaries
+    result=_parse_summaries(json.dumps([{"i":1,"s":"","c":"general","u":True}]),[A])
+    assert result[A.source_url] == {"summary":"", "category":"general", "_unavailable":True}
