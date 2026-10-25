@@ -13,7 +13,7 @@ from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.copy_rules import COPY_RULES
 from services.model_registry import resolve
-from services.quality_gate import gate_summary, unsupported_figures, takeover_role_conflict
+from services.quality_gate import gate_summary, unsupported_figures, takeover_role_conflict, interim_result_conflict
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
     AlignmentError,
@@ -380,6 +380,8 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
         summary = gate_summary(summary)
         article = batch[idx - 1]
         source_text = article.title + " " + _truncate(re.sub(r"<[^>]+>", "", article.raw_content or ""), 500)
+        if interim_result_conflict(summary):
+            raise AlignmentError(f"summary turned a halftime lead into a completed win at index {idx}")
         if takeover_role_conflict(summary, article.title):
             raise AlignmentError(f"summary reversed takeover roles at index {idx}")
         if unsupported_figures(summary, source_text):

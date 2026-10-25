@@ -184,6 +184,14 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
 
 
 
+def interim_result_conflict(text: str) -> bool:
+    """Reject the observed completed-win wording attached to a halftime score."""
+    return bool(re.search(
+        r"\bdefeated\b[^.!?;]{1,100}\b\d{1,3}\s*[-–]\s*\d{1,3}\s+at\s+half[- ]?time\b",
+        text, re.I,
+    ))
+
+
 def takeover_role_conflict(summary: str, source_title: str) -> bool:
     """Catch the explicit 'A nears takeover of B' -> 'A taken over by B' reversal.
 

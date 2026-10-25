@@ -232,3 +232,39 @@ async def test_membership_moves_invalidate_only_stories_that_lose_inputs():
     assert "prior.story_id <> $1" in query
     assert "synthesis_status = 'failed'" in query and "copy_rules_version = NULL" in query
     assert "a.id <> ALL($2::text[])" in query
+
+
+@pytest.mark.parametrize(("text", "conflict"), [
+    ("The Buccaneers defeated the Panthers 33-6 at halftime.", True),
+    ("The Buccaneers defeated Carolina 33–6 at half-time.", True),
+    ("The Buccaneers led the Panthers 33-6 at halftime.", False),
+    ("The Buccaneers defeated the Panthers 33-6.", False),
+    ("The Buccaneers led 33-6 at halftime and defeated the Panthers 40-20.", False),
+])
+def test_halftime_leads_cannot_be_completed_wins(text, conflict):
+    from services.quality_gate import interim_result_conflict
+    assert interim_result_conflict(text) is conflict
+
+
+def test_article_parser_reasks_observed_halftime_finality_error():
+    import json
+    from services.summarizer import _parse_summaries
+    from services.index_alignment import AlignmentError
+    article=A.model_copy(update={"title":"Buccaneers lead Panthers at halftime",
+                                 "raw_content":"The Bucs led the Panthers 33-6 at halftime."})
+    with pytest.raises(AlignmentError, match="halftime lead"):
+        _parse_summaries(json.dumps([{"i":1,"s":"The Buccaneers defeated the Panthers 33-6 at halftime.","c":"sports"}]),[article])
+
+
+@pytest.mark.asyncio
+async def test_story_rejects_observed_halftime_finality_error(monkeypatch):
+    import json
+    from services.story_synthesizer import synthesize_story
+    client=AsyncMock()
+    client.messages.create.return_value=SimpleNamespace(
+        content=[SimpleNamespace(type="text",text=json.dumps({"headline":"Buccaneers lead Panthers",
+            "summary":"The Buccaneers defeated the Panthers 33-6 at halftime.","framings":[]}))],
+        stop_reason="end_turn",usage=SimpleNamespace(input_tokens=10,output_tokens=20,cache_creation_input_tokens=0,cache_read_input_tokens=0))
+    article={"title":"Buccaneers lead Panthers at halftime","summary":"The Bucs led 33-6 at halftime.","source_name":"A","source_url":"https://example.com/a"}
+    out=await synthesize_story([article,{**article,"source_name":"B"}],client=client)
+    assert out["_failed"] is True

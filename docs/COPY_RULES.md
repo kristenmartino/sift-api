@@ -94,3 +94,8 @@ synthesis and resets its retry count. A source can no longer leave an old cluste
 while its figures or notes remain published there. The normal bounded sweep
 resynthesizes the remaining members; the destination is not invalidated by its
 own membership update.
+
+A halftime score must remain an interim lead, not a completed win. Both article
+and story generation reject the observed “defeated … 33-6 at halftime” wording;
+the article batch re-asks and the cluster remains retryable. Final wins and
+explicit halftime leads are retained.
