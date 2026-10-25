@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from services.copy_rules import COPY_RULES_VERSION
+
 
 def _pool(existing: dict | None) -> AsyncMock:
     """A pool whose `SELECT headline, synthesis_status` returns `existing`."""
@@ -70,7 +72,7 @@ async def _run(pool: AsyncMock, synth: AsyncMock, state: dict) -> dict:
 @pytest.mark.asyncio
 async def test_existing_complete_story_skips_the_paid_call():
     """The 54% case: same member set → same id → nothing to regenerate."""
-    pool = _pool({"headline": "Stored headline", "synthesis_status": "complete"})
+    pool = _pool({"headline": "Stored headline", "synthesis_status": "complete", "copy_rules_version": COPY_RULES_VERSION})
     synth = AsyncMock()
 
     result = await _run(pool, synth, _state())

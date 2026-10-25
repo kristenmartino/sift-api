@@ -270,6 +270,8 @@ async def root():
 async def health(deep: bool = False):
     from app import pipeline_clock
 
+    from services import generation_health
+
     db_connected = pipeline_clock.db_ok()
 
     if deep:
@@ -279,6 +281,7 @@ async def health(deep: bool = False):
         try:
             pool = await get_pool()
             await pool.fetchval("SELECT 1")
+            await generation_health.refresh(pool)
             db_connected = True
         except Exception:
             db_connected = False
@@ -298,11 +301,12 @@ async def health(deep: bool = False):
     overrides = non_default_assignments()
 
     return HealthResponse(
-        status="healthy" if db_connected else "degraded",
+        status="healthy" if db_connected and not (generation_health.snapshot() or {}).get("pending") else "degraded",
         version=API_VERSION,
         db_connected=db_connected,
         last_pipeline_run=last_run,
         scheduler_running=scheduler_running if scheduler_running else None,
         model_overrides=overrides or None,
         copy_rules_version=COPY_RULES_VERSION,
+        generation=generation_health.snapshot(),
     )

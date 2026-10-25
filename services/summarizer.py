@@ -210,6 +210,7 @@ def _raw_content_fallback(batch: list[RSSArticle]) -> dict[str, dict]:
         article.source_url: {
             "summary": _truncate(article.raw_content, 200),
             "category": FALLBACK_CATEGORY,
+            "_degraded": True,
         }
         for article in batch
         if article.raw_content

@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS articles (
     is_opinion BOOLEAN NOT NULL DEFAULT FALSE,  -- outlet-declared opinion marker (migrations/023); read path dampens and excludes from spectrum bonus
     is_roundup BOOLEAN NOT NULL DEFAULT FALSE,  -- program-episode/brief container (migrations/024); read path ranks x0.4
     genre TEXT CHECK (genre IN ('news', 'feature', 'soft')),  -- writing kind (migrations/025); NULL = news; standalone articles only
+    generation_raw_content TEXT,
+    generation_status TEXT NOT NULL DEFAULT 'complete',
+    generation_attempted_at TIMESTAMPTZ,
+    copy_rules_version TEXT,
     content_hash TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -46,6 +50,10 @@ CREATE TABLE IF NOT EXISTS articles (
 
 CREATE INDEX IF NOT EXISTS idx_articles_category_date
     ON articles(category, published_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_articles_generation_pending
+    ON articles (generation_attempted_at NULLS FIRST, created_at)
+    WHERE generation_status = 'pending' AND from_search = false;
 
 CREATE INDEX IF NOT EXISTS idx_articles_content_hash
     ON articles(content_hash);
@@ -90,6 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_articles_entity_links_gin
 -- Stories: grouped multi-source coverage of the same event
 CREATE TABLE IF NOT EXISTS stories (
     id TEXT PRIMARY KEY,
+    copy_rules_version TEXT,
     headline TEXT NOT NULL,
     summary TEXT NOT NULL,
     category TEXT NOT NULL,

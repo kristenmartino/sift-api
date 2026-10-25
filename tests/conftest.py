@@ -15,13 +15,15 @@ def _reset_module_state():
     than leaving it to whoever writes the next one.
     """
     from app import pipeline_clock
-    from services import batch_client
+    from services import batch_client, generation_health
 
     batch_client._reset_for_tests()
     pipeline_clock._reset_for_tests()
+    generation_health._snapshot = None
     yield
     batch_client._reset_for_tests()
     pipeline_clock._reset_for_tests()
+    generation_health._snapshot = None
 
 
 @pytest.fixture

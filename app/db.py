@@ -44,6 +44,17 @@ async def _apply_migrations(pool: asyncpg.Pool) -> None:
     existing DB pick up additive columns on the next deploy without manual ops.
     """
     async with pool.acquire() as conn:
+        # migrations/035_generation_recovery.sql
+        await conn.execute("""
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS generation_raw_content TEXT;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS generation_status TEXT NOT NULL DEFAULT 'complete';
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS generation_attempted_at TIMESTAMPTZ;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS copy_rules_version TEXT;
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS copy_rules_version TEXT;
+CREATE INDEX IF NOT EXISTS idx_articles_generation_pending
+    ON articles (generation_attempted_at NULLS FIRST, created_at)
+    WHERE generation_status = 'pending' AND from_search = false;
+        """)
         # Phase 4: content-hash dedup column + lookup index.
         await conn.execute(
             "ALTER TABLE articles ADD COLUMN IF NOT EXISTS content_hash TEXT"

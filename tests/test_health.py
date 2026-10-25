@@ -89,6 +89,7 @@ class TestHealthEndpoint:
 
         mock_pool = AsyncMock()
         mock_pool.fetchval = AsyncMock(return_value=1)
+        mock_pool.fetchrow = AsyncMock(return_value={"pending": 0, "unavailable": 0, "last_completed": None})
 
         with patch("app.main.get_pool", new_callable=AsyncMock, return_value=mock_pool):
             response = client.get("/health?deep=1")

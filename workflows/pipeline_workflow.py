@@ -56,8 +56,9 @@ async def deduplicate_node(state: PipelineState) -> dict:
     from services.deduplicator import deduplicate
 
     articles = state.get("articles", [])
-    if not articles:
-        return {"new_articles": []}
+    from services.generation_recovery import pending_articles
+
+    retries = await pending_articles()
 
     if state.get("force"):
         logger.info("deduplicate: force=True, keeping all %d articles", len(articles))
@@ -66,7 +67,12 @@ async def deduplicate_node(state: PipelineState) -> dict:
     try:
         new = await deduplicate(articles)
         logger.info("deduplicate: %d new, %d skipped", len(new), len(articles) - len(new))
-        return {"new_articles": new}
+        # Prefer fresh RSS evidence for a queued URL; recover stored evidence
+        # for entries that have already aged out of their publisher's RSS feed.
+        incoming = {a.source_url: a for a in articles}
+        by_url = {a.source_url: a for a in new}
+        by_url.update({a.source_url: incoming.get(a.source_url, a) for a in retries})
+        return {"new_articles": list(by_url.values())}
     except Exception as e:
         logger.error("deduplicate failed: %s", e)
         # On error, treat all as new (will fail at store if truly duplicates)
@@ -95,26 +101,18 @@ async def summarize_node(state: PipelineState) -> dict:
             if result:
                 article.category = result["category"]
             else:
-                article.category = "top"  # fallback
+                article.category = "general"  # no source body; never rank it
 
         return {"summaries": summaries, "new_articles": new_articles}
     except Exception as e:
         logger.error("summarize failed: %s", e)
-        # Fall back to raw RSS content as summaries, default to "top" category
-        fallback: dict[str, dict] = {}
+        from services.summarizer import _raw_content_fallback
         for article in new_articles:
-            article.category = "top"
-            if article.raw_content:
-                words = article.raw_content.split()
-                fallback[article.source_url] = {
-                    "summary": " ".join(words[:50]),
-                    "category": "top",
-                }
-        return {
-            "summaries": fallback,
-            "new_articles": new_articles,
-            "errors": state.get("errors", []) + [f"summarize: {e}"],
-        }
+            article.category = "general"
+        return {"summaries": _raw_content_fallback(new_articles),
+                "new_articles": new_articles,
+                "errors": state.get("errors", []) + [f"summarize: {e}"]}
+
 
 
 async def context_node(state: PipelineState) -> dict:
@@ -137,7 +135,7 @@ async def context_node(state: PipelineState) -> dict:
     for article in new_articles:
         result = summaries.get(article.source_url)
         summary = result["summary"] if result else ""
-        if summary:
+        if summary and not result.get("_degraded"):
             articles_for_context.append({
                 "source_url": article.source_url,
                 "title": article.title,
@@ -185,7 +183,7 @@ async def primer_node(state: PipelineState) -> dict:
     for article in new_articles:
         result = summaries.get(article.source_url)
         summary = result["summary"] if result else ""
-        if summary:
+        if summary and not result.get("_degraded"):
             articles_for_primer.append({
                 "source_url": article.source_url,
                 "source_name": article.source_name,
@@ -214,7 +212,9 @@ async def embed_node(state: PipelineState) -> dict:
     """Generate Voyage AI embeddings for new articles."""
     from services.embedder import embed_texts
 
-    new_articles = state.get("new_articles", [])
+    new_articles = [a for a in state.get("new_articles", [])
+                    if state.get("summaries", {}).get(a.source_url)
+                    and not state["summaries"][a.source_url].get("_degraded")]
     if not new_articles:
         logger.info("embed: no new articles to embed")
         return {"embeddings": {}}
@@ -273,7 +273,9 @@ async def link_entities_node(state: PipelineState) -> dict:
     """
     from services.entity_linker import link_articles
 
-    new_articles = state.get("new_articles", [])
+    new_articles = [a for a in state.get("new_articles", [])
+                    if state.get("summaries", {}).get(a.source_url)
+                    and not state["summaries"][a.source_url].get("_degraded")]
     if not new_articles:
         return {"entity_links": {}}
 
@@ -308,6 +310,8 @@ async def store_node(state: PipelineState) -> dict:
     from app.db import get_pool
     from services.genre import detect_opinion, detect_roundup
     from services.rss import stable_hash
+    from services.copy_rules import COPY_RULES_VERSION
+    from services.summarizer import _has_summarizable_content
 
     new_articles = state.get("new_articles", [])
     summaries = state.get("summaries", {})
@@ -345,7 +349,9 @@ async def store_node(state: PipelineState) -> dict:
         article_id = stable_hash(article.source_url + article.title)
         result = summaries.get(article.source_url)
         summary = result["summary"] if result else ""
-        category = article.category or "top"
+        category = article.category or "general"
+        generation_status = ("complete" if result and not result.get("_degraded")
+                             else "pending" if _has_summarizable_content(article) else "unavailable")
         why_it_matters = contexts.get(article.source_url)
         importance_score = importance_scores.get(article.source_url)
         embedding = embeddings.get(article.source_url)
@@ -366,8 +372,10 @@ async def store_node(state: PipelineState) -> dict:
                 INSERT INTO articles (id, title, summary, source_url, source_name,
                     image_url, category, published_date, embedding, read_time,
                     why_it_matters, importance_score, content_hash, entity_links,
-                    is_opinion, is_roundup)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12, $13, $14::jsonb, $15, $16)
+                    is_opinion, is_roundup, generation_raw_content, generation_status,
+                    generation_attempted_at, copy_rules_version)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10, $11, $12, $13, $14::jsonb, $15, $16,
+                        $17, $18, NOW(), $19)
                 ON CONFLICT (source_url) DO UPDATE SET
                     summary = EXCLUDED.summary,
                     category = EXCLUDED.category,
@@ -378,6 +386,12 @@ async def store_node(state: PipelineState) -> dict:
                     entity_links = EXCLUDED.entity_links,
                     is_opinion = EXCLUDED.is_opinion,
                     is_roundup = EXCLUDED.is_roundup,
+                    generation_raw_content = EXCLUDED.generation_raw_content,
+                    generation_status = EXCLUDED.generation_status,
+                    generation_attempted_at = NOW(),
+                    copy_rules_version = EXCLUDED.copy_rules_version,
+                    threaded_at = CASE WHEN articles.generation_status = 'pending'
+                                       THEN NULL ELSE articles.threaded_at END,
                     updated_at = NOW()
                 """,
                 article_id,
@@ -396,6 +410,9 @@ async def store_node(state: PipelineState) -> dict:
                 entity_links_json,
                 detect_opinion(article.source_url, article.title),
                 detect_roundup(article.title),
+                article.raw_content,
+                generation_status,
+                COPY_RULES_VERSION if generation_status == "complete" else None,
             )
             stored += 1
         except Exception as e:
@@ -448,6 +465,12 @@ async def store_node(state: PipelineState) -> dict:
     from app.pipeline_clock import note_pipeline_run
 
     note_pipeline_run()
+    from services.generation_health import refresh
+
+    try:
+        await refresh(pool)
+    except Exception as e:
+        logger.error("Generation health refresh failed: %s", e)
 
     logger.info("store: inserted %d articles", stored)
 
@@ -462,7 +485,7 @@ async def store_node(state: PipelineState) -> dict:
     for article in new_articles:
         result = summaries.get(article.source_url)
         summary = result["summary"] if result else ""
-        if summary:
+        if summary and not result.get("_degraded"):
             articles_for_entities.append({
                 "source_url": article.source_url,
                 "source_name": article.source_name,

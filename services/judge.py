@@ -1,25 +1,9 @@
-"""LLM-judge for AI-generated card copy (sift-api#90).
+"""Focused semantic review for generated card copy.
 
-This is the OFFLINE measurement half of the quality gate. It scores each
-generated `why_it_matters` line (or `background`) on the three axes the issue
-asks for:
-
-  (a) restates    — does the line restate/paraphrase the summary (no new fact)?
-  (b) adds_significance — does it add a concrete, VERIFIABLE significance not in
-       the title/summary?
-  (c) neutral_cliche_free — is it neutral and free of editorializing/clichés?
-
-A line PASSES iff: not restates AND adds_significance AND neutral_cliche_free.
-
-It is NOT wired into the production pipeline — the rubric in the generation
-prompt plus services/quality_gate.py do the runtime work for free. The judge is
-run by scripts/eval_why_it_matters.py to baseline against the sift#150 audit
-corpus and prove the rubric moved the restatement + cliché rates. A judge call
-costs a real model invocation, so it stays opt-in and out of the hot path.
-
-Uses Sonnet (not the Haiku used for generation): the judge needs stronger
-semantic discrimination than the thing it audits, and offline eval is not cost-
-sensitive the way per-article ingest is.
+The original significance evaluator remains available offline. Production uses
+budget-checked term usefulness, background novelty and source-note novelty
+reviews. Unknown/unavailable verdicts withhold optional copy. These checks do
+not establish the factual truth of every source or define a universal quality score.
 """
 from __future__ import annotations
 
@@ -60,15 +44,34 @@ def _build_items_text(items: list[dict]) -> str:
         text += (
             f"\n{i}. TITLE: {it.get('title', '')}\n"
             f"   SUMMARY: {it.get('summary', '')}\n"
+            f"   GLOSSARY: {json.dumps(it.get('terms', []), ensure_ascii=False)}\n"
             f"   LINE: {it.get('line', '')}\n"
         )
     return text
 
 
 def build_judge_prompt(items: list[dict], field: str = "why_it_matters") -> str:
+    if field == "term_utility":
+        return f"""Review each glossary entry (LINE) on a news card.
+r=true if it defines ordinary vocabulary, merely expands/repeats the term,
+or repeats an explanation already in TITLE or SUMMARY.
+a=true only for domain-specific jargon, a technical mechanism, institutional
+procedure or legal term of art that a college-educated reader may need explained.
+n=true only for a neutral, precise definition without speculative significance
+or unsupported procedural guarantees. Default to omitting marginal entries.
+Reject "stock low", "market value", "campaign", "poll" and "earnings report".
+Retain useful explanations such as habeas corpus, cloture, basis points,
+tripwire military deployment and denaturalization when present in the story.
+Return ONLY one JSON entry per numbered item:
+[{{"i":1,"r":true,"a":false,"n":true,"why":"ordinary vocabulary"}}]
+{_build_items_text(items)}"""
     if field == "background_novelty":
         return f"""Judge whether each news-card background (LINE) earns its place.
 TITLE and SUMMARY describe the news the reader has already read.
+GLOSSARY lists the definitions already shown alongside the background.
+Treat a paraphrase of any GLOSSARY definition as repetition too, even when
+its wording differs. A paragraph defining tripwire followed by a tripwire
+glossary definition repeats the same explanation: r=true, a=false.
 r = true if the background only paraphrases that news, defines a familiar
 proper name, or gives a general overview without teaching a specific mechanism,
 institutional role, procedure or difficult concept beyond the summary.

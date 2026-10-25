@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from services.copy_rules import COPY_RULES_VERSION
+
 from workflows.incremental_threading import (
     MAX_SYNTHESIS_ATTEMPTS,
     MIN_UNIQUE_OUTLETS,
@@ -42,7 +44,7 @@ def _pool(fetch_map=None, fetchval=None):
 
     pool = AsyncMock()
     pool.fetch = AsyncMock(side_effect=fetch)
-    pool.fetchval = AsyncMock(return_value=fetchval)
+    pool.fetchval = AsyncMock(side_effect=lambda sql, *args: COPY_RULES_VERSION if "SELECT copy_rules_version" in sql else fetchval)
     pool.execute = AsyncMock()
     return pool
 
@@ -173,7 +175,7 @@ async def test_a_failed_resynthesis_does_not_overwrite_the_stored_story():
 
     sql = _sql(pool)
     assert "SET headline" not in sql          # existing text preserved
-    assert "synthesis_status" not in sql      # and its status left alone
+    assert "copy_rules_version IS DISTINCT FROM" in sql  # stale copy becomes retryable
     assert "article_count" in sql
     assert r["attached"] == 1
     assert r["resynthesized"] == 0
@@ -204,7 +206,8 @@ async def test_a_new_story_whose_synthesis_failed_is_stored_as_failed():
     assert r["synthesis_failed"] == 1
     insert = next(c for c in pool.execute.call_args_list
                   if c.args and "INSERT INTO stories" in str(c.args[0]))
-    assert insert.args[-1] == "failed"
+    assert insert.args[-2] == "failed"
+    assert insert.args[-1] is None
 
 
 @pytest.mark.asyncio
@@ -223,7 +226,8 @@ async def test_a_successful_synthesis_is_still_stored_as_complete():
     assert r["created"] == 1 and r["synthesis_failed"] == 0
     insert = next(c for c in pool.execute.call_args_list
                   if c.args and "INSERT INTO stories" in str(c.args[0]))
-    assert insert.args[-1] == "complete"
+    assert insert.args[-2] == "complete"
+    assert insert.args[-1] == COPY_RULES_VERSION
 
 
 # ── create ──────────────────────────────────────────────────

@@ -225,6 +225,10 @@ async def test_scheduled_and_realtime_primers_have_identical_reference_checks(mo
     pool = Pool()
     monkeypatch.setattr(pg, "get_pool", AsyncMock(return_value=pool))
     payload = [{"i": 1, "b": SUMMARY, "t": [TERM]}]
+    monkeypatch.setattr(pg, "check_budget", AsyncMock(return_value=SimpleNamespace(allowed=True)))
+    monkeypatch.setattr(pg, "judge_lines", AsyncMock(side_effect=lambda items, **kw: [
+        {"id": x["id"], "judged": True, "restates": False,
+         "adds_significance": True, "neutral_cliche_free": True} for x in items]))
     realtime = pg._parse_primers(json.dumps(payload), [ARTICLE])[URL]
     await pg.process_primer_batch_results("batch", batch_result(payload))
     stored, url = pool.execute.call_args.args[1:]
@@ -263,10 +267,12 @@ async def test_context_without_reference_keeps_score_but_omits_unchecked_note(mo
 @pytest.mark.parametrize("state", ["approved", "repeated", "unjudged", "budget", "error"])
 async def test_primer_novelty_review_retains_terms_and_withholds_unapproved_background(monkeypatch, state):
     monkeypatch.setattr(pg, "check_budget", AsyncMock(return_value=SimpleNamespace(allowed=state != "budget")))
-    review = AsyncMock(return_value=[{
-        "id": u, "judged": state != "unjudged", "restates": state == "repeated",
-        "adds_significance": state != "repeated", "neutral_cliche_free": True,
-    } for u in [URL, URL + "two"]])
+    def verdict(items, field, **kwargs):
+        return [{"id": x["id"], "judged": state != "unjudged" or field == "term_utility",
+                 "restates": state == "repeated" and field != "term_utility",
+                 "adds_significance": state != "repeated" or field == "term_utility",
+                 "neutral_cliche_free": True} for x in items]
+    review = AsyncMock(side_effect=verdict)
     if state == "error":
         review.side_effect = RuntimeError("review unavailable")
     monkeypatch.setattr(pg, "judge_lines", review)
@@ -274,6 +280,9 @@ async def test_primer_novelty_review_retains_terms_and_withholds_unapproved_back
     payloads = {URL: {"background": paragraph, "terms": [TERM]},
                 URL + "two": {"background": paragraph, "terms": []}}
     await pg._review_backgrounds(payloads, [ARTICLE, {**ARTICLE, "source_url": URL + "two"}])
+    if state in {"budget", "error"}:
+        assert not payloads
+        return
     assert payloads[URL]["terms"] == [TERM]
     if state == "approved":
         assert payloads[URL]["background"] == paragraph

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.copy_rules import COPY_RULES_VERSION
+
 import hashlib
 import json
 import logging
@@ -220,10 +222,11 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
         # stores a degraded placeholder (the first article's title/summary), so
         # that row has never had a real synthesis and still deserves one.
         existing = await pool.fetchrow(
-            "SELECT headline, synthesis_status FROM stories WHERE id = $1",
+            "SELECT headline, synthesis_status, copy_rules_version FROM stories WHERE id = $1",
             story_id,
         )
-        reuse = existing is not None and existing["synthesis_status"] != "failed"
+        reuse = (existing is not None and existing["synthesis_status"] != "failed"
+                 and existing.get("copy_rules_version") == COPY_RULES_VERSION)
 
         if reuse:
             synthesis = None
@@ -286,8 +289,8 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
                 await pool.execute(
                     """
                     INSERT INTO stories (id, headline, summary, category, framings, entities,
-                        article_count, representative_image_url, published_date, synthesis_status)
-                    VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)
+                        article_count, representative_image_url, published_date, synthesis_status, copy_rules_version)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11)
                     ON CONFLICT (id) DO UPDATE SET
                         headline = EXCLUDED.headline,
                         summary = EXCLUDED.summary,
@@ -296,6 +299,7 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
                         article_count = EXCLUDED.article_count,
                         representative_image_url = EXCLUDED.representative_image_url,
                         synthesis_status = EXCLUDED.synthesis_status,
+                        copy_rules_version = EXCLUDED.copy_rules_version,
                         updated_at = NOW()
                     """,
                     story_id,
@@ -308,6 +312,7 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
                     representative_image,
                     earliest_date,
                     synthesis_status,
+                    COPY_RULES_VERSION if synthesis_status == "complete" else None,
                 )
 
             # Update story_id and entities on member articles

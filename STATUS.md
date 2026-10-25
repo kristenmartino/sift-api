@@ -1,6 +1,6 @@
 # sift-api — STATUS
 
-**Updated:** 2026-08-18
+**Updated:** 2026-10-25
 **Tier:** v1.5 (civic-literacy pivot backend) — **feature work active**; the D46 pause was lifted 2026-08-05 ([`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md), amended). Android stays paused and the week-one evidence test is still the next action — what was withdrawn is the blanket prohibition on building, not those.
 **Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). **2026-07-31: 8 PRs merged** (#116, #117, #120, #121, #123, #124, #126, #127) — a burst, not a new baseline. This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
@@ -326,3 +326,11 @@ held 58 entries going back to ~2026-05 (44 archived, 14 kept below).
 ---
 
 *See also: [`CLAUDE.md`](./CLAUDE.md) (orientation), [`BACKLOG.md`](./BACKLOG.md) (deferred items), [`README.md`](./README.md), [`init.sql`](./init.sql), and [`sift/docs/DECISIONS.md`](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md) — the **canonical cross-repo decision register** (record shared architecture decisions there, not duplicated across STATUS files). Sibling repos: `sift` (frontend, owns user-facing reads + civic surface), `sift-mcp` (MCP server, separate cadence).*
+
+## Recent decisions
+
+- 2026-10-25: Budget-blocked summaries retain RSS evidence and a durable retry
+  marker. Keep the daily cap; retry up to 50 on the existing ingestion cadence.
+  Expose generation backlog separately from ingestion freshness. Copy rules
+  2026-10-25.1 review glossary usefulness and background/glossary duplication;
+  version story text so legacy reuse cannot masquerade as a newly checked result.
