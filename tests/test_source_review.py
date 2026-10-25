@@ -127,3 +127,12 @@ async def test_standalone_audit_opens_the_cost_ledger_pool_and_always_closes_it(
     assert await audit.main(SimpleNamespace(regressions=True,daily_cap=15)) is False
     pool.close.assert_awaited_once()
     assert db._pool is None
+
+
+
+def test_background_cannot_bypass_the_glossary_utility_bar():
+    from services.judge import build_judge_prompt
+    prompt=build_judge_prompt([{'line':'A trade deadline is a cutoff.'}],field='background_novelty')
+    assert 'same usefulness bar as the glossary' in prompt
+    assert 'postseason-eligibility guarantees' in prompt
+    assert 'institutional role (such as the DNI)' in prompt
