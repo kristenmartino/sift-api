@@ -134,7 +134,7 @@ roles and unfamiliar procedures remain retention controls.
 ## Post-release input fidelity (2026-10-26.1)
 
 Article and cluster checks reject ambiguous Bolsonaro first-name guesses and
-close surname spelling drift. Reviews receive the publisher name so a properly
+the observed Jake LaRavia-to-LaRiver spelling drift. Reviews receive the publisher name so a properly
 attributed editorial is not mistaken for an invented attribution. Review also
 checks causal reversals, disputed-claim actors and unattributed rankings.
 
@@ -159,3 +159,8 @@ pay only actual claims rather than fixed premiums. The deterministic primer
 guard withholds that unsupported guarantee even when semantic review accepts
 it. `scripts/audit_primer_copy.py --daily-cap 15` replays the observed primer
 failures and useful-copy controls through both the guard and reviewer.
+
+The name backstop is deliberately scoped: fuzzy capitalized-word matching
+misclassified company plurals and title-cased verbs as changed surnames in the
+next live cohort. Those controls now stay clear; general name fidelity remains
+the semantic reviewer's job.

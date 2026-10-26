@@ -14,6 +14,8 @@ from services.index_alignment import AlignmentError
  ('Flávio Bolsonaro lost.','Bolsonaro lost.',True),
  ('Flávio Bolsonaro, son of Jair Bolsonaro, lost.','Flávio Bolsonaro is the son of Jair Bolsonaro.',False),
  ('Jake LaRiver was injured.','Jake LaRavia was injured.',True),
+ ("Agility Robotics builds Digit.","Agility Robotic's humanoid robot Digit.",False),
+ ('Turnstile Raises Funds','Turnstile Raise Funds',False),
  ("Jalen Hurts's treatment was reported.","Jalen Hurts was treated.",False),
  ('Alfonso Cuarón’s film returned.','Alfonso Cuarón&#8217;s film returned.',False),
  ('Federal Housing Finance Agency responded.','Federal Housing Finance Agency responded.',False),
