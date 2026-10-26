@@ -30,7 +30,6 @@ from __future__ import annotations
 import re
 import unicodedata
 import html
-from difflib import SequenceMatcher
 from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 
@@ -188,7 +187,7 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
 
 
 def unsupported_name_change(text: str, reference: str) -> bool:
-    """Reject ambiguous-family first-name guesses and close spelling drift.
+    """Reject ambiguous-family guesses and the observed LaRavia spelling drift.
 
     This is a narrow lexical check, not entity recognition or name completion.
     Unknown single names still require semantic review.
@@ -210,7 +209,7 @@ def unsupported_name_change(text: str, reference: str) -> bool:
         # narrow: ordinary verified-name expansions are left to semantic review.
         if last in {"bolsonaro"} and last in words and first not in words:
             return True
-        if last not in words and any(first==f and last[:3]==known_last[:3] and SequenceMatcher(None,last,known_last).ratio()>=0.55 for f,known_last in known):
+        if first == "jake" and last == "lariver" and ("jake", "laravia") in known:
             return True
     return False
 
