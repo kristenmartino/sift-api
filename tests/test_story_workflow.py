@@ -23,6 +23,11 @@ import pytest
 from services.copy_rules import COPY_RULES_VERSION
 
 
+@pytest.fixture(autouse=True)
+def stub_paid_membership(monkeypatch):
+    monkeypatch.setattr("services.event_coherence.same_event", AsyncMock(return_value=True))
+
+
 def _pool(existing: dict | None) -> AsyncMock:
     """A pool whose `SELECT headline, synthesis_status` returns `existing`."""
     pool = AsyncMock()
@@ -58,7 +63,7 @@ def _state(n_outlets: int = 2) -> dict:
 
 def _sql_of(pool: AsyncMock) -> str:
     """All SQL passed to pool.execute, concatenated, for shape assertions."""
-    return "\n".join(str(c.args[0]) for c in pool.execute.call_args_list if c.args)
+    return "\n".join(str(c.args[0]) for c in pool.execute.call_args_list + pool.fetch.call_args_list if c.args)
 
 
 async def _run(pool: AsyncMock, synth: AsyncMock, state: dict) -> dict:
@@ -147,3 +152,17 @@ async def test_single_outlet_cluster_never_reaches_the_paid_call():
     synth.assert_not_called()
     pool.fetchrow.assert_not_called()
     assert result["stories"] == []
+
+
+@pytest.mark.asyncio
+async def test_incoherent_legacy_group_does_not_clear_or_reassign_existing_stories(monkeypatch):
+    from workflows.story_workflow import synthesize_and_store_node
+    pool = _pool(None)
+    monkeypatch.setattr("app.db.get_pool", AsyncMock(return_value=pool))
+    monkeypatch.setattr("services.event_coherence.same_event", AsyncMock(return_value=False))
+    synth = AsyncMock()
+    monkeypatch.setattr("services.story_synthesizer.synthesize_story", synth)
+    result = await synthesize_and_store_node(_state())
+    assert result['stories'] == []
+    pool.execute.assert_not_awaited()
+    synth.assert_not_awaited()

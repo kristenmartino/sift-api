@@ -265,3 +265,12 @@ This is correctness, not tuning. It blocks cutover.
 - **Does not raise `LIMIT 50`.** The queue makes it irrelevant — there is no window scan left to bound.
 - **Does not change cadence.** 30-minute freshness is a product requirement.
 - **Does not try to fix grouping accuracy directly.** It removes the structural ceiling; whether the clusterer is *good* is Next-3 #1's labelled corpus, still unanswered.
+
+## Event integrity before membership writes
+
+Every attachment and new cluster now reviews its full proposed membership,
+including existing articles omitted from the kNN sample. Different NFL matchups
+or weeks are rejected without a model call when explicit; semantic review
+handles event identity and promotional/roundup bridges. Unknown or budget-blocked
+review leaves membership unchanged. The failed-story sweep withholds incoherent
+legacy groups rather than paying to manufacture a shared summary.
