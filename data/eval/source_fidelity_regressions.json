@@ -160,5 +160,12 @@
     "source": "Utah is the conference’s most complete team, the columnist argued after the Houston win.",
     "copy": "Utah beat Houston, establishing itself as the conference’s most complete team.",
     "expected": "retry"
+  },
+  {
+    "id": "vague-pitching-record",
+    "title": "Brewers doing something no team has done in 30 years",
+    "source": "The Brewers have put together a truly historic pitching run in the playoffs.",
+    "copy": "The Brewers have put together a historic pitching run no team has achieved in 30 years.",
+    "expected": "unavailable"
   }
 ]

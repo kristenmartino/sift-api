@@ -41,6 +41,8 @@ finding. DHS disputing a CBS account cannot become CBS disputing an asylum claim
 Reject generic language even when inherited verbatim from an older input:
 "reveal insights about performance", "a disappointing update", or "a significant
 shift in voters' views" without the actual finding adds no reported detail.
+A "historic pitching run" with no actual record or performance stated is also
+filler. If that is all the source provides, use v="unavailable".
 This rule also applies when proposed_copy is a unified cluster summary.
 Unattributed rankings such as "the conference's most complete team" are opinion,
 not established facts. Attribute the evaluation to its source or omit it.

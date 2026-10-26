@@ -147,3 +147,9 @@ term lengths, mortgage-share fractions, named-law claims and categorical
 healthy-tissue guarantees. Semantic checks distinguish federal prosecutors
 from Senate-confirmed U.S. Attorneys and require precise period definitions.
 Stable institutional roles and useful jargon remain retention controls.
+
+The same release also checks spelled-out counts beyond term lengths and asks
+background review to withhold unverified league rules, financial guarantees,
+religious practices and institutional powers. Familiar runoff definitions do
+not earn a background paragraph. A record teaser with no underlying record is
+withheld rather than rewritten as a vague historical achievement.
