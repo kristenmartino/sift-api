@@ -1,0 +1,34 @@
+[
+  {
+    "id": "actual_bengals",
+    "title": "Full membership",
+    "source": "\n1. [ESPN] (published 2026-10-25 23:52:39+00:00) \"WR Chase's fiery halftime speech inspires Bengals' turnaround vs. Ravens\"\n   Ja'Marr Chase delivered a halftime speech that inspired the Bengals to a comeback victory over the Ravens.\n\n2. [Fox News] (published 2026-10-26 01:11:39+00:00) \"JD Vance sees Bengals making 'a run' but that's understandable because he's a fan, especially of Ja'Marr Chase\"\n   The Cincinnati Bengals scored all 35 points in the second half against the Baltimore Ravens, with quarterback Joe Burrow throwing four touchdown passes, and Vice President JD Vance posted on social media predicting the Bengals will make a run.\n",
+    "copy": "Proposed event membership.",
+    "review_mode": "event_coherence",
+    "expected_same_event": true
+  },
+  {
+    "id": "political_bridge",
+    "title": "Full membership",
+    "source": "\n1. [A] (published 2026-10-26) \"Bengals rally past Ravens\"\n   Cincinnati came back to beat Baltimore.\n\n2. [B] \"Vance campaigns in Montana\"\n   Vance spoke at a Senate campaign rally. He is a Bengals fan.\n",
+    "copy": "Proposed event membership.",
+    "review_mode": "event_coherence",
+    "expected_same_event": false
+  },
+  {
+    "id": "passing_reference",
+    "title": "Full membership",
+    "source": "\n1. [A] (published 2026-10-26) \"Bengals rally past Ravens\"\n   Cincinnati came back to beat Baltimore.\n\n2. [B] \"Vance lays out border policy\"\n   Vance described a proposed immigration policy and briefly mentioned watching football.\n",
+    "copy": "Proposed event membership.",
+    "review_mode": "event_coherence",
+    "expected_same_event": false
+  },
+  {
+    "id": "different_game",
+    "title": "Full membership",
+    "source": "\n1. [A] (published 2026-10-26) \"Bengals rally past Ravens\"\n   Cincinnati came back to beat Baltimore.\n\n2. [B] \"Giants defeat Texans\"\n   New York beat Houston 27-21 in overtime.\n",
+    "copy": "Proposed event membership.",
+    "review_mode": "event_coherence",
+    "expected_same_event": false
+  }
+]
