@@ -99,8 +99,8 @@ class TestAlert:
                             with patch.object(
                                 cost_guard.sentry_sdk, "capture_message"
                             ) as cap:
-                                d1 = asyncio.run(cost_guard.check_budget())
-                                d2 = asyncio.run(cost_guard.check_budget())
+                                d1 = asyncio.run(cost_guard.check_budget(scope="compare"))
+                                d2 = asyncio.run(cost_guard.check_budget(scope="compare"))
         assert d1.allowed is True and d2.allowed is True
         cap.assert_called_once()  # de-duped to one alert per UTC day
 
@@ -118,7 +118,7 @@ class TestAlert:
                             with patch.object(
                                 cost_guard.sentry_sdk, "capture_message"
                             ) as cap:
-                                decision = asyncio.run(cost_guard.check_budget())
+                                decision = asyncio.run(cost_guard.check_budget(scope="compare"))
         assert decision.allowed is True
         cap.assert_not_called()  # Sentry inert → logs only, no crash
 

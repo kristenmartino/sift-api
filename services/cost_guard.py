@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
@@ -30,7 +31,7 @@ def _utc_today() -> date:
     return datetime.now(timezone.utc).date()
 
 
-async def check_budget(estimated_cost_usd: float = 0.0) -> BudgetDecision:
+async def check_budget(estimated_cost_usd: float = 0.0, *, scope: str = "background") -> BudgetDecision:
     """Decide whether a paid AI call may proceed under today's budget.
 
     Returns ``allowed=True`` when the guard is disabled, or when today's spend
@@ -64,6 +65,10 @@ async def check_budget(estimated_cost_usd: float = 0.0) -> BudgetDecision:
         )
         return BudgetDecision(False, "guard_unavailable", 0.0, limit)
 
+    # A non-binding preflight; actual provider boundaries also reserve atomically.
+    if scope != "compare":
+        limit *= 1 - settings.ai_compare_budget_share
+    _maybe_alert(spent, settings.daily_ai_cost_limit_usd)
     projected = spent + max(0.0, estimated_cost_usd)
     if limit > 0 and projected > limit:
         logger.warning(
@@ -75,7 +80,6 @@ async def check_budget(estimated_cost_usd: float = 0.0) -> BudgetDecision:
         )
         return BudgetDecision(False, "budget_exceeded", spent, limit)
 
-    _maybe_alert(spent, limit)
     return BudgetDecision(True, "within_budget", spent, limit)
 
 
@@ -91,7 +95,8 @@ async def record_usage(
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
     web_search_calls: int = 0,
-) -> None:
+    reservation_id: str | None = None,
+) -> bool:
     """Add a paid call's estimated cost and token counts to today's ledger row.
 
     Records unconditionally — `ai_cost_guard_enabled` gates *enforcement*
@@ -109,51 +114,67 @@ async def record_usage(
 
     Never raises: lost telemetry must not break the pipeline or a request.
     """
-    if cost_usd <= 0 and call_count <= 0:
-        return
+    if cost_usd <= 0 and call_count <= 0 and not reservation_id:
+        return True
 
     try:
         pool = await get_pool()
-        await pool.execute(
-            """
-            INSERT INTO ai_usage_daily
-                (usage_date, provider, model, operation, estimated_cost_usd,
-                 call_count, input_tokens, output_tokens, cache_read_tokens,
-                 cache_write_tokens, web_search_calls, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-            ON CONFLICT (usage_date, provider, model, operation)
-            DO UPDATE SET
-                estimated_cost_usd =
-                    ai_usage_daily.estimated_cost_usd + EXCLUDED.estimated_cost_usd,
-                call_count = ai_usage_daily.call_count + EXCLUDED.call_count,
-                input_tokens =
-                    ai_usage_daily.input_tokens + EXCLUDED.input_tokens,
-                output_tokens =
-                    ai_usage_daily.output_tokens + EXCLUDED.output_tokens,
-                cache_read_tokens =
-                    ai_usage_daily.cache_read_tokens + EXCLUDED.cache_read_tokens,
-                cache_write_tokens =
-                    ai_usage_daily.cache_write_tokens + EXCLUDED.cache_write_tokens,
-                web_search_calls =
-                    ai_usage_daily.web_search_calls + EXCLUDED.web_search_calls,
-                updated_at = NOW()
-            """,
-            _utc_today(),
-            provider,
-            model,
-            operation,
-            float(cost_usd),
-            int(call_count),
-            int(input_tokens or 0),
-            int(output_tokens or 0),
-            int(cache_read_tokens or 0),
-            int(cache_write_tokens or 0),
-            int(web_search_calls or 0),
-        )
+        async with (pool.acquire() if reservation_id else nullcontext(pool)) as conn, (conn.transaction() if reservation_id else nullcontext()):
+            if reservation_id:
+                await conn.execute("SELECT pg_advisory_xact_lock(73482691)")
+            if reservation_id:
+                hold = await conn.fetchrow("SELECT scope, settled_at FROM ai_budget_holds WHERE id = $1 FOR UPDATE", reservation_id)
+                if not hold:
+                    return False
+                if hold["settled_at"] is not None:
+                    return True
+                if hold["scope"] == "compare":
+                    operation = "interactive." + operation
+            usage_day = await conn.fetchval("SELECT (NOW() AT TIME ZONE 'UTC')::date") if reservation_id else _utc_today()
+            await conn.execute(
+                """
+                INSERT INTO ai_usage_daily
+                    (usage_date, provider, model, operation, estimated_cost_usd,
+                     call_count, input_tokens, output_tokens, cache_read_tokens,
+                     cache_write_tokens, web_search_calls, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+                ON CONFLICT (usage_date, provider, model, operation)
+                DO UPDATE SET
+                    estimated_cost_usd =
+                        ai_usage_daily.estimated_cost_usd + EXCLUDED.estimated_cost_usd,
+                    call_count = ai_usage_daily.call_count + EXCLUDED.call_count,
+                    input_tokens =
+                        ai_usage_daily.input_tokens + EXCLUDED.input_tokens,
+                    output_tokens =
+                        ai_usage_daily.output_tokens + EXCLUDED.output_tokens,
+                    cache_read_tokens =
+                        ai_usage_daily.cache_read_tokens + EXCLUDED.cache_read_tokens,
+                    cache_write_tokens =
+                        ai_usage_daily.cache_write_tokens + EXCLUDED.cache_write_tokens,
+                    web_search_calls =
+                        ai_usage_daily.web_search_calls + EXCLUDED.web_search_calls,
+                    updated_at = NOW()
+                """,
+                usage_day,
+                provider,
+                model,
+                operation,
+                float(cost_usd),
+                int(call_count),
+                int(input_tokens or 0),
+                int(output_tokens or 0),
+                int(cache_read_tokens or 0),
+                int(cache_write_tokens or 0),
+                int(web_search_calls or 0),
+            )
+            if reservation_id:
+                await conn.execute("UPDATE ai_budget_holds SET remaining_usd = 0, settled_at = NOW() WHERE id = $1", reservation_id)
+        return True
     except Exception as e:
         logger.debug(
             "cost_guard: ledger write failed for %s/%s: %s", provider, operation, e
         )
+        return False
 
 
 def _maybe_alert(spent: float, limit: float) -> None:
@@ -234,3 +255,33 @@ async def record_output_stop(
         )
     except Exception as e:
         logger.debug("cost_guard: output-stop write failed for %s: %s", operation, e)
+
+
+BUDGET_POLICY_VERSION = "compare-reserve-20261026-v1"
+
+async def reserve_budget(amount: float, *, scope: str = "background") -> str | None:
+    """Durable atomic admission; unresolved costs remain held across restarts/dates."""
+    if not settings.ai_cost_guard_enabled:
+        return ""
+    from uuid import uuid4
+    hold_id = str(uuid4())
+    try:
+        pool = await get_pool()
+        allowed = await pool.fetchval("SELECT sift_reserve_ai_budget($1, $2, $3)", hold_id, amount, scope)
+        return hold_id if allowed else None
+    except Exception:
+        logger.exception("AI budget admission unavailable; refusing paid call")
+        return None
+
+async def release_budget(hold_id: str) -> None:
+    if hold_id:
+        pool = await get_pool()
+        await pool.execute("UPDATE ai_budget_holds SET remaining_usd = 0, settled_at = NOW() WHERE id = $1", hold_id)
+
+async def budget_snapshot() -> dict:
+    pool = await get_pool()
+    row = await pool.fetchrow("SELECT enabled, daily_limit_usd, compare_share, "
+        "(SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage_daily WHERE usage_date = (NOW() AT TIME ZONE 'UTC')::date) AS spent_usd, "
+        "(SELECT COALESCE(SUM(remaining_usd), 0) FROM ai_budget_holds WHERE settled_at IS NULL) AS held_usd "
+        "FROM ai_budget_policy WHERE singleton")
+    return {"policy_version": BUDGET_POLICY_VERSION, **dict(row)}

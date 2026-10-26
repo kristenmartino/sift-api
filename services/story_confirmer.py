@@ -27,6 +27,8 @@ worse — it is visible to readers as "how N outlets covered this."
 """
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import json
 import logging
 from typing import TypedDict
@@ -202,7 +204,7 @@ async def confirm(
         ids = [c["article"]["id"] for c in batch]
 
         async def _call(batch=batch) -> dict:
-            resp = await client.messages.create(
+            resp = await budgeted_message(client, OPERATION,
                 model=model,
                 max_tokens=_max_tokens(len(batch)),
                 messages=[{"role": "user", "content": _prompt(batch)}],

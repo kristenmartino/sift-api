@@ -41,6 +41,8 @@ swap in either implementation transparently.
 """
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import asyncio
 import json
 import logging
@@ -411,7 +413,7 @@ async def link_text_llm(
 
     try:
         response = await asyncio.wait_for(
-            client.messages.create(
+            budgeted_message(client, OPERATION,
                 model=resolve(OPERATION).model,
                 max_tokens=MAX_OUTPUT_TOKENS,
                 # Cache the catalog block so we only pay full price for it

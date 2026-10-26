@@ -72,3 +72,24 @@ def test_stream_has_the_same_provenance_and_filters_unsupported_sources(client):
     assert payload["sources_unavailable"] == ["Reuters"]
     assert payload["claims"][0]["sources"] == ["AP", "Fox"]
     assert "All three" not in payload["comparison"]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_concurrent_budget_denial_is_not_misreported_as_missing_coverage(client, stream):
+    from services.paid_calls import BudgetUnavailable, budget_scope
+    blocked = BudgetUnavailable("committed budget exhausted")
+    async def denied(*_):
+        assert budget_scope.get() == "compare"
+        raise blocked
+    with patch("app.routers.compare.check_budget", new=AsyncMock(return_value=BudgetDecision(True, "ok", 0, 15))), patch(
+        "app.routers.compare.compare_graph.ainvoke", side_effect=denied,
+    ), patch("app.routers.compare.load_allowed_sources", new=AsyncMock(return_value={"ap", "fox"})), patch(
+        "app.routers.compare.search_one_source", side_effect=denied,
+    ), patch("app.routers.compare.anthropic.AsyncAnthropic", return_value=MagicMock()):
+        response = client.post("/analyze/compare" + ("/stream" if stream else ""), json={"topic": "Example", "sources": ["AP", "Fox"]}, headers={"X-Pipeline-Key": "dev-key"})
+    if stream:
+        assert '"code": "AI_BUDGET_EXCEEDED"' in response.text
+        assert '"code": "NO_COVERAGE"' not in response.text
+    else:
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "AI_BUDGET_EXCEEDED"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.paid_calls import BudgetUnavailable, budgeted_message
+
 import asyncio
 import json
 import logging
@@ -133,13 +135,13 @@ async def search_one_source(
     """
     try:
         response = await asyncio.wait_for(
-            client.messages.create(
+            budgeted_message(client, SEARCH_OPERATION,
                 model=resolve(SEARCH_OPERATION).model,
                 max_tokens=2048,
                 tools=[{
                     "type": "web_search_20250305",
                     "name": "web_search",
-                    "max_uses": 3,
+                    "max_uses": 1,
                 }],
                 messages=[{
                     "role": "user",
@@ -174,6 +176,8 @@ async def search_one_source(
         logger.info("search_sources: got %d chars from %s", len(result), source)
         return (source, result)
 
+    except BudgetUnavailable:
+        raise
     except asyncio.TimeoutError:
         logger.warning("search_sources: timed out for %s after %ds", source, PER_SOURCE_TIMEOUT)
         return (source, None)
@@ -213,6 +217,8 @@ async def search_sources_node(state: CompareState) -> dict:
     errors: list[str] = list(state.get("errors", []))
 
     for result in results:
+        if isinstance(result, BudgetUnavailable):
+            raise result
         if isinstance(result, Exception):
             errors.append(f"search: {result}")
             continue
@@ -250,7 +256,7 @@ async def extract_and_compare_node(state: CompareState) -> dict:
 
     sources_list = list(search_results.keys())
 
-    response = await client.messages.create(
+    response = await budgeted_message(client, EXTRACT_OPERATION,
         model=resolve(EXTRACT_OPERATION).model,
         max_tokens=4096,
         messages=[{

@@ -15,7 +15,8 @@ from app.config import settings
 from app.dependencies import limiter
 from app.models import CompareRequest, CompareResponse
 from services.cost_estimates import estimate_cost
-from services.cost_guard import check_budget
+from services.cost_guard import check_budget, budget_snapshot
+from services.paid_calls import BudgetUnavailable, budget_scope
 from services.daily_compare import refresh_daily_example
 from workflows.compare_workflow import (
     CompareState,
@@ -66,12 +67,10 @@ async def compare_sources(
     if len(body.sources) > 5:
         raise HTTPException(status_code=400, detail="Maximum 5 sources allowed")
 
-    # Daily AI cost ceiling (sift-api#70): block the live Claude web-search path
-    # when today's spend plus this request's estimated cost would exceed budget.
-    # Frontend topic-search is NOT covered yet — it stays a temporary D35
-    # exception until sift-api#79 moves that fallback into sift-api.
+    # Reader comparisons can use the protected share and unused background
+    # headroom. Each provider call also obtains an atomic shared reservation.
     budget = await check_budget(
-        estimate_cost("compare.search_sources", len(body.sources))
+        estimate_cost("compare.search_sources", len(body.sources)), scope="compare"
     )
     if not budget.allowed:
         logger.warning(
@@ -118,11 +117,14 @@ async def compare_sources(
         "errors": [],
     }
 
+    token = budget_scope.set("compare")
     try:
         result = await asyncio.wait_for(
             compare_graph.ainvoke(initial_state),
             timeout=COMPARE_TIMEOUT,
         )
+    except BudgetUnavailable as e:
+        raise HTTPException(status_code=503, detail={"detail": "Comparison capacity is temporarily unavailable. Please try again later.", "code": e.code}) from e
     except asyncio.TimeoutError as e:
         logger.error("Compare workflow timed out after %ds", COMPARE_TIMEOUT)
         raise HTTPException(
@@ -135,6 +137,9 @@ async def compare_sources(
             status_code=500,
             detail={"detail": "Comparison failed", "code": "COMPARISON_FAILED"},
         ) from e
+
+    finally:
+        budget_scope.reset(token)
 
     duration_ms = int((time.time() - start) * 1000)
 
@@ -198,7 +203,7 @@ async def compare_sources_stream(
     # Same fail-closed budget pre-check as the JSON endpoint. Raising here
     # (before the stream opens) lets the proxy surface a normal HTTP error.
     budget = await check_budget(
-        estimate_cost("compare.search_sources", len(body.sources))
+        estimate_cost("compare.search_sources", len(body.sources)), scope="compare"
     )
     if not budget.allowed:
         if budget.reason == "guard_unavailable":
@@ -240,6 +245,7 @@ async def compare_sources_stream(
         endpoints cannot drift apart in behavior — only in reporting.
         """
         start = time.time()
+        token = budget_scope.set("compare")
         tasks: list[asyncio.Task] = []
         try:
             async with asyncio.timeout(COMPARE_TIMEOUT):
@@ -316,6 +322,10 @@ async def compare_sources_stream(
                         "duration_ms": int((time.time() - start) * 1000),
                     },
                 )
+        except BudgetUnavailable as e:
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            yield _sse("error", {"message": "Comparison capacity is temporarily unavailable. Please try again later.", "code": e.code})
         except TimeoutError:
             logger.error("Compare stream timed out after %ds", COMPARE_TIMEOUT)
             yield _sse(
@@ -332,6 +342,9 @@ async def compare_sources_stream(
             for t in tasks:
                 if not t.done():
                     t.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            budget_scope.reset(token)
 
     return StreamingResponse(
         event_stream(),
@@ -362,3 +375,10 @@ async def refresh_daily(
         raise HTTPException(status_code=401, detail="Invalid pipeline key")
     refreshed = await refresh_daily_example(force=True)
     return {"refreshed": refreshed}
+
+
+@router.get("/budget")
+async def compare_budget(x_pipeline_key: str = Header(...)):
+    if not hmac.compare_digest(x_pipeline_key, settings.pipeline_api_key):
+        raise HTTPException(status_code=401, detail="Invalid pipeline key")
+    return await budget_snapshot()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import functools
 import json
 import logging
@@ -123,7 +125,7 @@ Return a JSON array, one object per article, in order:
 
 Return ONLY the JSON array, no other text."""
 
-    response = await client.messages.create(
+    response = await budgeted_message(client, OPERATION,
         model=_model(),
         max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],

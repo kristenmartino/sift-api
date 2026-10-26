@@ -25,6 +25,7 @@ import time
 
 from app.db import get_pool
 from services.cost_estimates import estimate_cost
+from services.paid_calls import budget_scope
 from services.cost_guard import check_budget
 from workflows.compare_workflow import CompareState, build_compare_graph, comparison_provenance
 
@@ -159,9 +160,13 @@ async def _refresh(force: bool) -> bool:
         "comparison": "",
         "errors": [],
     }
-    result = await asyncio.wait_for(
-        _graph.ainvoke(initial_state), timeout=DAILY_COMPARE_TIMEOUT
-    )
+    token = budget_scope.set("background")
+    try:
+        result = await asyncio.wait_for(
+            _graph.ainvoke(initial_state), timeout=DAILY_COMPARE_TIMEOUT
+        )
+    finally:
+        budget_scope.reset(token)
 
     comparison = result.get("comparison", "")
     claims = result.get("claims", [])

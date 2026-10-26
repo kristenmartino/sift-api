@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
     ai_cost_guard_enabled: bool = False
     daily_ai_cost_limit_usd: float = 10.0
     ai_cost_alert_threshold_ratio: float = 0.8
+    ai_compare_budget_share: float = Field(default=0.2, ge=0, le=1)
 
     # Legacy setting retained for environment compatibility. Automatic notes
     # are now withheld regardless of this flag: this stage only receives the

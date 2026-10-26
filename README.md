@@ -248,6 +248,7 @@ The configured daily spending ceiling is unchanged.
 | `SENTRY_TRACES_SAMPLE_RATE` | No | Sentry tracing sample rate (default: `0.1`) |
 | `AI_COST_GUARD_ENABLED` | No | Enable the daily AI cost ceiling (default: `false`) |
 | `DAILY_AI_COST_LIMIT_USD` | No | Daily Claude + Voyage spend ceiling, USD (default: `10.0`) |
+| `AI_COMPARE_BUDGET_SHARE` | No | Share protected from background work for interactive Compare (default: `0.2`); does not raise the daily cap |
 | `AI_COST_ALERT_THRESHOLD_RATIO` | No | Budget fraction that triggers an alert (default: `0.8`) |
 | `WHY_IT_MATTERS_JUDGE_ENABLED` | No | Run the runtime LLM-judge on generated `why_it_matters` lines (default: `false`; adds a paid call per kept line, increases suppression) |
 | `ENTITY_LINKER_REGEX_GATE_ENABLED` | No | Send an article to the LLM entity linker only when the free regex matcher finds a candidate surface form (default: **`true`** — a kill switch, not an opt-in, since it saves rather than spends). Forwards ~26% of articles and retains 98.11% of the links the ungated path produced, measured by `scripts/eval_linker_gate.py`. Set `false` to restore one LLM call per article |
@@ -293,3 +294,38 @@ report a claim without a majority; a single-source claim is `unique`. Summaries
 that name unavailable sources or claim an inconsistent all-source count use a
 source-scoped fallback. Daily examples require at least two analyzed sources.
 Older saved examples are not assigned availability metadata retroactively.
+
+### Shared AI budget allocation
+
+The configured daily cap is unchanged (production: $15). Background generation,
+quality review, daily comparison examples and frontend topic AI stop admitting
+work at 80% of that cap ($12); reader-requested JSON/SSE comparisons can use the
+remaining 20% ($3) and unused background capacity. The shared PostgreSQL policy
+is updated by production backend startup; frontend environment defaults cannot
+silently override it. Non-production startup never replaces an existing policy.
+
+Every production Messages call and embedding call reserves capacity atomically
+before contacting the provider. Batches reserve their whole bounded payload;
+their measured cost is settled before applying results, independently of handler
+success. Actual usage and all unresolved holds count toward admission, including
+holds from an earlier UTC date. Successful settlement is atomic and idempotent.
+Definitively rejected Messages calls release their hold. Transport errors,
+cancellation, missing usage, or uncertain batch submission retain it for operator
+reconciliation; they must not be deleted merely to make room for more calls.
+`ai_budget_holds` is a commitment ledger, not fabricated provider spend.
+
+Guarded calls disable automatic provider retries. Compare uses one targeted web
+search per outlet, up to five outlets, followed by the existing claim comparison.
+Reservations conservatively include tool iterations, context, maximum output and
+cache-write pricing. The ceiling enforces modeled API costs; provider invoices
+remain the source for billing reconciliation. Unknown model/tool costs fail closed.
+
+`GET /analyze/budget` (also under `/v1`) requires `X-Pipeline-Key` and reports the
+policy version, enabled flag, configured cap/share, actual UTC spend and outstanding
+holds. `/health` includes `budget_policy_version` without a database query.
+Migration 036 is applied at startup before the policy is published. Inspect
+unresolved holds and provider outcomes before reconciling uncertain commitments.
+
+Local concurrency tests: set `AI_BUDGET_TEST_DATABASE_URL` to an isolated localhost
+PostgreSQL database and run `pytest tests/test_budget_allocation_db.py`. CI runs
+these against its disposable PostgreSQL service, with no production/provider keys.

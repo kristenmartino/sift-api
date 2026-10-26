@@ -22,6 +22,9 @@ import anthropic
 import httpx
 
 from app.config import settings
+from services.cost_guard import reserve_budget
+from services.paid_calls import message_bound, persist_payload
+from services.usage_tracker import PRICES, log_batch_usage, batch_already_metered
 from app.db import get_pool
 
 logger = logging.getLogger("sift-api.batch_client")
@@ -188,7 +191,17 @@ async def submit_batch(kind: str, requests: list[dict], metadata: dict | None = 
         )
         return None
 
+    hold_id = ""
+    if settings.ai_cost_guard_enabled:
+        models = {r["params"]["model"] for r in requests}
+        if len(models) != 1:
+            return None
+        hold_id = await reserve_budget(sum(message_bound(r["params"], batch=True) for r in requests))
+        if hold_id is None:
+            return None
     client = _client()
+    if settings.ai_cost_guard_enabled:
+        client = client.with_options(max_retries=0)
     try:
         batch = await client.messages.batches.create(requests=requests)
     except Exception as e:
@@ -199,13 +212,14 @@ async def submit_batch(kind: str, requests: list[dict], metadata: dict | None = 
     try:
         await pool.execute(
             """
-            INSERT INTO api_batches (batch_id, kind, status, metadata)
-            VALUES ($1, $2, 'processing', $3::jsonb)
+            INSERT INTO api_batches (batch_id, kind, status, metadata, budget_hold_id)
+            VALUES ($1, $2, 'processing', $3::jsonb, $4)
             ON CONFLICT (batch_id) DO NOTHING
             """,
             batch.id,
             kind,
             json.dumps(metadata or {}),
+            hold_id or None,
         )
     except Exception as e:
         logger.error("Failed to record batch %s in api_batches: %s", batch.id, e)
@@ -288,6 +302,29 @@ async def poll_pending_batches(
             logger.error("Failed to fetch results for %s: %s", batch_id, e)
             continue
 
+        # Settle once before applying results. Application errors cannot lose cost.
+        metered = False
+        hold_id = await pool.fetchval("SELECT budget_hold_id FROM api_batches WHERE batch_id = $1", batch_id)
+        if isinstance(hold_id, str) and hold_id:
+            model_set = {((r.get("result") or {}).get("message") or {}).get("model") for r in parsed if (r.get("result") or {}).get("type") == "succeeded"}
+            model_set.discard(None)
+            if any((r.get("result") or {}).get("type") == "succeeded" for r in parsed) and not model_set:
+                logger.error("Batch model missing; retaining hold: %s", batch_id)
+                continue
+            if len(model_set) > 1:
+                logger.error("Mixed model batch cannot be safely settled: %s", batch_id)
+                continue
+            if any((r.get("result") or {}).get("type") == "succeeded" and not ((r.get("result") or {}).get("message") or {}).get("usage") for r in parsed):
+                logger.error("Batch usage missing; retaining hold: %s", batch_id)
+                continue
+            model = next(iter(model_set), "claude-haiku-4-5")
+            if model not in PRICES:
+                continue
+            operation = {"context": "context_generator.batch", "primer": "primer_generator.batch", "entity": "entity_extractor.batch"}.get(kind, kind + ".batch")
+            payload = log_batch_usage(operation, parsed, model=model, persist=False)
+            if not payload or not await persist_payload(payload, model, operation, hold_id, call_count=payload.get("requests_succeeded", 0)):
+                continue
+            metered = True
         handler = handlers.get(kind)
         if handler is None:
             logger.warning("No handler registered for batch kind=%s (batch=%s)", kind, batch_id)
@@ -295,6 +332,7 @@ async def poll_pending_batches(
             _forget(batch_id)
             continue
 
+        token = batch_already_metered.set(metered)
         try:
             await handler(batch_id, parsed)
         except Exception as e:
@@ -302,6 +340,9 @@ async def poll_pending_batches(
             await _mark_status(pool, batch_id, "errored")
             _forget(batch_id)
             continue
+
+        finally:
+            batch_already_metered.reset(token)
 
         await _mark_status(pool, batch_id, "succeeded")
         _forget(batch_id)

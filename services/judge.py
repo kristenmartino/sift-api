@@ -7,6 +7,8 @@ not establish the factual truth of every source or define a universal quality sc
 """
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import json
 import logging
 
@@ -289,7 +291,7 @@ async def judge_lines(
         sub = items[start : start + JUDGE_BATCH_SIZE]
         axes_by_idx: dict[int, dict] = {}
         try:
-            response = await client.messages.create(
+            response = await budgeted_message(client, OPERATION,
                 model=model,
                 max_tokens=1200,
                 messages=[{"role": "user", "content": build_judge_prompt(sub, field)}],

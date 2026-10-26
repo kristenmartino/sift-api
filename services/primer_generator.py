@@ -19,6 +19,8 @@ the sift frontend for the full voice doc.
 """
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import functools
 import json
 import logging
@@ -245,7 +247,7 @@ async def _generate_batch_live(
     client: anthropic.AsyncAnthropic,
     batch: list[dict],
 ) -> dict[str, dict]:
-    response = await client.messages.create(
+    response = await budgeted_message(client, OPERATION,
         model=_model(),
         max_tokens=1500,  # ~300 tokens per article * 5 articles + headroom
         messages=[{"role": "user", "content": _build_prompt(batch)}],
