@@ -253,5 +253,56 @@
     "source": "The Predators beat Colorado on Sunday.",
     "copy": "Nashville Predators defenseman Jayden Struble won a fight. The team beat Colorado on Sunday.",
     "expected": "pass"
+  },
+  {
+    "id": "shared_venue_false_cause",
+    "title": "Finals Game 6 Thursday afternoon",
+    "source": "Game 6 is at 12:30 p.m. Thursday. The Hawks moved their start from 7 p.m. to 8 p.m. Thursday. Moving their game to Friday would create a Friday-Saturday back-to-back.",
+    "copy": "The Hawks moved their game to 8 p.m. to avoid a back-to-back.",
+    "expected": "retry"
+  },
+  {
+    "id": "invented_outlet_dispute",
+    "title": "Supplied cluster reports",
+    "source": "[Outlet A] Omar posted a video with a song. The outlet characterized the lyrics as menacing. [Outlet B] Omar posted a video with a song. The outlet characterized the lyrics as violent.",
+    "copy": "Outlets dispute the meaning of the song's lyrics.",
+    "expected": "retry"
+  },
+  {
+    "id": "active_seventh_season",
+    "title": "Baylor fires seventh-year coach",
+    "source": "Baylor fired Aranda in his seventh season after a midseason loss.",
+    "copy": "Baylor fired Aranda after his seventh season.",
+    "expected": "retry"
+  },
+  {
+    "id": "ambiguous_property_discount",
+    "title": "Tribeca home returns seeking an $8M discount",
+    "source": "Neil Burger and Diana Kellogg are selling their longtime home with a studio and parking.",
+    "copy": "The sellers are seeking an $8 million discount.",
+    "expected": "retry"
+  },
+  {
+    "id": "usable_record_inside_guide",
+    "title": "How the Milwaukee Bucks can finally win a game",
+    "source": "The Bucks are 0-3 with a brutal schedule up next.",
+    "copy": "",
+    "review_mode": "source_availability",
+    "expected": "retry"
+  },
+  {
+    "id": "blank_preview_without_finding",
+    "title": "Seven numbers explain a business",
+    "source": "This guide shows key numbers behind the business.",
+    "copy": "",
+    "review_mode": "source_availability",
+    "expected": "unavailable"
+  },
+  {
+    "id": "retain_active_seventh_year",
+    "title": "Baylor fires seventh-year coach",
+    "source": "Baylor fired Aranda in his seventh season after a midseason loss.",
+    "copy": "Baylor fired seventh-year coach Aranda after a loss.",
+    "expected": "pass"
   }
 ]

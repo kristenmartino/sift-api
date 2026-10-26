@@ -6,6 +6,9 @@
 
 ## Active focus
 
+2026-10-26 live automatic-path audit: independently review producer-unavailable decisions, preserve publisher metadata in cluster audits, and remove observed teaser padding.
+
+
 2026-10-26 newer holds: accept neutral paraphrases without requiring publisher hype, preserve attribution for interpreted song lyrics, and allow one budget-checked source-review repair followed by a fresh review. Malformed review responses get one budget-checked retry, and hold/repair logs retain the reason.
 
 
