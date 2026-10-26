@@ -167,5 +167,47 @@
     "source": "The Brewers have put together a truly historic pitching run in the playoffs.",
     "copy": "The Brewers have put together a historic pitching run no team has achieved in 30 years.",
     "expected": "unavailable"
+  },
+  {
+    "id": "after-game-bad",
+    "title": "LAFC fan caught yelling slur after MLS game",
+    "source": "LAFC and LA Galaxy played Sunday.",
+    "copy": "A fan yelled a slur during the MLS game.",
+    "expected": "retry"
+  },
+  {
+    "id": "after-game-good",
+    "title": "LAFC fan caught yelling slur after MLS game",
+    "source": "LAFC and LA Galaxy played Sunday.",
+    "copy": "An LAFC fan was caught yelling a slur after the MLS game.",
+    "expected": "pass"
+  },
+  {
+    "id": "impeachment-commitment-bad",
+    "title": "Jeffries edges closer to Hegseth impeachment",
+    "source": "Jeffries pledged to take action if Trump does not remove Hegseth, but stopped short of committing to launching or supporting impeachment.",
+    "copy": "Jeffries pledged to hold Hegseth accountable through impeachment.",
+    "expected": "retry"
+  },
+  {
+    "id": "impeachment-commitment-good",
+    "title": "Jeffries edges closer to Hegseth impeachment",
+    "source": "Jeffries pledged to take action if Trump does not remove Hegseth, but stopped short of committing to launching or supporting impeachment.",
+    "copy": "Jeffries pledged to act if Trump does not remove Hegseth but stopped short of committing to impeachment.",
+    "expected": "pass"
+  },
+  {
+    "id": "invented-speaker-bad",
+    "title": "Democrats face Senate test",
+    "source": "Democrats are targeting Republican strongholds that could set them up for new majorities. If they lose, it could be a long time before another chance.",
+    "copy": "Party strategists warn Democrats may not get another opportunity for years.",
+    "expected": "retry"
+  },
+  {
+    "id": "invented-speaker-good",
+    "title": "Democrats face Senate test",
+    "source": "Democrats are targeting Republican strongholds that could set them up for new majorities.",
+    "copy": "Democrats are targeting Republican strongholds that could help them win new Senate majorities.",
+    "expected": "pass"
   }
 ]

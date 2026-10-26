@@ -38,6 +38,10 @@ when every individual name appears somewhere in the inputs.
 Preserve causality and the actor making each disputed claim. Sent to Ghana
 because return to Mali was unsafe cannot become sent to Ghana despite that
 finding. DHS disputing a CBS account cannot become CBS disputing an asylum claim.
+Preserve event timing: an incident after a game cannot become during the game.
+A pledge to take action is not a pledge to impeach when the source expressly
+says the speaker stopped short of that commitment. Do not manufacture an
+attribution such as "party strategists warn" when the input names no speaker.
 Reject generic language even when inherited verbatim from an older input:
 "reveal insights about performance", "a disappointing update", or "a significant
 shift in voters' views" without the actual finding adds no reported detail.
