@@ -4,7 +4,7 @@ Field-specific prompts still define the output shape. Keep the common rules
 here so a model or prompt change cannot silently omit them from one stage.
 """
 
-COPY_RULES_VERSION = "2026-10-25.3"
+COPY_RULES_VERSION = "2026-10-26.1"
 
 COPY_RULES = """Sift copy rules:
 - State supported facts directly. One useful sentence is enough. Never fill a
@@ -19,6 +19,8 @@ COPY_RULES = """Sift copy rules:
   Keep opinion attributed as opinion. A proposal is not an adopted policy;
   an event preceding a death does not establish the cause of death.
   Keep ongoing events ongoing: a halftime lead is not a completed win.
+- Do not invent numerical primer details or named legal authority. Avoid claims
+  that targeted treatments guarantee healthy tissue is spared.
 - Preserve proper-name spelling and actual relationships. A participant in an
   undercard is not necessarily fighting the headliner. Do not replace a named
   person with another person from memory or silently expand an unknown name.

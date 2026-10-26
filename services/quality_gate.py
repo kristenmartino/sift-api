@@ -28,6 +28,9 @@ Design choices grounded in the audit:
 from __future__ import annotations
 
 import re
+import unicodedata
+import html
+from difflib import SequenceMatcher
 from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 
@@ -184,6 +187,54 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
 
 
 
+def unsupported_name_change(text: str, reference: str) -> bool:
+    """Reject ambiguous-family first-name guesses and close spelling drift.
+
+    This is a narrow lexical check, not entity recognition or name completion.
+    Unknown single names still require semantic review.
+    """
+    def normalized(value):
+        value = re.sub(r"[’']s\b", "", html.unescape(value))
+        return "".join(c for c in unicodedata.normalize("NFKD", value).casefold() if not unicodedata.combining(c))
+    pairs = re.compile(r"(?=\b([A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+)\s+([A-ZÀ-ÖØ-Þ][\w’'-]+)\b)")
+    roles = {"the", "a", "an", "president", "minister", "secretary", "senator", "rep", "judge", "coach", "actor", "singer", "former", "democrat", "republican", "mr", "mrs", "dr", "north", "south", "east", "west", "new", "federal", "national", "central", "united"}
+    source = normalized(reference)
+    words = set(re.findall(r"\w+", source))
+    known = [(normalized(a), normalized(b)) for a,b in pairs.findall(html.unescape(reference))]
+    for a,b in pairs.findall(html.unescape(text)):
+        first,last = normalized(a),normalized(b)
+        if first in roles or first + " " + last in source:
+            continue
+        # A family surname shared by different public figures is insufficient
+        # evidence to choose a first name. Keep this explicit ambiguity guard
+        # narrow: ordinary verified-name expansions are left to semantic review.
+        if last in {"bolsonaro"} and last in words and first not in words:
+            return True
+        if last not in words and any(first==f and last[:3]==known_last[:3] and SequenceMatcher(None,last,known_last).ratio()>=0.55 for f,known_last in known):
+            return True
+    return False
+
+
+def unsupported_primer_detail(text: str, reference: str) -> bool:
+    """Withhold unverified quantities, named laws and clinical guarantees."""
+    if unsupported_figures(text, reference):
+        return True
+    number_words = dict(zip("one two three four five six seven eight nine ten eleven twelve".split(), map(str,range(1,13)), strict=True))
+    def numeric_words(value):
+        value = value.casefold().replace("-", " ")
+        return re.sub(r"\b(?:" + "|".join(number_words) + r")\b",lambda m:number_words[m.group()],value)
+    counts = re.findall(r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)[ -]+(?:year|month|week|day|member|seat|term)s?\b",text,re.I)
+    if any(numeric_words(count).rstrip("s") not in numeric_words(reference) for count in counts):
+        return True
+    fraction = re.search(r"\b(?:roughly |approximately |about )?(?:half|one[- ]third|two[- ]thirds|one[- ]quarter)\s+of\b", text, re.I)
+    if fraction and fraction.group().casefold() not in reference.casefold():
+        return True
+    laws = re.findall(r"(?:\b[A-Z][A-Za-z'-]*\s+){1,6}(?:Act|Amendment)\b", text)
+    if any(law.casefold() not in reference.casefold() for law in laws):
+        return True
+    return bool(re.search(r"\b(?:sparing|without (?:harming|affecting)) healthy (?:tissue|cells)\b", text,re.I))
+
+
 def interim_result_conflict(text: str) -> bool:
     """Reject the observed completed-win wording attached to a halftime score."""
     return bool(re.search(
@@ -327,6 +378,9 @@ def gate_summary(summary: str | None) -> str:
     unsummarizable rather than merely using the words.
     """
     text = (summary or "").strip()
+    tail = re.search(r",\s+(?:escalating (?:the )?rivalry|underscoring (?:the )?importance|highlighting broader (?:tensions|concerns))\b[^.!?]*[.!?]?$", text, re.I)
+    if tail and not re.search(r'\d|["“”]|\b(?:said|according to)\b', tail.group(), re.I):
+        text = text[:tail.start()].rstrip() + "."
     preview = re.compile(
         r"^[A-Z][^.]{0,70}\s+(?:provides?|offers?|presents?)\s+"
         r"(?:(?:main card|expert|game)\s+)?(?:viewing information|viewing guide|predictions|betting tips|hints and answers|clues and answers)\b"
@@ -452,6 +506,11 @@ def gate_framing(framing: str | None, *, source_text: str, summary: str = "") ->
     # standalone abstract observations, not any use of 'raises concerns'.
     if _GENERIC_NOTE_RE.search(text) and not _CONCRETE_CLOSER_RE.search(text):
         return ""
+    if (re.search(r"\bno arrests? (?:had |have |has )?(?:been )?made\b",text,re.I)
+            and re.search(r"\b(?:was|were|has been|have been) arrested\b|\bpolice arrested\b",summary,re.I)
+            and not re.search(r"\b(?:no|not|never)\b.{0,35}\barrested\b", summary, re.I)
+            and not re.search(r"\b(?:earlier|initially|as of|before)\b",text,re.I)):
+        return ""
     if summary and is_near_restatement(text, summary):
         return ""
     # Notes are extractive: no added factual claim or invented source angle.
@@ -572,7 +631,7 @@ def gate_generated_background(background: str | None, *, title: str, summary: st
     """
     text = gate_background(background, title=title, summary=summary)
     reference = f"{title or ''} {summary or ''}"
-    if unsupported_figures(text, reference):
+    if unsupported_primer_detail(text, reference):
         return ""
     history = re.search(r"\b(?:earlier|previous|prior|original) (?:plans?|approach|policy|rules?)\b", text, re.I)
     if history and history.group().lower() not in reference.lower():

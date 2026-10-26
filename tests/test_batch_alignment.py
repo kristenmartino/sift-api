@@ -36,7 +36,7 @@ URL2 = "https://example.com/two"
 # Survives the deterministic why_it_matters gate (no cliché, not a restatement).
 GOOD_LINE = "Grocery prices could climb because the cuts hit major vegetable farms."
 GOOD_BACKGROUND = (
-    "Venture firms raise money from investors and deploy it into startups over a fund's ten-year life."
+    "Venture firms raise money from investors and deploy it into startups through a fund."
 )
 
 

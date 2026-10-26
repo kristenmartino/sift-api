@@ -40,7 +40,7 @@ from services.index_alignment import (
     log_misaligned_sub_batch,
     with_alignment_retry,
 )
-from services.quality_gate import gate_background, gate_generated_background, term_in_source
+from services.quality_gate import gate_background, gate_generated_background, term_in_source, unsupported_primer_detail
 from services.copy_rules import COPY_RULES, COPY_RULES_VERSION
 from services.judge import judge_lines
 from services.usage_tracker import log_batch_usage, log_usage
@@ -292,7 +292,8 @@ def _parse_primers(text: str, batch: list[dict]) -> dict[str, dict]:
                 term = (t.get("term") or "").strip()
                 definition = (t.get("def") or t.get("definition") or "").strip()
                 definition = reference_definition(term) or definition
-                if term and definition:
+                if term and definition and (reference_definition(term) or not unsupported_primer_detail(
+                        definition, f"{article.get('title', '')} {article.get('summary', '')}")):
                     if (len(definition.split()) <= 25 and len(terms) < 4
                             and term_in_source(term, f"{article.get('title', '')} {article.get('summary', '')}")):
                         terms.append({"term": term, "definition": definition})

@@ -13,7 +13,7 @@ from services.judge import judge_lines
 from services.source_review import assess_copy
 from services.cost_guard import check_budget
 from services.cost_estimates import estimate_cost
-from services.quality_gate import clean_generated_headline, gate_framing, gate_summary, unsupported_figures, takeover_role_conflict, interim_result_conflict
+from services.quality_gate import clean_generated_headline, gate_framing, gate_summary, unsupported_figures, takeover_role_conflict, interim_result_conflict, unsupported_name_change
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.story_synthesizer")
@@ -164,6 +164,9 @@ Return ONLY a JSON object:
                 logger.warning("Story copy turned a halftime lead into a completed win; leaving synthesis retryable")
                 return _fallback(articles)
             supplied = " ".join(f"{a['title']} {a['summary']}" for a in articles)
+            if unsupported_name_change(result["headline"] + " " + result["summary"], supplied):
+                logger.warning("Story changed or expanded an unsupported name; leaving synthesis retryable")
+                return _fallback(articles)
             if any(takeover_role_conflict(result["headline"] + " " + result["summary"], a["title"]) for a in articles):
                 logger.warning("Story copy reversed supplied takeover roles; leaving synthesis retryable")
                 return _fallback(articles)

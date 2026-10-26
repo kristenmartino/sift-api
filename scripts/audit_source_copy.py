@@ -40,7 +40,7 @@ async def _run_audit(args):
         rows = json.loads((Path(__file__).parents[1] / "data/eval/source_fidelity_regressions.json").read_text())
     else:
         pool = await db.get_pool()
-        articles = await pool.fetch("""SELECT id,title,summary,generation_raw_content
+        articles = await pool.fetch("""SELECT id,title,summary,generation_raw_content,source_name
             FROM articles WHERE from_search=false AND summary<>''
             ORDER BY created_at DESC LIMIT $1""", args.limit)
         stories = await pool.fetch("""SELECT id,headline,summary FROM stories
@@ -48,7 +48,7 @@ async def _run_audit(args):
         members = await pool.fetch("""SELECT story_id,title,summary FROM articles
             WHERE story_id=ANY($1::text[]) AND from_search=false""", [s["id"] for s in stories])
         rows = [{"id": a["id"], "title": a["title"], "source": " ".join(re.sub(r"<[^>]+>", "", a["generation_raw_content"] or "").split()[:500]),
-                 "copy": a["summary"]} for a in articles if a["generation_raw_content"]]
+                 "source_name": a["source_name"], "copy": a["summary"]} for a in articles if a["generation_raw_content"]]
         rows += [{"id": s["id"], "title": "Supplied cluster reports",
                   "source": "\n".join(a["title"] + "\n" + (a["summary"] or "") for a in members if a["story_id"] == s["id"]),
                   "copy": s["headline"] + "\n" + s["summary"]} for s in stories]

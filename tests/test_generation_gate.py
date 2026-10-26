@@ -134,7 +134,7 @@ class TestPrimerParse:
         assert rec["terms"][0]["term"] == "down round"
 
     def test_clean_background_kept(self):
-        bg = "Venture firms raise money from investors and deploy it into startups over a fund's ten-year life."
+        bg = "Venture firms raise money from investors and deploy it into startups through a fund."
         text = json.dumps([{"i": 1, "b": bg, "t": []}])
         out = _parse_primers(text, self._batch())
         assert out["https://example.com/p1"]["background"] == bg

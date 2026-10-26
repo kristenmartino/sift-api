@@ -124,5 +124,41 @@
     "source": "Outlet A reports ten injuries. Outlet B reports twelve injuries.",
     "copy": "Outlets report differing injury counts: A reports ten and B twelve.",
     "expected": "pass"
+  },
+  {
+    "id": "bare-family-name",
+    "title": "Lula wins runoff",
+    "source": "Lula won despite markets favoring Bolsonaro.",
+    "copy": "Lula defeated Jair Bolsonaro.",
+    "expected": "retry"
+  },
+  {
+    "id": "publisher-attributed-opinion",
+    "title": "An opinion about policy",
+    "source_name": "Washington Examiner",
+    "source": "The proposal should be rejected, the editorial argues.",
+    "copy": "The Washington Examiner argued against the proposal.",
+    "expected": "pass"
+  },
+  {
+    "id": "causality-inversion",
+    "title": "Texas man deported to Ghana",
+    "source": "Federal officials deported Moussa Diawara to Ghana because a judge agreed he could face persecution in Mali.",
+    "copy": "Officials deported Diawara to Ghana despite a judge finding he could face persecution in Mali.",
+    "expected": "retry"
+  },
+  {
+    "id": "causality-preserved",
+    "title": "Texas man deported to Ghana",
+    "source": "Federal officials deported Moussa Diawara to Ghana because a judge agreed he could face persecution in Mali.",
+    "copy": "Officials sent Diawara to Ghana because a judge agreed he could face persecution in Mali.",
+    "expected": "pass"
+  },
+  {
+    "id": "unattributed-ranking",
+    "title": "Utah beats Houston",
+    "source": "Utah is the conference’s most complete team, the columnist argued after the Houston win.",
+    "copy": "Utah beat Houston, establishing itself as the conference’s most complete team.",
+    "expected": "retry"
   }
 ]

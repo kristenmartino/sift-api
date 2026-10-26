@@ -14,7 +14,7 @@ from services.cost_guard import check_budget
 from services.copy_rules import COPY_RULES
 from services.source_review import assess_copy
 from services.model_registry import resolve
-from services.quality_gate import gate_summary, unsupported_figures, takeover_role_conflict, interim_result_conflict
+from services.quality_gate import gate_summary, unsupported_figures, takeover_role_conflict, interim_result_conflict, unsupported_name_change
 from services.index_alignment import (
     MAX_BATCH_ATTEMPTS,
     AlignmentError,
@@ -171,7 +171,7 @@ async def summarize_articles(
 async def _review_article_results(results: dict[str, dict], articles: list[RSSArticle], *, client=None) -> None:
     """Unchecked/failed summaries stay pending; source-only guides are unavailable."""
     items = [{"id": a.source_url, "title": a.title,
-              "source": _truncate(re.sub(r"<[^>]+>", "", a.raw_content or ""), 500),
+              "source_name": a.source_name, "source": _truncate(re.sub(r"<[^>]+>", "", a.raw_content or ""), 500),
               "copy": results[a.source_url]["summary"]}
              for a in articles if a.source_url in results
              and results[a.source_url].get("summary") and not results[a.source_url].get("_degraded")]
@@ -398,7 +398,9 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
         # the feed skips it, which beats showing the apology.
         summary = gate_summary(summary)
         article = batch[idx - 1]
-        source_text = article.title + " " + _truncate(re.sub(r"<[^>]+>", "", article.raw_content or ""), 500)
+        source_text = article.source_name + " " + article.title + " " + _truncate(re.sub(r"<[^>]+>", "", article.raw_content or ""), 500)
+        if unsupported_name_change(summary, source_text):
+            raise AlignmentError(f"summary changed or expanded an unsupported name at index {idx}")
         if interim_result_conflict(summary):
             raise AlignmentError(f"summary turned a halftime lead into a completed win at index {idx}")
         if takeover_role_conflict(summary, article.title):
