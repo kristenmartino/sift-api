@@ -232,6 +232,9 @@ def unsupported_primer_detail(text: str, reference: str) -> bool:
     fraction = re.search(r"\b(?:roughly |approximately |about )?(?:half|one[- ]third|two[- ]thirds|one[- ]quarter)\s+of\b", text, re.I)
     if fraction and fraction.group().casefold() not in reference.casefold():
         return True
+    guarantee = re.search(r"\bpay only (?:for )?(?:actual )?claims\b", text, re.I)
+    if guarantee and guarantee.group().casefold() not in reference.casefold():
+        return True
     laws = re.findall(r"(?:\b[A-Z][A-Za-z'-]*\s+){1,6}(?:Act|Amendment)\b", text)
     if any(law.casefold() not in reference.casefold() for law in laws):
         return True
