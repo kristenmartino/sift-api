@@ -15,6 +15,7 @@ from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
 from services.index_alignment import AlignmentError, aligned_entries
 from services.model_registry import resolve
+from services.quality_gate import gate_summary
 from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.source_review")
@@ -24,8 +25,12 @@ MAX_REVIEW_ATTEMPTS = 2
 
 def story_source_evidence(articles: list[dict]) -> str:
     """Use the same publisher-labeled evidence for generation and audits."""
-    return "".join(f"\n{i}. [{a['source_name']}] \"{a['title']}\"\n   {a['summary']}\n"
-                   for i, a in enumerate(articles, 1))
+    rows = []
+    for i, article in enumerate(articles, 1):
+        published = article.get("published_date")
+        stamp = f" (published {published})" if published else ""
+        rows.append(f"\n{i}. [{article['source_name']}]{stamp} \"{article['title']}\"\n   {article['summary']}\n")
+    return "".join(rows)
 
 
 def build_review_prompt(items: list[dict]) -> str:
@@ -44,6 +49,8 @@ Apply this decision order to EVERY input:
    identifiable attributed statement or transaction? If no, return unavailable
    even when the proposed copy faithfully repeats the teaser. Merely offering
    puzzle hints or calling a pitching run historic is not a concrete finding.
+   Saying a quarterback was decisive on the ground without any actual run,
+   result or statistic is also unavailable, rather than a repairable finding.
 2. If a usable fact exists and proposed_copy is empty or defective, return retry.
 3. Only a usable source with fully supported useful proposed_copy can pass.
 For review_mode="source_availability", proposed_copy is intentionally empty.
@@ -74,11 +81,20 @@ Preserve event timing: an incident after a game cannot become during the game.
 A pledge to take action is not a pledge to impeach when the source expressly
 says the speaker stopped short of that commitment. Do not manufacture an
 attribution such as "party strategists warn" when the input names no speaker.
+When an explicitly later report resolves an earlier uncertainty, use the
+resolved update. Earlier unknown venue/time reports are not a current dispute
+with later confirmed bookings. Do not publish superseded uncertainty as current.
 Reject generic language even when inherited verbatim from an older input:
 "reveal insights about performance", "a disappointing update", or "a significant
 shift in voters' views" without the actual finding adds no reported detail.
 A "historic pitching run" with no actual record or performance stated is also
 filler. If that is all the source provides, use v="unavailable".
+"Demonstrated effectiveness on the ground" without an actual performance,
+"making an effort to improve analytics" without an actual change, and rankings
+with "little movement" but no team positions or changes are similarly vague.
+Return unavailable when no other usable reported fact is supplied. A named
+recipe or cookbook mentioned in a recipe teaser is still a guide; it does not
+establish a new book release or other news event.
 This rule also applies when proposed_copy is a unified cluster summary.
 Unattributed rankings such as "the conference's most complete team" are opinion,
 not established facts. Attribute the evaluation to its source or omit it.
@@ -129,6 +145,11 @@ async def assess_copy(items: list[dict], *, client=None) -> dict[str, dict]:
     """Return pass/retry/unavailable/error per ID; errors are retryable."""
     if not items:
         return {}
+    # Match the publication path: copy entirely removed by the deterministic
+    # gate needs a source-availability decision, not approval of that teaser.
+    items = [{**item, "copy": "", "review_mode": "source_availability"}
+             if item["copy"] and not gate_summary(item["copy"]) else item
+             for item in items]
     own_client = client is None
     client = client or anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2, timeout=60)
     out = {x["id"]: {"v": "error", "why": "review unavailable"} for x in items}
@@ -153,7 +174,10 @@ async def assess_copy(items: list[dict], *, client=None) -> dict[str, dict]:
                     text = "".join(b.text for b in response.content if b.type == "text")
                     entries = parse_reviews(text, len(chunk))
                     for i, item in enumerate(chunk, 1):
-                        out[item["id"]] = entries[i]
+                        verdict = entries[i]
+                        if not item["copy"].strip() and verdict["v"] == "pass":
+                            verdict = {"v": "error", "why": "empty copy cannot pass"}
+                        out[item["id"]] = verdict
                     break
                 except (AlignmentError, ValueError, TypeError, KeyError) as e:
                     logger.warning("Unusable source-review response (attempt %d/%d): %s", attempt + 1, MAX_REVIEW_ATTEMPTS, e)

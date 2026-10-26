@@ -298,3 +298,15 @@ def test_primer_does_not_repeat_term_definition_or_truncate_long_definitions():
     result = pg._parse_primers(json.dumps([{"i": 1, "b": TERM["definition"], "t": [TERM, too_long]}]), [ARTICLE])
     assert result[URL]["background"] == ""
     assert result[URL]["terms"] == [TERM]
+
+
+@pytest.mark.asyncio
+async def test_late_primer_result_does_not_enrich_an_article_withheld_after_submission(monkeypatch):
+    pool = Pool()
+    pool.fetch.return_value = [{**ARTICLE, 'summary': ''}]
+    monkeypatch.setattr(pg, 'get_pool', AsyncMock(return_value=pool))
+    reviewer = AsyncMock()
+    monkeypatch.setattr(pg, 'judge_lines', reviewer)
+    await pg.process_primer_batch_results('batch', batch_result([{'i': 1, 'b': '', 't': [TERM]}]))
+    pool.execute.assert_not_awaited()
+    reviewer.assert_not_awaited()

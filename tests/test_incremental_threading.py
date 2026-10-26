@@ -122,12 +122,11 @@ async def test_attach_from_a_new_outlet_resynthesizes():
 
 
 @pytest.mark.asyncio
-async def test_attach_from_an_outlet_already_present_does_not_resynthesize():
-    """framings is a per-outlet structure. A second piece from an outlet the
-    story already carries adds nothing to synthesize — paying for it is the
-    duplicate spend #129 removed."""
-    pool = _pool({"DISTINCT source_name": [{"source_name": "Reuters"}]})
-    synth = AsyncMock()
+async def test_later_report_from_the_same_outlet_refreshes_resolved_event_facts():
+    earlier = {**_article("a1"), "summary": "Game 6 has no confirmed venue."}
+    later = {**_article("a2"), "summary": "Game 6 will be played at State Farm Arena at 12:30 p.m."}
+    pool = _pool({"WHERE story_id = $1": [earlier, later]})
+    synth = AsyncMock(return_value={"headline": "Game 6 venue set", "summary": later["summary"], "framings": []})
     cands = [{"article": _article("a2", "Reuters"),
               "existing_stories": {"s1": [{}]}, "loose_neighbours": []}]
 
@@ -138,8 +137,9 @@ async def test_attach_from_an_outlet_already_present_does_not_resynthesize():
         synthesize=synth,
     )
 
-    synth.assert_not_called()
-    assert r["attached"] == 1 and r["resynthesized"] == 0
+    synth.assert_awaited_once()
+    assert synth.call_args.args[0] == [earlier, later]
+    assert r["attached"] == 1 and r["resynthesized"] == 1
 
 
 # ── synthesis failure ───────────────────────────────────────
@@ -175,7 +175,8 @@ async def test_a_failed_resynthesis_does_not_overwrite_the_stored_story():
 
     sql = _sql(pool)
     assert "SET headline" not in sql          # existing text preserved
-    assert "copy_rules_version IS DISTINCT FROM" in sql  # stale copy becomes retryable
+    assert "synthesis_status = 'failed'" in sql  # newly stale facts are withheld
+    assert "synthesis_attempts = 0" in sql
     assert "article_count" in sql
     assert r["attached"] == 1
     assert r["resynthesized"] == 0

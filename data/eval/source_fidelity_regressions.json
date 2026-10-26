@@ -304,5 +304,62 @@
     "source": "Baylor fired Aranda in his seventh season after a midseason loss.",
     "copy": "Baylor fired seventh-year coach Aranda after a loss.",
     "expected": "pass"
+  },
+  {
+    "id": "vague_running_performance",
+    "title": "Quarterback finds essential part of game",
+    "source": "The quarterback was decisive on the ground.",
+    "copy": "The quarterback demonstrated effectiveness on the ground.",
+    "expected": "unavailable"
+  },
+  {
+    "id": "vague_analytics_effort",
+    "title": "Phillies committing to analytical approach",
+    "source": "The Phillies are making a concerted effort to upgrade from an analytic standpoint.",
+    "copy": "The Phillies are making efforts to improve their organization analytically.",
+    "expected": "unavailable"
+  },
+  {
+    "id": "ranking_teaser_without_positions",
+    "title": "Top 15 school football rankings",
+    "source": "Week 9 brought little movement in the Top 15.",
+    "copy": "The Top 15 rankings showed little movement in Week 9.",
+    "expected": "unavailable"
+  },
+  {
+    "id": "retain_actual_analytics_hire",
+    "title": "Phillies hire analytics director",
+    "source": "The Phillies hired Lee to direct analytics on Monday.",
+    "copy": "The Phillies hired Lee as analytics director.",
+    "expected": "pass"
+  },
+  {
+    "id": "retain_actual_rank_change",
+    "title": "New football rankings",
+    "source": "North High moved from No. 5 to No. 2 in Week 9.",
+    "copy": "North High rose from fifth to second in Week 9.",
+    "expected": "pass"
+  },
+  {
+    "id": "superseded_venue_uncertainty",
+    "title": "Supplied story reports",
+    "source": "[ESPN] Published Sunday: Game 6 venue uncertain because State Farm Arena booked for NBA. [ESPN] Published Monday: Game 6 confirmed at State Farm Arena at 12:30 p.m. Thursday; NBA game moved to 8 p.m.",
+    "copy": "Game 6 still has no confirmed venue because State Farm Arena is booked.",
+    "expected": "retry"
+  },
+  {
+    "id": "retain_resolved_venue_update",
+    "title": "Supplied story reports",
+    "source": "[ESPN] Published Sunday: Game 6 venue uncertain because State Farm Arena booked for NBA. [ESPN] Published Monday: Game 6 confirmed at State Farm Arena at 12:30 p.m. Thursday; NBA game moved to 8 p.m.",
+    "copy": "Game 6 will be played at State Farm Arena at 12:30 p.m. Thursday.",
+    "expected": "pass"
+  },
+  {
+    "id": "recipe_teaser_is_still_guide",
+    "title": "Kimchi seafood pot recipe",
+    "source": "This dish is from my cookbook Hand Taste.",
+    "copy": "",
+    "review_mode": "source_availability",
+    "expected": "unavailable"
   }
 ]

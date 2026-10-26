@@ -223,3 +223,10 @@ Source review also checks cluster framing notes, preserves active-season timing,
 rejects invented outlet disagreements and scheduling causes, and drops ambiguous
 price-discount claims. Availability repairs explicitly use the identified fact
 while preserving literal source figures.
+
+2026-10-26 scheduled-run follow-up: refresh clusters after same-outlet
+attachments, include publication dates in shared source evidence, and prefer
+later confirmed resolutions over superseded uncertainty. Failed attachment
+refreshes are withheld and queued for the scheduled sweep. Vague performance,
+analytics-effort and ranking-change teasers with no actual finding are
+unavailable. Repair review outcomes are logged alongside attempts.

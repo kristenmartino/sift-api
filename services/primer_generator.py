@@ -530,7 +530,7 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
         pending_payloads = {}
         for idx, entry in entries.items():
             url = urls[idx - 1]
-            if url not in meta_by_url:
+            if url not in meta_by_url or not (meta_by_url[url].get("summary") or "").strip():
                 failed += 1
                 continue
             # Reindex this one proven-aligned result to reuse the exact parser
@@ -551,7 +551,8 @@ async def process_primer_batch_results(batch_id: str, results: list[dict]) -> No
                     UPDATE articles
                        SET context_primer = $1::jsonb,
                            updated_at = NOW()
-                     WHERE source_url = $2
+                     WHERE source_url = $2 AND generation_status = 'complete'
+                       AND summary IS NOT NULL AND summary <> ''
                     """,
                     json.dumps(primer_payload), url,
                 )

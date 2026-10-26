@@ -84,3 +84,31 @@ async def test_cluster_audit_retains_the_publisher_evidence(monkeypatch):
         return {"s": {"v": "pass"}}
     monkeypatch.setattr(audit, "assess_copy", review)
     assert await audit._run_audit(SimpleNamespace(regressions=False, limit=1)) is False
+
+
+def test_story_evidence_retains_publication_times_for_resolved_updates():
+    from services.source_review import story_source_evidence
+    text = story_source_evidence([
+        {"title": "Venue uncertain", "summary": "No venue set.", "source_name": "ESPN", "published_date": "2026-10-25T10:00:00Z"},
+        {"title": "Venue set", "summary": "State Farm Arena confirmed.", "source_name": "ESPN", "published_date": "2026-10-26T10:00:00Z"}])
+    assert "published 2026-10-25T10:00:00Z" in text
+    assert "published 2026-10-26T10:00:00Z" in text
+    assert text.count("[ESPN]") == 2
+
+
+@pytest.mark.asyncio
+async def test_review_cannot_approve_copy_that_the_publication_gate_removes(monkeypatch):
+    from services import source_review
+    client = AsyncMock()
+    client.messages.create.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type='text', text='[{"i":1,"v":"pass"}]')],
+        stop_reason='end_turn', usage=SimpleNamespace(input_tokens=20, output_tokens=20))
+    monkeypatch.setattr(source_review, 'check_budget', AsyncMock(return_value=SimpleNamespace(allowed=True)))
+    item = {'id': 'puzzle', 'title': 'Puzzle hints and answers', 'source': 'A guide to the puzzle.',
+            'copy': 'Forbes provides hints and answers for the Connections puzzle.'}
+    result = await source_review.assess_copy([item], client=client)
+    prompt = client.messages.create.call_args.kwargs['messages'][0]['content']
+    payload = json.loads(prompt.split('INPUTS:\n', 1)[1])[0]
+    assert payload['proposed_copy'] == '' and payload['review_mode'] == 'source_availability'
+    assert result['puzzle']['v'] == 'error'
+    assert item['copy']  # caller evidence was not mutated

@@ -25,9 +25,8 @@ WHAT COSTS MONEY
 ----------------
 One `story_confirmer.confirm` call per run, over candidates Postgres already
 filtered — against the old path's ~5.4 clusterer calls plus ~23 synthesize
-calls. Synthesis now runs only when a story's *outlet set* changes, because
-that is what its framings are built from; a second article from an outlet the
-story already has adds nothing to synthesize.
+calls. Synthesis runs on each confirmed attachment: a later report can resolve an
+earlier uncertainty even when its outlet is already represented.
 
 WHEN SYNTHESIS FAILS
 --------------------
@@ -47,9 +46,8 @@ Both paths honour the flag, the way `story_workflow.py:246` does:
 
 * `_create` writes `synthesis_status = 'failed'`, keeping the row out of the
   feed (`idx_stories_feed`, `sift/lib/db.ts:194`) until it has real text.
-* `_attach` writes nothing but `article_count` — the story keeps whatever
-  synthesis it already had, rather than having it overwritten by one outlet's
-  headline.
+* `_attach` preserves the saved text, marks synthesis failed and resets its
+  retry attempts. The saved copy stays out of the feed until refreshed.
 
 This was live-broken from #161 until 2026-08-11: both wrote `'complete'`
 unconditionally, so **4 prod stories** (13–18 outlets each) were serving a
@@ -112,13 +110,6 @@ def seed_story_id(category: str, member_ids: list[str]) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
-async def _story_outlets(pool, story_id: str) -> set[str]:
-    rows = await pool.fetch(
-        "SELECT DISTINCT source_name FROM articles WHERE story_id = $1", story_id,
-    )
-    return {r["source_name"] for r in rows if r["source_name"]}
-
-
 async def _move_articles(pool, member_ids: list[str], story_id: str) -> None:
     """Move members and invalidate every synthesis that loses an input, atomically."""
     await pool.fetch(
@@ -147,25 +138,11 @@ async def _move_articles(pool, member_ids: list[str], story_id: str) -> None:
 async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     """Attach one article to an existing story. Returns what was done.
 
-    Re-synthesizes when the article brings a new outlet or the stored copy uses
-    older rules. Current-version same-outlet attachments keep the saved text,
-    because `framings` is a per-outlet structure. A story
-    gaining its third piece from an outlet it already carries has nothing new
-    to say, and re-synthesizing it is exactly the duplicate spend #129 removed.
+    Every confirmed attachment can change the event's facts, including a
+    later report from an outlet already present. Refresh the synthesis under
+    the caller's existing budget reservation.
     """
-    outlets_before = await _story_outlets(pool, story_id)
     await _move_articles(pool, [article["id"]], story_id)
-
-    new_outlet = (article.get("source_name") or "") not in outlets_before
-    version = await pool.fetchval("SELECT copy_rules_version FROM stories WHERE id = $1", story_id)
-    if not new_outlet and version == COPY_RULES_VERSION:
-        await pool.execute(
-            """UPDATE stories SET article_count = (
-                   SELECT count(*) FROM articles WHERE story_id = $1
-               ), updated_at = NOW() WHERE id = $1""",
-            story_id,
-        )
-        return "attached_same_outlet"
 
     members = [dict(r) for r in await pool.fetch(
         """SELECT id, title, summary, source_name, source_url, image_url, published_date
@@ -174,32 +151,23 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     synthesis = await synthesize(members)
 
     if synthesis.get("_failed"):
-        # `story_synthesizer._fallback` is not a synthesis — it is the first
-        # member's own headline and summary with no framings. Writing it here
-        # would replace a story's real cross-outlet text with one outlet's
-        # copy, and (stored as 'complete') nothing would ever revisit it.
-        #
-        # So take the count and leave the text alone. A story that already had
-        # a real synthesis keeps it, merely missing the newest outlet's
-        # framing; one that never had one keeps whatever status it carries, so
-        # it stays out of the feed. `synthesis_status` is deliberately not
-        # written: every value it could hold is already the right one.
+        # Preserve the saved text for recovery, but withhold it until refreshed:
+        # the newly attached report may resolve or contradict its old facts.
         await pool.execute(
             """UPDATE stories SET article_count = $2,
-                    synthesis_status = CASE WHEN copy_rules_version IS DISTINCT FROM $3
-                                            THEN 'failed' ELSE synthesis_status END,
+                    synthesis_status = 'failed', synthesis_attempts = 0,
                     updated_at = NOW()
                 WHERE id = $1""",
-            story_id, len(members), COPY_RULES_VERSION,
+            story_id, len(members),
         )
         logger.warning(json.dumps({
             "event": "synthesis_failed_on_attach",
             "story_id": story_id,
             "article_id": article["id"],
             "outlet": article.get("source_name"),
-            "note": "existing story text preserved; framings now stale",
+            "note": "saved text preserved but withheld until refreshed",
         }))
-        return "attached_new_outlet_synthesis_failed"
+        return "attached_synthesis_failed"
 
     await pool.execute(
         """UPDATE stories
@@ -209,7 +177,7 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
         story_id, synthesis["headline"], synthesis["summary"],
         json.dumps(synthesis.get("framings", [])), len(members), COPY_RULES_VERSION,
     )
-    return "attached_new_outlet_resynthesized"
+    return "attached_resynthesized"
 
 
 async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str | None:
@@ -513,9 +481,9 @@ async def run_incremental_threading(
                 what = await _attach(pool, article, d["story_id"], synthesize)
                 claimed.add(article["id"])
                 applied["attached"] += 1
-                if what == "attached_new_outlet_resynthesized":
+                if what == "attached_resynthesized":
                     applied["resynthesized"] += 1
-                elif what == "attached_new_outlet_synthesis_failed":
+                elif what == "attached_synthesis_failed":
                     applied["synthesis_failed"] += 1
             elif d["action"] == "new":
                 members = [m for m in d["members"] if m not in claimed]
