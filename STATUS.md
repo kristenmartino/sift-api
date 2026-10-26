@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-26 post-grouping audit: retain substantive same-game coverage with incidental fan context, reject passing-reference bridges, and recover coherent copy-held clusters. No design changes.
+
 2026-10-26 NFL event repair: split the 149-member mixed-topic cluster, validate full proposed membership before writes, and prevent same-week game/promotion bridges. No design changes.
 
 2026-10-26 update recency: advance a successfully refreshed story’s publication date from its actual members and retain explicit source-stated retail discounts.

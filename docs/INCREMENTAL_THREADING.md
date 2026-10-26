@@ -274,3 +274,8 @@ or weeks are rejected without a model call when explicit; semantic review
 handles event identity and promotional/roundup bridges. Unknown or budget-blocked
 review leaves membership unchanged. The failed-story sweep withholds incoherent
 legacy groups rather than paying to manufacture a shared summary.
+
+2026-10-26 same-event context clarification: an article that substantively
+reports the same identifiable game can include fan reaction or background.
+Do not reject that coverage solely for the extra angle. Passing references,
+shared speakers/teams and separate political events still cannot bridge a group.

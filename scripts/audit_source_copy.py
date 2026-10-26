@@ -36,7 +36,10 @@ async def main(args):
 
 
 async def _run_audit(args):
-    if args.regressions:
+    event_regressions = getattr(args, "event_regressions", False)
+    if event_regressions:
+        rows = json.loads((Path(__file__).parents[1] / "data/eval/event_coherence_regressions.json").read_text())
+    elif args.regressions:
         rows = json.loads((Path(__file__).parents[1] / "data/eval/source_fidelity_regressions.json").read_text())
     else:
         pool = await db.get_pool()
@@ -53,8 +56,13 @@ async def _run_audit(args):
                   "source": story_source_evidence([dict(a) for a in members if a["story_id"] == s["id"]]),
                   "copy": s["headline"] + "\n" + s["summary"] + "\n" + json.dumps(s.get("framings") or [], ensure_ascii=False)} for s in stories]
     result = await assess_copy(rows)
-    failures = [{"id": r["id"], "expected": r.get("expected", "pass"), "actual": result[r["id"]]}
-                for r in rows if result[r["id"]]["v"] != r.get("expected", "pass")]
+    if event_regressions:
+        failures = [{"id": r["id"], "expected_same_event": r["expected_same_event"], "actual": result[r["id"]]}
+                    for r in rows if result[r["id"]]["v"] == "error"
+                    or (result[r["id"]]["v"] == "pass") != r["expected_same_event"]]
+    else:
+        failures = [{"id": r["id"], "expected": r.get("expected", "pass"), "actual": result[r["id"]]}
+                    for r in rows if result[r["id"]]["v"] != r.get("expected", "pass")]
     print(json.dumps({"checked": len(rows), "failures": failures, "verdicts": result}, indent=2))
     return bool(failures)
 
@@ -62,9 +70,12 @@ async def _run_audit(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--regressions", action="store_true")
+    parser.add_argument("--event-regressions", action="store_true", help="Check event-membership positive and negative controls")
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--daily-cap", type=float, help="Explicit cap for an operator run; default: configured environment cap")
     options = parser.parse_args()
+    if options.regressions and options.event_regressions:
+        parser.error("choose either --regressions or --event-regressions")
     if options.daily_cap is not None and options.daily_cap <= 0:
         parser.error("daily-cap must be positive")
     if not 1 <= options.limit <= 100:

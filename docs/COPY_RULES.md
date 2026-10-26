@@ -240,3 +240,12 @@ Validate the full proposed group before attachment/creation; reject topic-only
 roundups, different games and promotional bridges. Incoherent failed groups
 stay unpublished and stop consuming synthesis retries. Story-copy review also
 checks full membership; retaining one factual sentence cannot validate a mixed group.
+
+Membership review distinguishes substantive reporting on a shared event from
+incidental context. Synthesis stays focused on the shared event; extra fan
+commentary does not itself disqualify actual game coverage.
+
+Run the focused context/bridge controls with
+`python scripts/audit_source_copy.py --event-regressions --daily-cap 15`.
+This checks same-event acceptance and rejection, and reports review errors as
+inconclusive failures rather than successful rejection.

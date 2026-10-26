@@ -50,6 +50,15 @@ covers one specific shared event. Same league/week/team/company/topic is not
 enough. Different NFL games, a quarterback appointment, an in-game touchdown,
 a penalty dispute, general weekly predictions, and sportsbook offers are
 separate events. A round-up spanning several games must not join a single game.
+An article can substantially report the shared event and ALSO include background,
+fan commentary, or another angle. Extra context alone does not make it unrelated.
+A game comeback report and a second report giving that same game's result,
+scoring and player performance still share the game even if the second adds a
+politician's fan reaction. Keep synthesis focused on the shared reported event.
+A passing reference to a game, shared team/speaker, league/week label or betting
+bonus is insufficient: every member must substantively report the same specific
+event. A separate campaign rally with no game reporting does not belong with a
+game result just because the politician supports the team.
 A guide or bonus promotion alone is not event coverage. Related pairwise links
 must not bridge unrelated events. Genuine updates to the same event can group.
 Return retry for mixed/ambiguous membership, unavailable for guide-only inputs.
