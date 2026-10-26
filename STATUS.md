@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-26 update recency: advance a successfully refreshed story’s publication date from its actual members and retain explicit source-stated retail discounts.
+
 2026-10-26 scheduled verification: observed live article repairs and five repaired clusters. Close same-outlet stale-copy skip, withhold failed refreshes for retry, and reject vague performance/ranking teasers. No design changes.
 
 2026-10-26 live automatic-path audit: independently review producer-unavailable decisions, preserve publisher metadata in cluster audits, and remove observed teaser padding.

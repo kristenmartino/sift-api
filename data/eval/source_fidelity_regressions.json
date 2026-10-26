@@ -361,5 +361,12 @@
     "copy": "",
     "review_mode": "source_availability",
     "expected": "unavailable"
+  },
+  {
+    "id": "retain_explicit_retail_discount",
+    "title": "AirTags are on sale for 20% off",
+    "source": "Track your suitcase with this $23 tracker.",
+    "copy": "AirTags are on sale for $23, a 20% discount.",
+    "expected": "pass"
   }
 ]
