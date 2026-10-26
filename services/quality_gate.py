@@ -149,13 +149,13 @@ _QUALIFIER_RE = re.compile(
     r"accused|suspected|proposed|proposal)\b", re.IGNORECASE,
 )
 _SMALL_NUMBERS = dict(zip(
-    "zero one two three four five six seven eight nine ten eleven twelve".split(),
-    map(str, range(13)), strict=True,
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split(),
+    map(str, range(20)), strict=True,
 ))
 
 
 def unsupported_figures(text: str, source_text: str) -> set[str]:
-    """Reject new numeric tokens, allowing small spelled-out numbers.
+    """Reject new numeric tokens, normalizing spelled-out counts below 100.
 
     This is a conservative evidence check, not a factual or arithmetic judge.
     It prevents adding e.g. a population or an inferred election date.
@@ -164,7 +164,23 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
     scales = {"k": 3, "thousand": 3, "m": 6, "million": 6,
               "b": 9, "billion": 9, "t": 12, "trillion": 12,
               "mn": 6, "mln": 6, "bn": 9, "bln": 9, "tn": 12, "trn": 12}
-    def tokens(value):
+    tens = dict(zip("twenty thirty forty fifty sixty seventy eighty ninety".split(), range(20, 100, 10), strict=True))
+    units = "one|two|three|four|five|six|seven|eight|nine"
+    spelled = re.compile(
+        r"\b(" + "|".join(tens) + r")(?:[- ](" + units + r"))?\b"
+        r"|\b(" + "|".join(_SMALL_NUMBERS) + r")\b", re.I,
+    )
+    def tokens(value, *, source=False):
+        # Normalize words first, with longest compounds matched atomically.
+        # Otherwise 'forty-seven' would incorrectly offer evidence for 7.
+        def number(match):
+            ten, unit, small = match.groups()
+            # In generated prose 'one' can be a pronoun ('the prior one'),
+            # not a new count. Source 'one' still supports the numeral 1.
+            if small and small.lower() == "one" and not source:
+                return match.group()
+            return str(tens[ten.lower()] + (int(_SMALL_NUMBERS[unit.lower()]) if unit else 0)) if ten else _SMALL_NUMBERS[small.lower()]
+        value = spelled.sub(number, value)
         out = []
         for match in pattern.finditer(value):
             number, word, suffix, percent = match.groups()
@@ -179,9 +195,7 @@ def unsupported_figures(text: str, source_text: str) -> set[str]:
                 amount *= 10 ** scales[scale]
             out.append((match.group().lower().replace(",", ""), (amount, bool(percent))))
         return out
-    known = {canonical for _, canonical in tokens(source_text)}
-    known.update((Decimal(_SMALL_NUMBERS[w]), False)
-                 for w in re.findall(r"\b\w+\b", source_text.lower()) if w in _SMALL_NUMBERS)
+    known = {canonical for _, canonical in tokens(source_text, source=True)}
     return {raw for raw, canonical in tokens(text) if canonical not in known}
 
 

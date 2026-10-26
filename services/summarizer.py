@@ -84,6 +84,10 @@ def _batch_count(items: list) -> int:
     return -(-len(items) // BATCH_SIZE)
 
 
+class CopyQualityError(AlignmentError):
+    """Indices align, but a candidate changes a fact; isolate after retry."""
+
+
 async def summarize_articles(
     articles: list[RSSArticle],
     *,
@@ -144,6 +148,18 @@ async def summarize_articles(
         batch_index = i // BATCH_SIZE
         try:
             results.update(await _summarize_batch_with_retry(client, batch, batch_index))
+        except CopyQualityError as e:
+            logger.warning("Article copy failed its content gate; retrying %d aligned inputs individually: %s", len(batch), e)
+            for article in batch:
+                retry_budget = await check_budget(estimate_cost(OPERATION, MAX_BATCH_ATTEMPTS))
+                if not retry_budget.allowed:
+                    results.update(_raw_content_fallback([article]))
+                    continue
+                try:
+                    results.update(await _summarize_batch_with_retry(client, [article], batch_index))
+                except Exception as retry_error:
+                    logger.warning("Individual summary remains pending for %s: %s", article.source_url, retry_error)
+                    results.update(_raw_content_fallback([article]))
         except AlignmentError as e:
             misaligned_batches += 1
             logger.error(
@@ -400,13 +416,13 @@ def _parse_summaries(text: str, batch: list[RSSArticle]) -> dict[str, dict]:
         article = batch[idx - 1]
         source_text = article.source_name + " " + article.title + " " + _truncate(re.sub(r"<[^>]+>", "", article.raw_content or ""), 500)
         if unsupported_name_change(summary, source_text):
-            raise AlignmentError(f"summary changed or expanded an unsupported name at index {idx}")
+            raise CopyQualityError(f"summary changed or expanded an unsupported name at index {idx}")
         if interim_result_conflict(summary):
-            raise AlignmentError(f"summary turned a halftime lead into a completed win at index {idx}")
+            raise CopyQualityError(f"summary turned a halftime lead into a completed win at index {idx}")
         if takeover_role_conflict(summary, article.title):
-            raise AlignmentError(f"summary reversed takeover roles at index {idx}")
+            raise CopyQualityError(f"summary reversed takeover roles at index {idx}")
         if unsupported_figures(summary, source_text):
-            raise AlignmentError(f"summary added an unsupported figure at index {idx}")
+            raise CopyQualityError(f"summary added an unsupported figure at index {idx}")
 
         results[batch[idx - 1].source_url] = {"summary": summary,
                                                 "category": category if summary else FALLBACK_CATEGORY,
