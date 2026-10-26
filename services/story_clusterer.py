@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import json
 import logging
 
@@ -91,7 +93,7 @@ async def cluster_articles(
     prompt = build_prompt(articles)
 
     try:
-        response = await client.messages.create(
+        response = await budgeted_message(client, OPERATION,
             model=model,
             # Scale the ceiling with the input. A fixed 1024 silently truncated
             # the JSON array on large windows: the cut-off text failed

@@ -35,6 +35,8 @@ move those operations.
 """
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import logging
 import time
 from dataclasses import dataclass
@@ -192,6 +194,8 @@ async def complete(
     replay of a failing call at full price.
     """
     spec = spec or resolve(operation)
+    if settings.ai_cost_guard_enabled and spec.provider != "anthropic":
+        raise LLMClientError("Guarded production requires a metered Anthropic provider")
     if temperature is None:
         temperature = spec.default_temperature
 
@@ -200,7 +204,7 @@ async def complete(
         if spec.provider == "anthropic":
             resp = await _complete_anthropic(
                 spec, client, user, system, max_tokens, temperature,
-                cache_system, timeout,
+                cache_system, timeout, operation=operation,
             )
         else:
             resp = await _complete_openai_compatible(
@@ -214,7 +218,7 @@ async def complete(
 
 
 async def _complete_anthropic(
-    spec, client, user, system, max_tokens, temperature, cache_system, timeout,
+    spec, client, user, system, max_tokens, temperature, cache_system, timeout, *, operation="adapter.messages",
 ) -> dict:
     client = client or _client_for(spec)
 
@@ -236,7 +240,7 @@ async def _complete_anthropic(
     if timeout is not None:
         kwargs["timeout"] = timeout
 
-    resp = await client.messages.create(**kwargs)
+    resp = await budgeted_message(client, operation, **kwargs)
     u = getattr(resp, "usage", None)
     return {
         "text": "".join(b.text for b in resp.content if getattr(b, "type", "") == "text"),
@@ -339,6 +343,8 @@ class _LedgerView:
             "cache_read_input_tokens": u.cache_read_tokens,
             "cache_creation_input_tokens": u.cache_write_tokens,
         })()
+        self._sift_usage_recorded = getattr(resp.raw, "_sift_usage_recorded", False) is True
+        self._sift_usage_payload = getattr(resp.raw, "_sift_usage_payload", {})
         self.stop_reason = resp.stop_reason
         self.model = resp.spec.model
         self.content: list = []

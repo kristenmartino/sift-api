@@ -6,7 +6,7 @@ import logging
 import voyageai
 
 from app.config import settings
-from services.cost_guard import check_budget, record_usage
+from services.cost_guard import check_budget, record_usage, reserve_budget
 from services.usage_tracker import voyage_cost
 
 logger = logging.getLogger("sift-api.embedder")
@@ -53,6 +53,10 @@ async def embed_texts(texts: list[str]) -> list[list[float] | None]:
     for i in range(0, len(texts), BATCH_SIZE):
         batch = texts[i : i + BATCH_SIZE]
         try:
+            hold_id = await reserve_budget(voyage_cost(sum(len(t.encode("utf-8")) for t in batch) + 4096))
+            if hold_id is None:
+                all_embeddings.extend([None] * len(batch))
+                continue
             # voyageai.Client.embed is synchronous, run in thread pool
             result = await asyncio.to_thread(
                 client.embed,
@@ -61,7 +65,12 @@ async def embed_texts(texts: list[str]) -> list[list[float] | None]:
                 input_type="document",
             )
             all_embeddings.extend(result.embeddings)
-            total_tokens += int(getattr(result, "total_tokens", 0) or 0)
+            if settings.ai_cost_guard_enabled and not isinstance(getattr(result, "total_tokens", None), int):
+                raise ValueError("Embedding usage unavailable; budget remains held")
+            tokens = int(getattr(result, "total_tokens", 0) or 0)
+            total_tokens += tokens
+            if settings.ai_cost_guard_enabled:
+                await record_usage("voyage", MODEL, "embedder.embed_texts", voyage_cost(tokens), reservation_id=hold_id or None)
         except Exception as e:
             logger.error(
                 "Embedding failed for batch %d (%d texts); emitting NULL "
@@ -75,9 +84,8 @@ async def embed_texts(texts: list[str]) -> list[list[float] | None]:
             all_embeddings.extend([None] * len(batch))
 
     # Record estimated Voyage spend for the daily ceiling (no-op if guard off).
-    await record_usage(
-        "voyage", MODEL, "embedder.embed_texts", voyage_cost(total_tokens)
-    )
+    if not settings.ai_cost_guard_enabled:
+        await record_usage("voyage", MODEL, "embedder.embed_texts", voyage_cost(total_tokens))
 
     embedded = sum(1 for v in all_embeddings if v is not None)
     skipped = len(all_embeddings) - embedded

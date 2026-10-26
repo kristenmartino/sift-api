@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi.errors import RateLimitExceeded
 
+from services.cost_guard import BUDGET_POLICY_VERSION
 from app.config import settings
 from app.db import init_pool, get_pool, close_pool
 from app.dependencies import limiter
@@ -307,6 +308,7 @@ async def health(deep: bool = False):
         last_pipeline_run=last_run,
         scheduler_running=scheduler_running if scheduler_running else None,
         model_overrides=overrides or None,
+        budget_policy_version=BUDGET_POLICY_VERSION,
         copy_rules_version=COPY_RULES_VERSION,
         generation=generation_health.snapshot(),
     )

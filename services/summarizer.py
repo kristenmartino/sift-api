@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import functools
 import json
 import logging
@@ -312,7 +314,7 @@ async def _summarize_batch(
                    "invent missing names or details. Review feedback: " + json.dumps(feedback, ensure_ascii=False))
     spec = resolve(OPERATION)
 
-    response = await client.messages.create(
+    response = await budgeted_message(client, OPERATION,
         model=spec.model,
         max_tokens=MAX_OUTPUT_TOKENS,
         messages=[{"role": "user", "content": prompt}],

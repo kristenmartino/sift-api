@@ -28,6 +28,21 @@ jobs:
     # jobs have the same exposure and none of them should ever run long.
     timeout-minutes: 10
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: sift_budget_test
+          POSTGRES_DB: sift_budget_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      AI_BUDGET_TEST_DATABASE_URL: postgresql://postgres:sift_budget_test@127.0.0.1:5432/sift_budget_test
+
     steps:
       - uses: actions/checkout@v4
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import json
 import logging
 import re
@@ -119,7 +121,7 @@ Return ONLY a JSON object:
 {{"headline": "...", "summary": "...", "framings": [{{"source_name": "...", "framing": "...", "tone": "..."}}]}}"""
 
     try:
-        response = await client.messages.create(
+        response = await budgeted_message(client, OPERATION,
             model=model,
             max_tokens=_max_tokens_for(len(articles)),
             messages=[{"role": "user", "content": prompt}],

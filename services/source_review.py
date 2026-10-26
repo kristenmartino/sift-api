@@ -5,6 +5,8 @@ publisher's reporting. Unknown verdicts never authorize publication.
 """
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import json
 import logging
 
@@ -188,7 +190,7 @@ async def assess_copy(items: list[dict], *, client=None) -> dict[str, dict]:
                         break
                     spec = resolve("judge.batch")
                     retry_note = "\nReturn only valid JSON, one indexed verdict per supplied item." if attempt else ""
-                    response = await client.messages.create(model=spec.model, max_tokens=1200,
+                    response = await budgeted_message(client, "judge.batch", model=spec.model, max_tokens=1200,
                         messages=[{"role": "user", "content": prompt + retry_note}])
                     log_usage("judge.batch", response, model=spec.model)
                     if getattr(response, "stop_reason", None) == "max_tokens":

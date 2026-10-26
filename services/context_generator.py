@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.paid_calls import budgeted_message
+
 import functools
 import json
 import logging
@@ -245,7 +247,7 @@ async def _generate_batch(
     batch: list[dict],
 ) -> dict[str, dict]:
     """Send a batch of articles to Claude Haiku for context + importance generation."""
-    response = await client.messages.create(
+    response = await budgeted_message(client, OPERATION,
         model=_model(),
         max_tokens=850,  # +tone (stage 3) and +genre (stage 6) keys
         messages=[{"role": "user", "content": _build_context_prompt(batch)}],

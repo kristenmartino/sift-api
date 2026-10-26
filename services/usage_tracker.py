@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -117,11 +118,15 @@ PRICE_VOYAGE_PER_M = 0.02
 BATCH_DISCOUNT = 0.5
 
 
+batch_already_metered: ContextVar[bool] = ContextVar("batch_already_metered", default=False)
+
+
 def log_usage(
     operation: str,
     response: Any,
     model: str = "claude-haiku-4-5",
     web_searches: int = 0,
+    *, persist: bool = True,
 ) -> dict:
     """
     Log token usage + estimated cost from an Anthropic response as structured JSON.
@@ -135,6 +140,8 @@ def log_usage(
     Returns:
         The dict that was logged (useful for tests / aggregation).
     """
+    if getattr(response, "_sift_usage_recorded", False) is True:
+        return getattr(response, "_sift_usage_payload", {})
     try:
         usage = getattr(response, "usage", None)
 
@@ -164,16 +171,17 @@ def log_usage(
             "cost_usd": round(cost_usd, 6),
         }
         logger.info(json.dumps(payload))
-        _record_to_ledger(
-            operation,
-            model,
-            round(cost_usd, 6),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=cache_read,
-            cache_write_tokens=cache_creation,
-            web_search_calls=web_searches,
-        )
+        if persist and getattr(response, "_sift_usage_recorded", False) is not True:
+            _record_to_ledger(
+                operation,
+                model,
+                round(cost_usd, 6),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read,
+                cache_write_tokens=cache_creation,
+                web_search_calls=web_searches,
+            )
         return payload
     except Exception as e:
         # Never let telemetry break the pipeline
@@ -185,6 +193,7 @@ def log_batch_usage(
     operation: str,
     results: list[dict],
     model: str = "claude-haiku-4-5",
+    *, persist: bool = True,
 ) -> dict:
     """Log token usage + estimated cost for a Message Batches result set.
 
@@ -206,6 +215,8 @@ def log_batch_usage(
     granularity is noise here, since a sub-batch shares one operation.
     Errored results carry no usage and are counted separately.
     """
+    if batch_already_metered.get():
+        return {}  # The batch boundary already emitted and persisted its usage.
     try:
         input_tokens = output_tokens = cache_read = cache_creation = 0
         ok = errored = 0
@@ -247,16 +258,17 @@ def log_batch_usage(
             "cost_usd": round(cost_usd, 6),
         }
         logger.info(json.dumps(payload))
-        _record_to_ledger(
-            operation,
-            model,
-            round(cost_usd, 6),
-            call_count=ok,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=cache_read,
-            cache_write_tokens=cache_creation,
-        )
+        if persist and not batch_already_metered.get():
+            _record_to_ledger(
+                operation,
+                model,
+                round(cost_usd, 6),
+                call_count=ok,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read,
+                cache_write_tokens=cache_creation,
+            )
         return payload
     except Exception as e:
         logger.debug("batch usage logging failed for %s: %s", operation, e)

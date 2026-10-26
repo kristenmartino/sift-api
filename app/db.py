@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncpg
+from pathlib import Path
 
 from app.config import settings
 
@@ -79,6 +80,16 @@ CREATE INDEX IF NOT EXISTS idx_articles_generation_pending
             "CREATE INDEX IF NOT EXISTS idx_api_batches_status_kind "
             "ON api_batches(status, kind)"
         )
+
+        # migrations/036_compare_budget.sql is additive and transaction-safe.
+        await conn.execute((Path(__file__).resolve().parent.parent / "migrations/036_compare_budget.sql").read_text())
+        conflict = ("DO UPDATE SET enabled = EXCLUDED.enabled, "
+                    "daily_limit_usd = EXCLUDED.daily_limit_usd, compare_share = EXCLUDED.compare_share"
+                    if settings.environment == "production" else "DO NOTHING")
+        await conn.execute("INSERT INTO ai_budget_policy(singleton, enabled, daily_limit_usd, compare_share) "
+                           "VALUES (TRUE, $1, $2, $3) ON CONFLICT (singleton) " + conflict,
+                           settings.ai_cost_guard_enabled, settings.daily_ai_cost_limit_usd,
+                           settings.ai_compare_budget_share)
 
         # Feed indexes (migrations/004_feed_indexes.sql). Partial indexes that
         # match the exact predicates in sift/lib/db.ts's user-facing queries,

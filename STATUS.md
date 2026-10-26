@@ -175,6 +175,8 @@ An entry below describes what was true on its date and is never edited to stay c
 
 ## Recent decisions (last 7 days)
 
+- **2026-10-26** — Keep the $15 production cap; protect 20% for interactive Compare. Background generation, reviews, daily examples and frontend topic AI share the first 80%. Durable atomic reservations cover provider calls and batches; uncertain costs remain held for reconciliation. No design changes. See README shared AI budget allocation.
+
 - **2026-10-25** — Seven live/manual failures exposed gaps beyond numeric and
   pattern checks: a substituted person, an invented opponent, inherited filler,
   guide-only narration, name corruption and a misleading legal definition.
