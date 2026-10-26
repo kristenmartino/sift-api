@@ -185,3 +185,16 @@ After bounded batch retries, a content-gate failure is retried one article at a
 time. A rejected neighbor remains pending while other articles continue to
 source review. Duplicate, missing or shifted indices still reject the entire
 batch; content quality never relaxes the alignment requirement.
+
+## Repairable source-review holds (2026-10-26)
+
+Neutral paraphrase can remove rhetorical degree: “demolished” supports
+“defeated.” This does not relax legal status, dates or attribution. Interpretive
+claims about a song accompanying a post remain attributed to the outlet.
+
+A production candidate rejected as retryable may receive one budget-checked
+rewrite using the supplied source and reviewer feedback. The rewrite must
+pass the parser's factual checks and a fresh independent source review before
+publication. Unchanged text is not re-reviewed; unavailable inputs, review
+errors, malformed repairs and failed second reviews remain withheld. There is
+no recursive rewrite loop and no new polling or UI behavior.

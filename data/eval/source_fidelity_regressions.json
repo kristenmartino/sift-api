@@ -209,5 +209,49 @@
     "source": "Democrats are targeting Republican strongholds that could set them up for new majorities.",
     "copy": "Democrats are targeting Republican strongholds that could help them win new Senate majorities.",
     "expected": "pass"
+  },
+  {
+    "id": "neutral-win-paraphrase",
+    "title": "Texas A&M makes hockey history",
+    "source": "Texas A&M demolished the University of Texas in Houston in front of more than 1,500 spectators.",
+    "copy": "Texas A&M defeated the University of Texas in Houston in front of more than 1,500 spectators.",
+    "expected": "pass"
+  },
+  {
+    "id": "invented-hockey-record",
+    "title": "Texas A&M makes hockey history",
+    "source": "Texas A&M demolished the University of Texas in Houston.",
+    "copy": "Texas A&M set an ACHA scoring record in its win over Texas.",
+    "expected": "retry"
+  },
+  {
+    "id": "attributed-song-framing",
+    "title": "Outlet calls a song in a lawmaker’s post menacing",
+    "source_name": "Outlet",
+    "source": "Rep. Doe posted a lakeside video set to a song. Outlet characterized its translated lyrics as menacing.",
+    "copy": "Rep. Doe posted a lakeside video set to a song whose translated lyrics Outlet characterized as menacing.",
+    "expected": "pass"
+  },
+  {
+    "id": "lyrics-not-direct-threat",
+    "title": "Outlet calls a song in a lawmaker’s post menacing",
+    "source_name": "Outlet",
+    "source": "Rep. Doe posted a lakeside video set to a song. Outlet characterized its translated lyrics as menacing.",
+    "copy": "Rep. Doe issued a threat against her opponents in a lakeside video.",
+    "expected": "retry"
+  },
+  {
+    "id": "short-reelection-result",
+    "title": "Lula wins reelection in Brazil against regional rightward shift",
+    "source": "Lula’s reelection limits the influence of the regional right.",
+    "copy": "Lula won reelection in Brazil, bucking a regional shift toward the right.",
+    "expected": "pass"
+  },
+  {
+    "id": "name-from-title-only",
+    "title": "Nashville defenseman Jayden Struble wins fight",
+    "source": "The Predators beat Colorado on Sunday.",
+    "copy": "Nashville Predators defenseman Jayden Struble won a fight. The team beat Colorado on Sunday.",
+    "expected": "pass"
   }
 ]

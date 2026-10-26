@@ -60,7 +60,12 @@ A comparison such as "no team in 30 years" is not the actual record; the input
 must say what performance or finding is being compared. A summary
 saying Forbes provides Connections hints is still a guide announcement.
 A game result or a specific, attributed forecast with its actual finding is
-usable even when its source also promotes a guide. Ordinary paraphrase is fine;
+usable even when its source also promotes a guide. Neutral paraphrase may omit rhetorical degree: "demolished Texas" supports
+"defeated Texas". Do not demand a hype word or adjective be carried over.
+This does not permit changing legal status, dates, uncertainty or attribution.
+A song accompanying a post is not itself proof the poster issued a threat.
+An outlet's characterization of translated lyrics must remain attributed.
+Ordinary paraphrase is fine;
 a source saying the Fed held rates can be summarized in one short sentence.
 A summary may omit ANY source detail. Never reject solely because it omits a
 poll, a quote, or another reported fact. Judge only claims actually made.
