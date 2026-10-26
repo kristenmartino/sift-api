@@ -16,7 +16,7 @@ import asyncpg
 
 from app import db
 from app.config import settings
-from services.source_review import assess_copy
+from services.source_review import assess_copy, story_source_evidence
 from services.usage_tracker import _pending_records
 
 
@@ -43,15 +43,15 @@ async def _run_audit(args):
         articles = await pool.fetch("""SELECT id,title,summary,generation_raw_content,source_name
             FROM articles WHERE from_search=false AND summary<>''
             ORDER BY created_at DESC LIMIT $1""", args.limit)
-        stories = await pool.fetch("""SELECT id,headline,summary FROM stories
+        stories = await pool.fetch("""SELECT id,headline,summary,framings FROM stories
             WHERE synthesis_status='complete' ORDER BY updated_at DESC LIMIT $1""", args.limit)
-        members = await pool.fetch("""SELECT story_id,title,summary FROM articles
+        members = await pool.fetch("""SELECT story_id,title,summary,source_name FROM articles
             WHERE story_id=ANY($1::text[]) AND from_search=false""", [s["id"] for s in stories])
         rows = [{"id": a["id"], "title": a["title"], "source": " ".join(re.sub(r"<[^>]+>", "", a["generation_raw_content"] or "").split()[:500]),
                  "source_name": a["source_name"], "copy": a["summary"]} for a in articles if a["generation_raw_content"]]
         rows += [{"id": s["id"], "title": "Supplied cluster reports",
-                  "source": "\n".join(a["title"] + "\n" + (a["summary"] or "") for a in members if a["story_id"] == s["id"]),
-                  "copy": s["headline"] + "\n" + s["summary"]} for s in stories]
+                  "source": story_source_evidence([dict(a) for a in members if a["story_id"] == s["id"]]),
+                  "copy": s["headline"] + "\n" + s["summary"] + "\n" + json.dumps(s.get("framings") or [], ensure_ascii=False)} for s in stories]
     result = await assess_copy(rows)
     failures = [{"id": r["id"], "expected": r.get("expected", "pass"), "actual": result[r["id"]]}
                 for r in rows if result[r["id"]]["v"] != r.get("expected", "pass")]

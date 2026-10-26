@@ -10,7 +10,7 @@ from app.config import settings
 from services.model_registry import resolve
 from services.copy_rules import COPY_RULES, COPY_RULES_VERSION
 from services.judge import judge_lines
-from services.source_review import assess_copy
+from services.source_review import assess_copy, story_source_evidence
 from services.cost_guard import check_budget
 from services.cost_estimates import estimate_cost
 from services.quality_gate import clean_generated_headline, gate_framing, gate_summary, unsupported_figures, takeover_role_conflict, interim_result_conflict, unsupported_name_change
@@ -48,12 +48,7 @@ async def synthesize_story(
     if client is None:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
-    articles_text = ""
-    for i, article in enumerate(articles, 1):
-        articles_text += (
-            f"\n{i}. [{article['source_name']}] \"{article['title']}\"\n"
-            f"   {article['summary']}\n"
-        )
+    articles_text = story_source_evidence(articles)
 
     unresolved = bool(re.search(r"\bwhether\b.{0,120}\b(?:caused|contributed)\b", articles_text, re.I))
     causality_rule = (

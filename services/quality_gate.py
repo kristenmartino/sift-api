@@ -397,6 +397,9 @@ def gate_summary(summary: str | None) -> str:
     unsummarizable rather than merely using the words.
     """
     text = (summary or "").strip()
+    if not any(q in text for q in ('"', "'", "“", "”", "‘", "’")):
+        text = re.sub(r"\bdefeated an opponent (?=\d{1,3}\s*[-–]\s*\d{1,3}\b)", "won ", text)
+        text = re.sub(r",\s+with kickoff time and TV information (?:just )?released[.!?]?$", ".", text, flags=re.I)
     tail = re.search(r",\s+(?:escalating (?:the )?rivalry|underscoring (?:the )?importance|highlighting broader (?:tensions|concerns))\b[^.!?]*[.!?]?$", text, re.I)
     if tail and not re.search(r'\d|["“”]|\b(?:said|according to)\b', tail.group(), re.I):
         text = text[:tail.start()].rstrip() + "."

@@ -204,3 +204,22 @@ a separate budget check; a second failure stays an error and cannot authorize
 publication. Availability is decided from all supplied source facts, not from
 the rejected candidate: an invented record with a real game result calls for
 a rewrite, rather than declaring the whole source unavailable.
+
+## Audit of the automatic path (2026-10-26)
+
+Producer-declared unavailable outputs now receive a separate source-availability
+review before becoming unavailable. If the source contains usable news, the
+normal one-rewrite path must produce text and obtain a fresh copy review. A
+blank candidate cannot pass; conflicting availability decisions stay pending.
+Sources with no usable body remain withheld.
+
+Cluster audits use the same publisher-labeled member evidence as synthesis,
+avoiding false invented-attribution flags when an outlet name exists only in
+metadata. The summary gate trims the observed kickoff/TV-release teaser tail
+and unnamed-opponent score placeholder while retaining quoted text and named
+opponents. No timers, UI or ranking changes accompany these corrections.
+
+Source review also checks cluster framing notes, preserves active-season timing,
+rejects invented outlet disagreements and scheduling causes, and drops ambiguous
+price-discount claims. Availability repairs explicitly use the identified fact
+while preserving literal source figures.

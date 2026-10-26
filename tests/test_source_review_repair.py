@@ -35,7 +35,7 @@ async def test_changed_repair_is_parsed_and_independently_approved(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["fresh_rejection", "review_error", "unsupported_figure", "unchanged", "budget"])
+@pytest.mark.parametrize("failure", ["fresh_rejection", "fresh_unavailable", "review_error", "unsupported_figure", "unchanged", "budget"])
 async def test_failed_or_unreviewed_repair_stays_pending_without_a_loop(monkeypatch, failure):
     candidate = GOOD
     if failure == "unsupported_figure":
@@ -47,7 +47,7 @@ async def test_failed_or_unreviewed_repair_stays_pending_without_a_loop(monkeypa
     monkeypatch.setattr(summarizer, "check_budget", AsyncMock(side_effect=[
         SimpleNamespace(allowed=True), SimpleNamespace(allowed=failure != "budget")]))
     review = AsyncMock(side_effect=[{URL: {"v": "retry", "why": "unsupported record"}},
-                                   {URL: {"v": "error" if failure == "review_error" else "retry"}}])
+                                   {URL: {"v": "error" if failure == "review_error" else "unavailable" if failure == "fresh_unavailable" else "retry"}}])
     monkeypatch.setattr(summarizer, "assess_copy", review)
     out = await summarizer.summarize_articles([SOURCE], client=client)
     assert out[URL] == {"summary": "", "category": "general", "_degraded": True}
