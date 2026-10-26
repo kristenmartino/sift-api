@@ -174,3 +174,14 @@ Review evidence now includes the headline alongside the excerpt. Live checks
 showed that separate-title-only facts were sometimes ignored. Missing-record
 and missing-poll-result teasers are explicitly unavailable; meaningful reported
 results still pass.
+
+## Pending-batch recovery (2026-10-26)
+
+The numeric guard now treats compound spelled-out counts below 100 and digits
+as equivalent, including percent units and scale words. “Forty-seven” supports
+47, not 7 or 48. A real source count had been rejected and held up four articles.
+
+After bounded batch retries, a content-gate failure is retried one article at a
+time. A rejected neighbor remains pending while other articles continue to
+source review. Duplicate, missing or shifted indices still reject the entire
+batch; content quality never relaxes the alignment requirement.

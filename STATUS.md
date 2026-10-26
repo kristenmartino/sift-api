@@ -6,6 +6,9 @@
 
 ## Active focus
 
+2026-10-26 follow-up: normalize spelled-out compound counts and isolate bounded content retries after proven batch alignment. Recover the four held articles with source-approved copy and full enrichment; no UI changes.
+
+
 2026-10-26: copy rules 2026-10-26.1 address post-release name guesses, causal and attribution reversals, generic closing clauses, stale arrest notes and unsupported primer details. No presentation or ranking changes.
 
 
