@@ -1,0 +1,66 @@
+[
+  {
+    "id": "dni-keep",
+    "title": "DNI issued memo",
+    "summary": "The DNI sent a threat memo to the Secretary of State.",
+    "line": "The Director of National Intelligence oversees and coordinates the work of U.S. intelligence agencies.",
+    "expected": true,
+    "field": "background_novelty"
+  },
+  {
+    "id": "runoff-drop",
+    "title": "Lula wins runoff",
+    "summary": "Lula won a presidential runoff.",
+    "line": "A runoff is a second election held between the top two candidates when neither wins a majority in the first round.",
+    "expected": false,
+    "field": "background_novelty"
+  },
+  {
+    "id": "event-history-drop",
+    "title": "Lula wins fourth term",
+    "summary": "Lula became the first candidate to reverse a first-round defeat.",
+    "line": "Lula finished first in the initial round but faced a runoff against Fl\u00e1vio Bolsonaro.",
+    "expected": false,
+    "field": "background_novelty"
+  },
+  {
+    "id": "coverage-guarantee-drop",
+    "title": "Level-funded health plans attract employers",
+    "summary": "Small businesses are considering level-funded plans.",
+    "line": "Level-funded health plans allow employers to pay only actual claims rather than fixed premiums, reducing upfront costs.",
+    "expected": false,
+    "field": "background_novelty"
+  },
+  {
+    "id": "league-guarantee-drop",
+    "title": "Players consider LIV Golf",
+    "summary": "Players are discussing a rival golf league.",
+    "line": "Players who join LIV Golf must leave the PGA Tour.",
+    "expected": false,
+    "field": "background_novelty"
+  },
+  {
+    "id": "religion-practice-drop",
+    "title": "Zoroastrian burial practice discussed",
+    "summary": "A case raised questions about burial rites.",
+    "line": "Zoroastrianism traditionally exposed the dead to fire as part of burial rites.",
+    "expected": false,
+    "field": "background_novelty"
+  },
+  {
+    "id": "court-powers-drop",
+    "title": "Brazil runoff voting",
+    "summary": "Voting continued in Brazil.",
+    "line": "In Brazil, the Supreme Court manages election procedures.",
+    "expected": false,
+    "field": "background_novelty"
+  },
+  {
+    "id": "basis-points-keep",
+    "title": "Bond yields rise by 25 basis points",
+    "summary": "Yields rose by 25 basis points.",
+    "line": "basis points: A unit equal to one hundredth of a percentage point.",
+    "field": "term_utility",
+    "expected": true
+  }
+]

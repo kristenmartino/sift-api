@@ -51,6 +51,7 @@ def test_outdated_status_notes_do_not_contradict_the_current_update(note,summary
  'The agency oversees enterprises that guarantee roughly half of all mortgages.',
  'The office has a five-year term renewable once.',
  'The tournament includes four invited nations.',
+ 'These plans let employers pay only actual claims rather than fixed premiums.',
  'The Administrative Procedure Act constrains removal.',
 ])
 def test_unsourced_primer_specifics_are_withheld(paragraph):

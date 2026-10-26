@@ -153,3 +153,9 @@ background review to withhold unverified league rules, financial guarantees,
 religious practices and institutional powers. Familiar runoff definitions do
 not earn a background paragraph. A record teaser with no underlying record is
 withheld rather than rewritten as a vague historical achievement.
+
+An additional labeled control caught a level-funded-plan claim that employers
+pay only actual claims rather than fixed premiums. The deterministic primer
+guard withholds that unsupported guarantee even when semantic review accepts
+it. `scripts/audit_primer_copy.py --daily-cap 15` replays the observed primer
+failures and useful-copy controls through both the guard and reviewer.
