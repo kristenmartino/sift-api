@@ -164,3 +164,13 @@ The name backstop is deliberately scoped: fuzzy capitalized-word matching
 misclassified company plurals and title-cased verbs as changed surnames in the
 next live cohort. Those controls now stay clear; general name fidelity remains
 the semantic reviewer's job.
+
+Recovered-article controls also preserve after/during timing, distinguish a
+pledge to act from a commitment to impeach, and reject invented speakers such
+as unnamed party strategists. Each observed failure has a supported-copy
+retention pair in the source-fidelity replay.
+
+Review evidence now includes the headline alongside the excerpt. Live checks
+showed that separate-title-only facts were sometimes ignored. Missing-record
+and missing-poll-result teasers are explicitly unavailable; meaningful reported
+results still pass.
