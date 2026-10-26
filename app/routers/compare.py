@@ -16,7 +16,7 @@ from app.dependencies import limiter
 from app.models import CompareRequest, CompareResponse
 from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget, budget_snapshot
-from services.paid_calls import budget_scope
+from services.paid_calls import BudgetUnavailable, budget_scope
 from services.daily_compare import refresh_daily_example
 from workflows.compare_workflow import (
     CompareState,
@@ -123,6 +123,8 @@ async def compare_sources(
             compare_graph.ainvoke(initial_state),
             timeout=COMPARE_TIMEOUT,
         )
+    except BudgetUnavailable as e:
+        raise HTTPException(status_code=503, detail={"detail": "Comparison capacity is temporarily unavailable. Please try again later.", "code": e.code}) from e
     except asyncio.TimeoutError as e:
         logger.error("Compare workflow timed out after %ds", COMPARE_TIMEOUT)
         raise HTTPException(
@@ -320,6 +322,10 @@ async def compare_sources_stream(
                         "duration_ms": int((time.time() - start) * 1000),
                     },
                 )
+        except BudgetUnavailable as e:
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            yield _sse("error", {"message": "Comparison capacity is temporarily unavailable. Please try again later.", "code": e.code})
         except TimeoutError:
             logger.error("Compare stream timed out after %ds", COMPARE_TIMEOUT)
             yield _sse(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from services.paid_calls import budgeted_message
+from services.paid_calls import BudgetUnavailable, budgeted_message
 
 import asyncio
 import json
@@ -176,6 +176,8 @@ async def search_one_source(
         logger.info("search_sources: got %d chars from %s", len(result), source)
         return (source, result)
 
+    except BudgetUnavailable:
+        raise
     except asyncio.TimeoutError:
         logger.warning("search_sources: timed out for %s after %ds", source, PER_SOURCE_TIMEOUT)
         return (source, None)
@@ -215,6 +217,8 @@ async def search_sources_node(state: CompareState) -> dict:
     errors: list[str] = list(state.get("errors", []))
 
     for result in results:
+        if isinstance(result, BudgetUnavailable):
+            raise result
         if isinstance(result, Exception):
             errors.append(f"search: {result}")
             continue

@@ -14,7 +14,9 @@ budget_scope: ContextVar[str] = ContextVar("ai_budget_scope", default="backgroun
 
 
 class BudgetUnavailable(RuntimeError):
-    pass
+    def __init__(self, message: str, code: str = "AI_BUDGET_EXCEEDED"):
+        super().__init__(message)
+        self.code = code
 
 
 def message_bound(params: dict, *, batch: bool = False) -> float:
@@ -77,7 +79,7 @@ async def budgeted_message(client, operation: str, **params):
             await release_budget(hold_id)
         raise
     if getattr(response, "usage", None) is None:
-        raise BudgetUnavailable("Provider usage missing; budget remains held")
+        raise BudgetUnavailable("Provider usage missing; budget remains held", "COST_GUARD_UNAVAILABLE")
     payload = log_usage(
         operation, response, model=params["model"], web_searches=count_web_searches(response), persist=False
     )
@@ -87,5 +89,5 @@ async def budgeted_message(client, operation: str, **params):
     else:
         # Prevent legacy best-effort logging from settling this a second time.
         object.__setattr__(response, "_sift_usage_recorded", True)
-        raise BudgetUnavailable("Paid response held: usage accounting unavailable")
+        raise BudgetUnavailable("Paid response held: usage accounting unavailable", "COST_GUARD_UNAVAILABLE")
     return response
