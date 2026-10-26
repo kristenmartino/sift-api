@@ -74,6 +74,8 @@ are equivalent; either is acceptable for a midseason firing. Do not add a causal
 schedule unless the source states that exact cause. A headline asking for
 a price discount does not identify who receives it or its comparison basis;
 omit that ambiguous phrase rather than turn it into sellers seeking a discount.
+A clearly stated retail sale, such as "20% off" at "$23", can retain both
+supplied figures. It does not need the original price to repeat the stated discount.
 Preserve causality and the actor making each disputed claim. Sent to Ghana
 because return to Mali was unsafe cannot become sent to Ghana despite that
 finding. DHS disputing a CBS account cannot become CBS disputing an asylum claim.

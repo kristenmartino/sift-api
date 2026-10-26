@@ -172,7 +172,9 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     await pool.execute(
         """UPDATE stories
               SET headline = $2, summary = $3, framings = $4::jsonb,
-                  article_count = $5, synthesis_status = 'complete', copy_rules_version = $6, updated_at = NOW()
+                  article_count = $5, synthesis_status = 'complete', copy_rules_version = $6,
+                  published_date = GREATEST(published_date, (SELECT max(published_date) FROM articles WHERE story_id = $1)),
+                  updated_at = NOW()
             WHERE id = $1""",
         story_id, synthesis["headline"], synthesis["summary"],
         json.dumps(synthesis.get("framings", [])), len(members), COPY_RULES_VERSION,
@@ -360,6 +362,7 @@ async def _sweep_failed(pool, synthesize) -> dict:
                       SET headline = $2, summary = $3, framings = $4::jsonb,
                           article_count = $5, synthesis_status = 'complete', copy_rules_version = $6,
                           synthesis_attempts = synthesis_attempts + 1,
+                          published_date = GREATEST(published_date, (SELECT max(published_date) FROM articles WHERE story_id = $1)),
                           updated_at = NOW()
                     WHERE id = $1""",
                 story_id, synthesis["headline"], synthesis["summary"],

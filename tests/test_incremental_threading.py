@@ -139,6 +139,8 @@ async def test_later_report_from_the_same_outlet_refreshes_resolved_event_facts(
 
     synth.assert_awaited_once()
     assert synth.call_args.args[0] == [earlier, later]
+    assert "published_date = GREATEST(published_date" in _sql(pool)
+    assert "max(published_date) FROM articles" in _sql(pool)
     assert r["attached"] == 1 and r["resynthesized"] == 1
 
 

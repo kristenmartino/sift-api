@@ -111,7 +111,7 @@ seconds of live traffic.
 
 `seed_story_id(category, seed_member_ids)` derives an id **once, from the members that created the story**, and never again. Attaching writes one `story_id` and leaves the row alone. Deterministic rather than a uuid so a repeated seed is idempotent; derived from the seed rather than current membership so growth cannot change it.
 
-**Synthesis refreshes on every confirmed attachment.** A later report from an existing outlet can resolve earlier uncertainty. The caller reserves synthesis budget for every relevant attachment. A failed refresh preserves the saved text for recovery but marks it failed, resets retry attempts, and withholds the stale cluster until the scheduled sweep succeeds.
+**Synthesis refreshes on every confirmed attachment.** A later report from an existing outlet can resolve earlier uncertainty. The caller reserves synthesis budget for every relevant attachment. A failed refresh preserves the saved text for recovery but marks it failed, resets retry attempts, and withholds the stale cluster until the scheduled sweep succeeds. Successful attachments advance the story publication time to the latest actual member publication time, so an updated event does not keep its seed report’s old timestamp.
 
 Validated against prod, 40-article simulated run: 4.5s of Postgres, $0, **18 of 40 needed an LLM opinion and 22 parked for free.** It found four outlets on the same jobs report at 0.81–0.89 similarity — one already in a story, three loose that the live path had missed.
 **Supersedes:** "raise `LIMIT 50`" (`STATUS.md` Next 3 #3, prior framing).

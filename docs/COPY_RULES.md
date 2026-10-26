@@ -230,3 +230,7 @@ later confirmed resolutions over superseded uncertainty. Failed attachment
 refreshes are withheld and queued for the scheduled sweep. Vague performance,
 analytics-effort and ranking-change teasers with no actual finding are
 unavailable. Repair review outcomes are logged alongside attempts.
+
+Confirmed updates also advance cluster publication time from actual member
+publication dates. Explicit retail discount percentages remain valid when
+supplied in a title; the ambiguous property-discount rule must not remove them.
