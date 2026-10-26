@@ -198,3 +198,9 @@ pass the parser's factual checks and a fresh independent source review before
 publication. Unchanged text is not re-reviewed; unavailable inputs, review
 errors, malformed repairs and failed second reviews remain withheld. There is
 no recursive rewrite loop and no new polling or UI behavior.
+
+An invalid, truncated or misaligned review response is re-requested once, with
+a separate budget check; a second failure stays an error and cannot authorize
+publication. Availability is decided from all supplied source facts, not from
+the rejected candidate: an invented record with a real game result calls for
+a rewrite, rather than declaring the whole source unavailable.

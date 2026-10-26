@@ -65,3 +65,52 @@ async def test_unavailable_source_or_unavailable_review_never_triggers_rewrite(m
     out = await summarizer.summarize_articles([SOURCE], client=client)
     assert not out[URL]["summary"]
     assert client.messages.create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_repair_review_cannot_discard_an_already_approved_neighbor(monkeypatch):
+    neighbor = SOURCE.model_copy(update={"source_url": "https://example.com/neighbor"})
+    client = AsyncMock()
+    # The original response is aligned for both inputs; only the first needs repair.
+    initial = response(BAD)
+    initial.content[0].text = json.dumps([{"i": 1, "s": BAD, "c": "sports"},
+                                         {"i": 2, "s": GOOD, "c": "sports"}])
+    client.messages.create.side_effect = [initial, response(GOOD)]
+    monkeypatch.setattr(summarizer, "check_budget", AsyncMock(return_value=SimpleNamespace(allowed=True)))
+    review = AsyncMock(side_effect=[{URL: {"v": "retry"}, neighbor.source_url: {"v": "pass"}},
+                                   {URL: {"v": "pass"}}])
+    monkeypatch.setattr(summarizer, "assess_copy", review)
+    out = await summarizer.summarize_articles([SOURCE, neighbor], client=client)
+    assert out[URL]["summary"] == GOOD
+    assert out[neighbor.source_url]["summary"] == GOOD
+    assert [x["id"] for x in review.call_args_list[1].args[0]] == [URL]
+
+
+@pytest.mark.asyncio
+async def test_malformed_review_retries_once_before_a_verdict_is_used(monkeypatch):
+    from services import source_review
+    bad = SimpleNamespace(content=[SimpleNamespace(type="text", text='[{"i":1,"v" "pass"}]')],
+                          stop_reason="end_turn", usage=SimpleNamespace(input_tokens=10, output_tokens=20))
+    good = SimpleNamespace(content=[SimpleNamespace(type="text", text='[{"i":1,"v":"retry"}]')],
+                           stop_reason="end_turn", usage=SimpleNamespace(input_tokens=10, output_tokens=20))
+    client = AsyncMock()
+    client.messages.create.side_effect = [bad, good]
+    budget = AsyncMock(return_value=SimpleNamespace(allowed=True))
+    monkeypatch.setattr(source_review, "check_budget", budget)
+    out = await source_review.assess_copy([{"id": "a", "copy": "An unsupported claim."}], client=client)
+    assert out["a"]["v"] == "retry"
+    assert client.messages.create.await_count == 2
+    assert budget.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_malformed_review_cannot_retry_past_a_budget_stop(monkeypatch):
+    from services import source_review
+    client = AsyncMock()
+    client.messages.create.return_value = SimpleNamespace(content=[SimpleNamespace(type="text", text='not JSON')],
+        stop_reason="end_turn", usage=SimpleNamespace(input_tokens=10, output_tokens=20))
+    monkeypatch.setattr(source_review, "check_budget", AsyncMock(side_effect=[
+        SimpleNamespace(allowed=True), SimpleNamespace(allowed=False)]))
+    out = await source_review.assess_copy([{"id": "a", "copy": "A candidate."}], client=client)
+    assert out["a"]["v"] == "error"
+    assert client.messages.create.await_count == 1

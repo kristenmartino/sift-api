@@ -19,6 +19,7 @@ from services.usage_tracker import log_usage
 
 logger = logging.getLogger("sift-api.source_review")
 BATCH_SIZE = 10
+MAX_REVIEW_ATTEMPTS = 2
 
 
 def build_review_prompt(items: list[dict]) -> str:
@@ -54,6 +55,10 @@ Unattributed rankings such as "the conference's most complete team" are opinion,
 not established facts. Attribute the evaluation to its source or omit it.
 Use v="retry" for an unsupported claim, wrong name/relationship, or filler when
 the source supplies a concrete event that could support a better summary.
+Judge availability from the entire supplied source, not from proposed_copy.
+If copy invents a record but the body reports a real win and crowd, use retry:
+there is a usable result to summarize. A "makes history" headline does not
+make that whole input unavailable. This availability rule takes priority.
 Use v="unavailable" ONLY if the input is solely a guide, puzzle hint/answer teaser,
 promotion, prediction teaser, or record/poll teaser without its actual finding.
 A comparison such as "no team in 30 years" is not the actual record; the input
@@ -103,24 +108,28 @@ async def assess_copy(items: list[dict], *, client=None) -> dict[str, dict]:
             prompt = build_review_prompt(chunk)
             # Account for longer article/cluster evidence than optional notes.
             units = max(len(chunk), len(prompt) / 1000)
-            try:
-                budget = await check_budget(estimate_cost("judge.batch", units))
-                if not budget.allowed:
-                    continue
-                spec = resolve("judge.batch")
-                response = await client.messages.create(model=spec.model, max_tokens=1200,
-                    messages=[{"role": "user", "content": prompt}])
-                log_usage("judge.batch", response, model=spec.model)
-                if getattr(response, "stop_reason", None) == "max_tokens":
-                    raise ValueError("truncated source review")
-                text = "".join(b.text for b in response.content if b.type == "text")
-                entries = parse_reviews(text, len(chunk))
-                for i, item in enumerate(chunk, 1):
-                    out[item["id"]] = entries[i]
-            except (AlignmentError, ValueError, TypeError, KeyError) as e:
-                logger.warning("Unusable source-review response: %s", e)
-            except Exception as e:
-                logger.error("Source review failed: %s", e)
+            for attempt in range(MAX_REVIEW_ATTEMPTS):
+                try:
+                    budget = await check_budget(estimate_cost("judge.batch", units))
+                    if not budget.allowed:
+                        break
+                    spec = resolve("judge.batch")
+                    retry_note = "\nReturn only valid JSON, one indexed verdict per supplied item." if attempt else ""
+                    response = await client.messages.create(model=spec.model, max_tokens=1200,
+                        messages=[{"role": "user", "content": prompt + retry_note}])
+                    log_usage("judge.batch", response, model=spec.model)
+                    if getattr(response, "stop_reason", None) == "max_tokens":
+                        raise ValueError("truncated source review")
+                    text = "".join(b.text for b in response.content if b.type == "text")
+                    entries = parse_reviews(text, len(chunk))
+                    for i, item in enumerate(chunk, 1):
+                        out[item["id"]] = entries[i]
+                    break
+                except (AlignmentError, ValueError, TypeError, KeyError) as e:
+                    logger.warning("Unusable source-review response (attempt %d/%d): %s", attempt + 1, MAX_REVIEW_ATTEMPTS, e)
+                except Exception as e:
+                    logger.error("Source review failed: %s", e)
+                    break
     finally:
         if own_client:
             await client.close()
