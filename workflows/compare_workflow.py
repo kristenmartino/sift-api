@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from services.paid_calls import BudgetUnavailable, budgeted_message
-
 import asyncio
 import json
 import logging
@@ -13,8 +11,10 @@ from langgraph.graph import StateGraph, END
 
 from app.config import settings
 from app.db import get_pool
+from services.cost_guard import budget_snapshot
+from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scope, message_bound
 from services.model_registry import resolve
-from services.usage_tracker import count_web_searches, log_usage
+from services.usage_tracker import count_web_searches, log_usage, prices_for
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -121,6 +121,31 @@ def comparison_provenance(state: CompareState) -> dict:
     }
 
 
+async def compare_search_parallelism(source_count: int) -> int:
+    """Reuse capacity as searches settle rather than requiring five max holds.
+
+    This snapshot chooses concurrency only; atomic per-call admission remains
+    authoritative when requests race. Keep extraction headroom where possible.
+    """
+    if not settings.ai_cost_guard_enabled:
+        return max(1, source_count)
+    try:
+        budget = await budget_snapshot()
+    except Exception as exc:
+        raise BudgetUnavailable("Budget cannot be verified", "COST_GUARD_UNAVAILABLE") from exc
+    cap = budget["daily_limit_usd"]
+    if not budget["enabled"] or cap <= 0:
+        return max(1, source_count)
+    if budget_scope.get() != "compare":
+        cap *= 1 - budget["compare_share"]
+    search_bound = message_bound({"model": resolve(SEARCH_OPERATION).model, "max_tokens": 2048,
+        "messages": [], "tools": [{"name": "web_search", "max_uses": 1}]})
+    rates = prices_for(resolve(EXTRACT_OPERATION).model)
+    extract_headroom = (200_000 * max(rates.input_per_m, rates.cache_write_per_m) + 4096 * rates.output_per_m) / 1_000_000
+    available = cap - budget["spent_usd"] - budget["held_usd"] - extract_headroom
+    return max(1, min(source_count, int(max(0, available) / search_bound)))
+
+
 # --- Node functions ---
 
 
@@ -207,9 +232,12 @@ async def search_sources_node(state: CompareState) -> dict:
             "errors": ["No valid sources provided"],
         }
 
-    # Run all source searches in parallel
+    gate = asyncio.Semaphore(await compare_search_parallelism(len(sources)))
+    async def search(source):
+        async with gate:
+            return await search_one_source(client, topic, source)
     results = await asyncio.gather(
-        *[search_one_source(client, topic, s) for s in sources],
+        *[search(s) for s in sources],
         return_exceptions=True,
     )
 

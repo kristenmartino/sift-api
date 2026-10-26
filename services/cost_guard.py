@@ -257,7 +257,7 @@ async def record_output_stop(
         logger.debug("cost_guard: output-stop write failed for %s: %s", operation, e)
 
 
-BUDGET_POLICY_VERSION = "compare-reserve-20261026-v1"
+BUDGET_POLICY_VERSION = "compare-reserve-20261026-v2"
 
 async def reserve_budget(amount: float, *, scope: str = "background") -> str | None:
     """Durable atomic admission; unresolved costs remain held across restarts/dates."""
