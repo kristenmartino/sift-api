@@ -230,6 +230,9 @@ async def _review_article_results(results: dict[str, dict], articles: list[RSSAr
             for url, result in fresh.items():
                 if result.get("v") == "unavailable":
                     fresh[url] = {"v": "error", "why": "conflicting source availability decisions"}
+            for url, result in fresh.items():
+                logger.info("Summary repair reviewed: %s verdict=%s reason=%s",
+                            url, result.get("v"), result.get("why", ""))
             verdicts.update(fresh)
     for item in items:
         verdict = verdicts.get(item["id"], {}).get("v")

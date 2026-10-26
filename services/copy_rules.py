@@ -28,6 +28,8 @@ COPY_RULES = """Sift copy rules:
   finding or performance fact, or omit it. "Reveals insights", "disappointing
   update" and "significant shift" without the finding are not useful facts.
   Puzzle-hint/answer teasers with no reported event also require an empty summary.
+- Use a later confirmed update when it resolves an earlier uncertainty. An
+  earlier unknown venue is not still unknown after a confirmed booking.
 - Do not invent history, motives, causal links, predictions, or missing facts.
   Every figure and calendar date must appear in the supplied text. Do not
   infer a date from an event name such as "midterm elections".

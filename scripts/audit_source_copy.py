@@ -45,7 +45,7 @@ async def _run_audit(args):
             ORDER BY created_at DESC LIMIT $1""", args.limit)
         stories = await pool.fetch("""SELECT id,headline,summary,framings FROM stories
             WHERE synthesis_status='complete' ORDER BY updated_at DESC LIMIT $1""", args.limit)
-        members = await pool.fetch("""SELECT story_id,title,summary,source_name FROM articles
+        members = await pool.fetch("""SELECT story_id,title,summary,source_name,published_date FROM articles
             WHERE story_id=ANY($1::text[]) AND from_search=false""", [s["id"] for s in stories])
         rows = [{"id": a["id"], "title": a["title"], "source": " ".join(re.sub(r"<[^>]+>", "", a["generation_raw_content"] or "").split()[:500]),
                  "source_name": a["source_name"], "copy": a["summary"]} for a in articles if a["generation_raw_content"]]
