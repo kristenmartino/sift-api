@@ -234,3 +234,9 @@ unavailable. Repair review outcomes are logged alongside attempts.
 Confirmed updates also advance cluster publication time from actual member
 publication dates. Explicit retail discount percentages remain valid when
 supplied in a title; the ambiguous property-discount rule must not remove them.
+
+2026-10-26 event integrity: similarity proposes candidates, not membership.
+Validate the full proposed group before attachment/creation; reject topic-only
+roundups, different games and promotional bridges. Incoherent failed groups
+stay unpublished and stop consuming synthesis retries. Story-copy review also
+checks full membership; retaining one factual sentence cannot validate a mixed group.

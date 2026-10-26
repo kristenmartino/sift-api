@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+
+
 from app.models import RSSArticle
 from services import primer_generator as pg
 from services.copy_rules import COPY_RULES_VERSION
@@ -11,6 +13,12 @@ from services.judge import build_judge_prompt
 from services.summarizer import _raw_content_fallback
 from workflows import pipeline_workflow as pipeline
 from workflows.incremental_threading import _attach
+
+
+@pytest.fixture(autouse=True)
+def stub_paid_event_review(monkeypatch):
+    # These write-path tests inject synthesis; isolate the new paid boundary too.
+    monkeypatch.setattr("workflows.incremental_threading.same_event", AsyncMock(return_value=True))
 
 A = RSSArticle(title="Bank holds rate", source_url="https://example.com/a", source_name="AP",
                raw_content="The central bank held its rate at 4.25% on Tuesday.")
@@ -86,7 +94,7 @@ async def test_obvious_term_is_removed_without_losing_useful_jargon(monkeypatch)
 @pytest.mark.asyncio
 async def test_same_outlet_does_not_reuse_old_rules(monkeypatch):
     pool=AsyncMock()
-    pool.fetch.side_effect=[[{"source_name":"AP"}], [], [dict(A.model_dump(), id="a", summary=A.raw_content)]]
+    pool.fetch.side_effect=[[dict(A.model_dump(), id="old", summary=A.raw_content)], [], [dict(A.model_dump(), id="a", summary=A.raw_content)]]
     pool.fetchval.return_value="old"
     synth=AsyncMock(return_value={"headline":"H","summary":"S","framings":[]})
     await _attach(pool,{"id":"a","source_name":"AP"},"story",synth)

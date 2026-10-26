@@ -26,7 +26,9 @@ WHAT COSTS MONEY
 One `story_confirmer.confirm` call per run, over candidates Postgres already
 filtered — against the old path's ~5.4 clusterer calls plus ~23 synthesize
 calls. Synthesis runs on each confirmed attachment: a later report can resolve an
-earlier uncertainty even when its outlet is already represented.
+earlier uncertainty even when its outlet is already represented. Each proposed
+group also receives a budget-checked full-membership review before writes; explicit
+different NFL matchups are rejected without a paid call.
 
 WHEN SYNTHESIS FAILS
 --------------------
@@ -70,6 +72,7 @@ from datetime import datetime
 
 from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget
+from services.event_coherence import same_event
 from services.copy_rules import COPY_RULES_VERSION
 
 logger = logging.getLogger("sift-api.incremental_threading")
@@ -142,6 +145,12 @@ async def _attach(pool, article: dict, story_id: str, synthesize) -> str:
     later report from an outlet already present. Refresh the synthesis under
     the caller's existing budget reservation.
     """
+    prior = [dict(r) for r in await pool.fetch(
+        "SELECT id,title,summary,source_name,source_url,published_date FROM articles WHERE story_id = $1", story_id)]
+    proposed = [m for m in prior if m["id"] != article["id"]] + [article]
+    coherent = await same_event(proposed)
+    if coherent is not True:
+        return "attachment_review_unavailable" if coherent is None else "attachment_rejected_event"
     await _move_articles(pool, [article["id"]], story_id)
 
     members = [dict(r) for r in await pool.fetch(
@@ -214,15 +223,16 @@ async def _create(pool, article: dict, member_ids: list[str], synthesize) -> str
         }))
         return None
 
+    coherent = await same_event(members)
+    if coherent is not True:
+        return "creation_review_unavailable" if coherent is None else "creation_rejected_event"
+
     story_id = seed_story_id(article.get("category") or "", [m["id"] for m in members])
 
     # An identical seed already resolved to this story on an earlier run.
     # Idempotent by construction: attach and skip the paid call.
     if await pool.fetchval("SELECT 1 FROM stories WHERE id = $1", story_id):
-        await pool.execute(
-            "UPDATE articles SET story_id = $1 WHERE id = ANY($2::text[])",
-            story_id, [m["id"] for m in members],
-        )
+        await _move_articles(pool, [m["id"] for m in members], story_id)
         return "created"
 
     synthesis = await synthesize(members)
@@ -341,6 +351,15 @@ async def _sweep_failed(pool, synthesize) -> dict:
                      FROM articles WHERE story_id = $1""", story_id,
             )]
             counts["swept"] += 1
+            coherent = await same_event(members)
+            if coherent is None:
+                counts["still_failed"] += 1
+                continue
+            if not coherent:
+                await pool.execute("UPDATE stories SET synthesis_status='failed', synthesis_attempts=$2 WHERE id=$1",
+                                   story_id, MAX_SYNTHESIS_ATTEMPTS)
+                counts["unrepairable"] += 1
+                continue
             synthesis = await synthesize(members)
 
             if synthesis.get("_failed"):
@@ -461,7 +480,7 @@ async def run_incremental_threading(
 
     applied = {"attached": 0, "resynthesized": 0, "created": 0,
                "dropped_single_outlet": 0, "none": 0, "already_claimed": 0,
-               "synthesis_failed": 0}
+               "synthesis_failed": 0, "rejected_event": 0, "deferred_event": 0}
 
     # Articles this run has already put into a story. Candidates were all
     # generated against one snapshot, so the same loose neighbour is routinely
@@ -469,6 +488,7 @@ async def run_incremental_threading(
     # re-point it. `_create` enforces this against the database too — this set
     # exists so a doomed decision is skipped before it costs a synthesis call.
     claimed: set[str] = set()
+    deferred: set[str] = set()
 
     for c in relevant:
         article = c["article"]
@@ -482,6 +502,13 @@ async def run_incremental_threading(
 
             if d["action"] == "attach":
                 what = await _attach(pool, article, d["story_id"], synthesize)
+                if what == "attachment_review_unavailable":
+                    applied["deferred_event"] += 1
+                    deferred.add(article["id"])
+                    continue
+                if what == "attachment_rejected_event":
+                    applied["rejected_event"] += 1
+                    continue
                 claimed.add(article["id"])
                 applied["attached"] += 1
                 if what == "attached_resynthesized":
@@ -496,6 +523,13 @@ async def run_incremental_threading(
                     applied["already_claimed"] += 1
                     continue
                 what = await _create(pool, article, members, synthesize)
+                if what == "creation_review_unavailable":
+                    applied["deferred_event"] += 1
+                    deferred.add(article["id"])
+                    continue
+                if what == "creation_rejected_event":
+                    applied["rejected_event"] += 1
+                    continue
                 if what:
                     claimed.add(article["id"])
                     claimed.update(members)
@@ -518,7 +552,7 @@ async def run_incremental_threading(
     # already-attached one is simply re-confirmed — but letting it propagate
     # would take down the pipeline node over bookkeeping.
     try:
-        await mark_threaded(pool, [c["article"]["id"] for c in candidates])
+        await mark_threaded(pool, [c["article"]["id"] for c in candidates if c["article"]["id"] not in deferred])
     except Exception as e:  # noqa: BLE001
         logger.error("mark_threaded failed; queue will be reconsidered next run: %s", e)
         applied["mark_failed"] = True

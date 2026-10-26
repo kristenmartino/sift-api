@@ -175,7 +175,7 @@ Return ONLY a JSON object:
                 logger.warning("Story copy resolved an explicitly uncertain cause; leaving synthesis retryable")
                 return _fallback(articles)
             review = await assess_copy([{"id": "story", "title": "Supplied story reports",
-                "source": articles_text, "copy": result["headline"] + "\n" + result["summary"]}], client=client)
+                "source": articles_text, "review_mode": "story_copy", "copy": result["headline"] + "\n" + result["summary"]}], client=client)
             if review.get("story", {}).get("v") != "pass":
                 logger.warning("Story failed source/content review; leaving synthesis retryable")
                 return _fallback(articles)

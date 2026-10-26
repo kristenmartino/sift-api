@@ -79,18 +79,18 @@ def _prompt(batch: list[dict]) -> str:
         a = c["article"]
         lines = [
             f'{i}. NEW: "{a["title"]}" ({a.get("source_name") or "unknown"})',
-            f'   {(a.get("summary") or "")[:240]}',
+            f'   {(a.get("summary") or "")}',
             "   Options:",
         ]
         for sid, members in c["existing_stories"].items():
             names = ", ".join(
-                f'"{m["title"][:70]}" ({m.get("source_name") or "?"})' for m in members[:3]
+                f'"{m["title"]}" ({m.get("source_name") or "?"}; {m.get("published_date") or "date unknown"}) {m.get("summary") or ""}' for m in members
             )
             lines.append(f'     - attach to story {sid}: {names}')
         if c["loose_neighbours"]:
             names = "; ".join(
-                f'[{m["id"]}] "{m["title"][:70]}" ({m.get("source_name") or "?"})'
-                for m in c["loose_neighbours"][:5]
+                f'[{m["id"]}] "{m["title"]}" ({m.get("source_name") or "?"}; {m.get("published_date") or "date unknown"}) {m.get("summary") or ""}'
+                for m in c["loose_neighbours"]
             )
             lines.append(f"     - new story with any of: {names}")
         lines.append("     - none")
@@ -100,7 +100,9 @@ def _prompt(batch: list[dict]) -> str:
 
 Each numbered item is a newly ingested article, followed by candidate matches
 that a vector search already found to be closely related. Related is not
-enough. Two articles about Fed rate policy a week apart are the same TOPIC and
+enough. Do not join different sports games because they share a league/week,
+or attach weekly betting roundups/promotions to game results. An injury,
+quarterback change, touchdown and penalty dispute need their own event identity. Two articles about Fed rate policy a week apart are the same TOPIC and
 different EVENTS; only the same event belongs in one story.
 
 For each item choose exactly one:

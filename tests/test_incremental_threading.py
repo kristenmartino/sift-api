@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+
+
 from services.copy_rules import COPY_RULES_VERSION
 
 from workflows.incremental_threading import (
@@ -76,6 +78,12 @@ def _sweep_pool(targets, members=None, attempts_seen=None):
     pool.fetchval = AsyncMock(return_value=0)  # unrepairable count
     pool.execute = AsyncMock()
     return pool
+
+
+@pytest.fixture(autouse=True)
+def stub_paid_event_review(monkeypatch):
+    # These write-path tests inject synthesis; isolate the new paid boundary too.
+    monkeypatch.setattr("workflows.incremental_threading.same_event", AsyncMock(return_value=True))
 
 
 # ── story identity ──────────────────────────────────────────

@@ -151,6 +151,8 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
     """Synthesize each cluster and persist stories to DB."""
     from app.db import get_pool
     from services.story_synthesizer import synthesize_story
+    from services.event_coherence import same_event
+    from workflows.incremental_threading import _move_articles
 
     articles = state.get("articles", [])
     entities = state.get("entities", {})
@@ -162,18 +164,6 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
 
     pool = await get_pool()
     stories: list[dict] = []
-
-    # First, clear stale story_id assignments for this category
-    # (articles may have been re-clustered differently)
-    await pool.execute(
-        """
-        UPDATE articles SET story_id = NULL
-        WHERE category = $1
-          AND story_id IS NOT NULL
-          AND published_date > NOW() - INTERVAL '%s hours'
-        """ % RECENCY_WINDOW_HOURS,
-        category,
-    )
 
     skipped_single_outlet = 0
     reused = 0
@@ -206,6 +196,10 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
                 "article_count": len(cluster_articles),
                 "cluster_event": event,
             }))
+            continue
+
+        if await same_event(cluster_articles) is not True:
+            logger.info("Rejected incoherent or unchecked legacy cluster: %s", event)
             continue
 
         # Generate stable story ID from sorted article IDs
@@ -315,12 +309,13 @@ async def synthesize_and_store_node(state: StoryState) -> dict:
                     COPY_RULES_VERSION if synthesis_status == "complete" else None,
                 )
 
-            # Update story_id and entities on member articles
+            await _move_articles(pool, [a["id"] for a in cluster_articles], story_id)
+            # Membership was validated and moved atomically; update enrichment.
             for a in cluster_articles:
                 ent = entities.get(a["source_url"], {})
                 await pool.execute(
-                    "UPDATE articles SET story_id = $1, entities = $2::jsonb WHERE id = $3",
-                    story_id, json.dumps(ent), a["id"],
+                    "UPDATE articles SET entities = $1::jsonb WHERE id = $2",
+                    json.dumps(ent), a["id"],
                 )
 
             stories.append({
