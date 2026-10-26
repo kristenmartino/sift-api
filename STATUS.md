@@ -6,7 +6,7 @@
 
 ## Active focus
 
-2026-10-26 newer holds: accept neutral paraphrases without requiring publisher hype, preserve attribution for interpreted song lyrics, and allow one budget-checked source-review repair followed by a fresh review.
+2026-10-26 newer holds: accept neutral paraphrases without requiring publisher hype, preserve attribution for interpreted song lyrics, and allow one budget-checked source-review repair followed by a fresh review. Malformed review responses get one budget-checked retry, and hold/repair logs retain the reason.
 
 
 2026-10-26 follow-up: normalize spelled-out compound counts and isolate bounded content retries after proven batch alignment. Recover the four held articles with source-approved copy and full enrichment; no UI changes.

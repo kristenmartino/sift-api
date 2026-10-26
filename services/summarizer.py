@@ -208,6 +208,7 @@ async def _review_article_results(results: dict[str, dict], articles: list[RSSAr
             budget = await check_budget(estimate_cost(OPERATION, 1))
             if not budget.allowed:
                 continue
+            logger.info("Repairing source-reviewed summary: %s reason=%s", url, verdict.get("why", "unsupported claim"))
             try:
                 candidate = (await _summarize_batch(client, [by_url[url]], feedback={
                     "previous_copy": item["copy"], "review_reason": verdict.get("why", "unsupported claim"),
@@ -226,7 +227,8 @@ async def _review_article_results(results: dict[str, dict], articles: list[RSSAr
         if verdict != "pass":
             results[item["id"]] = {"summary": "", "category": FALLBACK_CATEGORY,
                                    "_unavailable" if verdict == "unavailable" else "_degraded": True}
-            logger.info("Summary withheld after source review: %s %s", item["id"], verdict)
+            logger.info("Summary withheld after source review: %s verdict=%s reason=%s",
+                        item["id"], verdict, verdicts.get(item["id"], {}).get("why", "review unavailable"))
 
 
 async def _summarize_batch_with_retry(
