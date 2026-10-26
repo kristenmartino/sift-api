@@ -314,6 +314,10 @@ cancellation, missing usage, or uncertain batch submission retain it for operato
 reconciliation; they must not be deleted merely to make room for more calls.
 `ai_budget_holds` is a commitment ledger, not fabricated provider spend.
 
+Search concurrency adapts to available capacity so a five-outlet request can reuse
+reservations as earlier searches settle, rather than requiring five simultaneous
+maximum holds when the pool is low. Atomic admission still applies to every call.
+
 Guarded calls disable automatic provider retries. Compare uses one targeted web
 search per outlet, up to five outlets, followed by the existing claim comparison.
 Reservations conservatively include tool iterations, context, maximum output and

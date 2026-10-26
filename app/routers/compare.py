@@ -20,6 +20,7 @@ from services.paid_calls import BudgetUnavailable, budget_scope
 from services.daily_compare import refresh_daily_example
 from workflows.compare_workflow import (
     CompareState,
+    compare_search_parallelism,
     comparison_provenance,
     build_compare_graph,
     extract_and_compare_node,
@@ -260,8 +261,12 @@ async def compare_sources_stream(
                 client = anthropic.AsyncAnthropic(
                     api_key=settings.anthropic_api_key, max_retries=2
                 )
+                gate = asyncio.Semaphore(await compare_search_parallelism(len(sources)))
+                async def search(source):
+                    async with gate:
+                        return await search_one_source(client, sanitized_topic, source)
                 tasks = [
-                    asyncio.create_task(search_one_source(client, sanitized_topic, s))
+                    asyncio.create_task(search(s))
                     for s in sources
                 ]
                 search_results: dict[str, str] = {}
