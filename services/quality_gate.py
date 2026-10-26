@@ -223,8 +223,11 @@ def unsupported_primer_detail(text: str, reference: str) -> bool:
     def numeric_words(value):
         value = value.casefold().replace("-", " ")
         return re.sub(r"\b(?:" + "|".join(number_words) + r")\b",lambda m:number_words[m.group()],value)
-    counts = re.findall(r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)[ -]+(?:year|month|week|day|member|seat|term)s?\b",text,re.I)
-    if any(numeric_words(count).rstrip("s") not in numeric_words(reference) for count in counts):
+    counts = re.findall(r"\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b", text, re.I)
+    if any(numeric_words(count) not in re.findall(r"\d+", numeric_words(reference)) for count in counts):
+        return True
+    # 'one' is often a pronoun or indefinite article; constrain its count uses.
+    if re.search(r"\bone[ -]+(?:year|month|week|day|member|seat|term)s?\b", text, re.I) and not re.search(r"\b(?:one|1)[ -]+(?:year|month|week|day|member|seat|term)s?\b", reference, re.I):
         return True
     fraction = re.search(r"\b(?:roughly |approximately |about )?(?:half|one[- ]third|two[- ]thirds|one[- ]quarter)\s+of\b", text, re.I)
     if fraction and fraction.group().casefold() not in reference.casefold():

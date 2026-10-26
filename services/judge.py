@@ -86,7 +86,7 @@ TITLE/SUMMARY. A generic institutional role can be useful; a guessed condition
 on this specific news event cannot. For example, "Cornell bans frat parties"
 does not support a paragraph claiming a campus-only scope or facility-use rules.
 Apply the same usefulness bar as the glossary. A paragraph defining familiar
-ordinary vocabulary (a trade deadline or a red-light camera) is still an obvious
+ordinary vocabulary (a runoff election, trade deadline or red-light camera) is still an obvious
 definition even when that term has no glossary entry: r=true, a=false. Do not
 approve a rejected glossary definition merely because it was moved into prose.
 Do not approve categorical acquisition or postseason-eligibility guarantees
@@ -95,7 +95,14 @@ authoritative reference; set n=false when no such support is supplied.
 A useful institutional role (such as the DNI) or an unfamiliar procedural
 explanation can still pass. Do not invent a source's legal basis or an employee's appointment class. A federal
 prosecutor is not automatically a Senate-confirmed U.S. Attorney or presidential
-appointee. Named-law claims need supplied support. Shared topic vocabulary alone is not repetition.
+appointee. Named-law claims need supplied support. Check precision, not just plausible tone:
+reject an unsourced event history, compulsory league membership rule, financial
+coverage guarantee, religious practice, benchmark publisher, or court's powers.
+Do not approve a mechanism merely because it sounds educational. If precision
+cannot be established, n=false. Stable roles can still pass. A paragraph must
+not contradict the supplied election result (e.g. claiming a first-round win
+when SUMMARY says the candidate reversed a first-round defeat).
+Shared topic vocabulary alone is not repetition.
 
 Example: a summary already calls Impulso Morelia a post-production section of
 the film festival and states its funding award. Explaining that this section
