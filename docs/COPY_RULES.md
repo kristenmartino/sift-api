@@ -130,3 +130,20 @@ Background prose uses the same usefulness bar as glossary entries. It cannot
 reintroduce obvious vocabulary as a paragraph or infer player-acquisition /
 postseason-eligibility guarantees from a trade deadline. Useful institutional
 roles and unfamiliar procedures remain retention controls.
+
+## Post-release input fidelity (2026-10-26.1)
+
+Article and cluster checks reject ambiguous Bolsonaro first-name guesses and
+close surname spelling drift. Reviews receive the publisher name so a properly
+attributed editorial is not mistaken for an invented attribution. Review also
+checks causal reversals, disputed-claim actors and unattributed rankings.
+
+The summary gate trims generic rivalry/significance tails. Framing checks
+withhold undated no-arrests notes when the current summary reports an arrest,
+while retaining explicitly dated earlier states.
+
+Both primer definitions and paragraphs reject unsourced figures, spelled-out
+term lengths, mortgage-share fractions, named-law claims and categorical
+healthy-tissue guarantees. Semantic checks distinguish federal prosecutors
+from Senate-confirmed U.S. Attorneys and require precise period definitions.
+Stable institutional roles and useful jargon remain retention controls.

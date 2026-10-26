@@ -58,7 +58,10 @@ or repeats an explanation already in TITLE or SUMMARY.
 a=true only for domain-specific jargon, a technical mechanism, institutional
 procedure or legal term of art that a college-educated reader may need explained.
 n=true only for a neutral, precise definition without speculative significance
-or unsupported procedural guarantees. Default to omitting marginal entries.
+or unsupported procedural guarantees. Check factual precision as well as usefulness:
+a definition must not confuse an entire geological period with its late subperiod,
+guarantee that targeted cancer treatments spare healthy tissue, or overstate legal
+coverage. If precision cannot be established, n=false. Default to omitting marginal entries.
 Reject "stock low", "market value", "campaign", "poll" and "earnings report".
 Retain useful explanations such as habeas corpus, cloture, basis points,
 tripwire military deployment and denaturalization when present in the story.
@@ -90,7 +93,9 @@ Do not approve categorical acquisition or postseason-eligibility guarantees
 based only on a trade deadline. Those rules have exceptions and require an
 authoritative reference; set n=false when no such support is supplied.
 A useful institutional role (such as the DNI) or an unfamiliar procedural
-explanation can still pass. Shared topic vocabulary alone is not repetition.
+explanation can still pass. Do not invent a source's legal basis or an employee's appointment class. A federal
+prosecutor is not automatically a Senate-confirmed U.S. Attorney or presidential
+appointee. Named-law claims need supplied support. Shared topic vocabulary alone is not repetition.
 
 Example: a summary already calls Impulso Morelia a post-production section of
 the film festival and states its funding award. Explaining that this section
@@ -117,6 +122,9 @@ document or procedural detail can add information; do not reject it just for
 sharing topic vocabulary.
 a = true only if a concrete detail remains beyond the shared story.
 n = true if the note avoids generic significance or an invented outlet angle.
+Set n=false for a note describing an outdated state contradicted by the shared
+summary, such as "no arrests" beside a later arrest, unless the note explicitly
+identifies the earlier time. A contradiction is not automatically a useful angle.
 
 Return ONLY a JSON array, exactly one entry per numbered item:
 [{{"i":1,"r":true,"a":false,"n":true,"why":"repeats the shared low-risk assessment"}}]
