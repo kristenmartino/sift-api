@@ -17,7 +17,7 @@ from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_excerpts
-from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, public_feed_excerpt
+from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -175,6 +175,10 @@ async def search_one_source(
     domains = publisher_domains(source)
     hints = await publisher_article_hints(topic) if not stored and domains else []
     if hints:
+        descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source)
+        for hint in hints:
+            if hint['url'] in descriptions:
+                hint['excerpt'] = descriptions[hint['url']]
         article_hint += ('\nPossible publisher articles (discovery hints only; verify the subject and timing):\n'
                          + '\n'.join(f"Candidate {i}: {h['title']} at {h['url']}\n{h.get('excerpt', '')}" for i, h in enumerate(hints))
                          + '\nDo not treat a suggested title or URL as reporting.\n')
@@ -472,8 +476,7 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
 
 def _complete_short_excerpt(text: str) -> str | None:
     body = text.partition("\nExcerpt:\n")[2].strip()
-    if (6 <= len(body.split()) <= 30 and body.endswith((".", "!", "?"))
-            and not body.endswith("...")):
+    if 6 <= len(body.split()) <= 30 and complete_description(body):
         return body
     return None
 
