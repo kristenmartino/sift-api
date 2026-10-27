@@ -37,7 +37,7 @@ async def test_reuters_preserves_compatible_search_without_rejected_domain_const
     source, text = await workflow.search_one_source(Mock(), 'The committee vote', 'Reuters')
     assert source == 'Reuters'
     assert PASSAGE in text
-    assert 'site:reuters.com' in paid.await_args.kwargs['messages'][0]['content']
+    assert 'targeted search query: Reuters The committee vote' in paid.await_args.kwargs['messages'][0]['content']
     assert 'allowed_domains' not in paid.await_args.kwargs['tools'][0]
     paid.assert_awaited_once()
 
@@ -190,7 +190,10 @@ async def test_counterparts_use_scoped_query_and_only_own_publisher_passages(mon
     _, text = await workflow.search_one_source(Mock(), 'An editorial headline about a committee vote', name)
     assert PASSAGE in text
     params = paid.await_args.kwargs
-    assert f'site:{domain}' in params['messages'][0]['content']
+    if name == 'Reuters':
+        assert 'Do not restrict the query to reuters.com' in params['messages'][0]['content']
+    else:
+        assert f'site:{domain}' in params['messages'][0]['content']
     assert 'do not require the selected publisher to use the same headline' in params['messages'][0]['content']
     assert 'allowed_domains' not in params['tools'][0]
     assert params['tools'][0]['max_uses'] == 1

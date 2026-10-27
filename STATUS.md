@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 Reuters republications: allow cited KSL passages only after verifying the exact public article, explicit Reuters byline, date and visible body. Search broad subjects without requiring every reform option in the query. Preserve exact-event relevance, fail closed on access/verification failures, and keep the single paid search, five-outlet maximum, daily cap and frontend unchanged.
+
 2026-10-27 counterpart retrieval: use publisher-site queries and neutral event terms for Reuters/Fox/CBS/NPR, allow differing headlines, and use original NR context only to locate the event. Require counterpart-owned citations; preserve provider-filter compatibility, event/timing checks, the daily cap and visual design.
 
 2026-10-27 NR RSS topic audit: retain complete short publisher statements as literal quotations while excluding slogans, teasers and unfinished text. Enrich broad-topic discovery candidates from one bounded public-feed request; keep explicit relevance selection, stored-text review gates, daily cap and visual style unchanged.

@@ -431,12 +431,22 @@ Their descriptions remain hints until the existing single budgeted search
 explicitly selects a candidate for the requested subject and timing. No extra
 AI call, automatic event match, generated held copy or budget increase is added.
 
-Counterpart searches for Reuters, Fox News, CBS News and NPR use publisher-site
-queries without adding provider domain filters (Reuters rejects that filter).
+Counterpart searches for Fox News, CBS News and NPR use publisher-site
+queries without adding provider domain filters. Reuters uses a name-based query
+because site-only searches exclude its republications and its provider filter
+is unsupported. Broad colon-separated requests search the subject before the
+colon, then verify the full requested issue against the results.
 Treat another outlet’s headline as a subject cue, preserve the distinguishing
 event/action and allow different headlines. An exact indexed NR article can
 supply original event context solely to locate counterpart coverage; its text
 never supplies counterpart claims. Accept only the selected publisher’s cited
-passages, not uncited model summaries, third-party pages or another outlet’s
-quotes. Keep the existing one-search limit and event/timing relevance checks;
+passages, not uncited model summaries or another outlet’s quotes. Reuters has a
+narrow public-republication adapter for KSL: require an exact article identity,
+explicit Reuters article byline, publication within the past year, and cited
+passages present in both the structured article body and visible article text.
+Photo credits and ordinary mentions never prove Reuters authorship. Verification
+reads at most two public pages within two seconds, with a 1 MB response limit,
+no redirects or credentials, and no extra paid call. Exact indexed article
+requests cannot silently substitute a republication. Keep the existing one-search
+limit and event/timing relevance checks;
 older or different cases and missing primary passages remain unavailable.

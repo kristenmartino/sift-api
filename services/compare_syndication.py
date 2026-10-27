@@ -1,0 +1,150 @@
+"""Verify cited Reuters republications on a deliberately narrow partner list."""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import re
+import unicodedata
+from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
+from urllib.parse import urlparse
+
+import httpx
+
+from services.compare_search import _article_identity, normalize_evidence_text
+
+logger = logging.getLogger('sift-api.compare')
+PARTNER_DOMAIN = 'ksl.com'
+VERIFY_TIMEOUT = 2
+MAX_PAGE_BYTES = 1_000_000
+
+
+def _partner_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        return (parsed.scheme == 'https' and parsed.hostname in {'ksl.com', 'www.ksl.com'}
+                and parsed.port in {None, 443} and not parsed.username and not parsed.password
+                and bool(re.fullmatch(r'/article/\d+/[a-z0-9-]+/?', parsed.path)))
+    except (TypeError, ValueError):
+        return False
+
+
+def _normalized(text: str) -> str:
+    # KSL's body contains formatting-only zero-width characters. Removing
+    # them changes no words, numbers or attribution.
+    return normalize_evidence_text(''.join(c for c in text if unicodedata.category(c) != 'Cf'))
+
+
+class _PublicArticle(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.schemas = []
+        self.visible = []
+        self.script = None
+        self.in_article = False
+        self.hidden = 0
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'script' and attrs.get('type') == 'application/ld+json':
+            self.script = []
+        if tag == 'article' and attrs.get('id') == 'kslMainArticle':
+            self.in_article = True
+        if self.in_article and tag in {'script', 'style', 'figure', 'nav'}:
+            self.hidden += 1
+
+    def handle_endtag(self, tag):
+        if tag == 'script' and self.script is not None:
+            try:
+                self.schemas.append(json.loads(''.join(self.script)))
+            except ValueError:
+                pass
+            self.script = None
+        if tag == 'article':
+            self.in_article = False
+        if self.in_article and tag in {'script', 'style', 'figure', 'nav'}:
+            self.hidden = max(0, self.hidden - 1)
+
+    def handle_data(self, data):
+        if self.script is not None:
+            self.script.append(data)
+        if self.in_article and not self.hidden:
+            self.visible.append(data)
+
+
+def _verified_passages(data: bytes, url: str, quotes: list[str], now: datetime) -> str | None:
+    page = _PublicArticle()
+    page.feed(data.decode('utf-8'))
+    for article in page.schemas:
+        if not isinstance(article, dict) or article.get('@type') != 'NewsArticle':
+            continue
+        if _article_identity(article.get('url', '')) != _article_identity(url):
+            continue
+        # A Reuters photo credit, publisher mention or navigation link is not
+        # authorship. This adapter requires the article's explicit byline.
+        authors = article.get('author', [])
+        if not isinstance(authors, list):
+            authors = [authors]
+        if not any(isinstance(a, dict) and a.get('name', '').strip().casefold() == 'reuters' for a in authors):
+            continue
+        try:
+            stamp = datetime.fromisoformat(article['datePublished'].replace('Z', '+00:00'))
+            if not stamp.tzinfo or not now - timedelta(days=365) <= stamp <= now:
+                continue
+        except (KeyError, TypeError, ValueError):
+            continue
+        body = article.get('articleBody', '')
+        if not isinstance(body, str):
+            continue
+        visible = _normalized(' '.join(page.visible))
+        body = _normalized(body)
+        passages = [q for q in quotes if len(q.split()) >= 8
+                    and _normalized(q) in body and _normalized(q) in visible
+                    and _normalized(q) != _normalized(article.get('headline', ''))]
+        if passages:
+            return ('Retrieved publisher excerpts (may be incomplete).\nPublisher: Reuters\n'
+                    f'Republished by: KSL\nOriginal: {url}\nPublished: {stamp.isoformat()}\n'
+                    'Excerpt:\n' + '\n\n'.join(dict.fromkeys(passages))[:12000])
+    return None
+
+
+async def reuters_partner_excerpts(response) -> str | None:
+    """At most two public pages, inside one two-second verification deadline.
+
+    Only model-selected provider citations are candidates; this does not
+    promote every search hit. No redirects, credentials, access workarounds
+    or extra paid searches. Verification failure leaves coverage unavailable.
+    """
+    candidates = {}
+    for block in response.content:
+        if block.type != 'text':
+            continue
+        for citation in getattr(block, 'citations', None) or []:
+            url = getattr(citation, 'url', '')
+            quote = getattr(citation, 'cited_text', '')
+            if (getattr(citation, 'type', '') == 'web_search_result_location'
+                    and _partner_url(url) and isinstance(quote, str) and len(quote.split()) >= 8):
+                candidates.setdefault(url, []).append(quote.strip())
+    if not candidates:
+        return None
+    try:
+        async with asyncio.timeout(VERIFY_TIMEOUT):
+            async with httpx.AsyncClient(timeout=VERIFY_TIMEOUT, follow_redirects=False) as client:
+                for url, quotes in list(candidates.items())[:2]:
+                    async with client.stream('GET', url) as result:
+                        if result.status_code != 200 or result.headers.get('content-type', '').split(';')[0] != 'text/html':
+                            continue
+                        data = bytearray()
+                        async for chunk in result.aiter_bytes():
+                            data.extend(chunk)
+                            if len(data) > MAX_PAGE_BYTES:
+                                break
+                        if len(data) > MAX_PAGE_BYTES:
+                            continue
+                    evidence = _verified_passages(bytes(data), url, quotes, datetime.now(timezone.utc))
+                    if evidence:
+                        return evidence
+    except Exception as exc:
+        logger.info('compare Reuters republication unverified (%s)', type(exc).__name__)
+    return None
