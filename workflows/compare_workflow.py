@@ -16,6 +16,7 @@ from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scop
 from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage
+from services.compare_search import publisher_domains, publisher_search_excerpts
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -165,22 +166,29 @@ async def search_one_source(
         return (source, stored["excerpt"])
     article_hint = (f"\nA matching indexed article is {stored['title']} at {stored['url']}. "
                     "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
+    domains = publisher_domains(source)
+    search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
+    if domains:
+        search_tool['allowed_domains'] = list(domains)
+    target = stored['title'] if stored else topic
+    query = f'site:{domains[0]} {target}' if domains else f'{source} {target}'
     try:
         response = await asyncio.wait_for(
             budgeted_message(client, SEARCH_OPERATION,
                 stream_response=True,
                 model=resolve(SEARCH_OPERATION).model,
                 max_tokens=2048,
-                tools=[{
-                    "type": "web_search_20250305",
-                    "name": "web_search",
-                    "max_uses": 1,
-                }],
+                tools=[search_tool],
                 messages=[{
                     "role": "user",
                     "content": (
                         f'Search for recent news coverage from {source} about: "{topic}"\n\n'
                         f"{article_hint}"
+                        f"Use one targeted search query: {query}\n"
+                        "Match the requested subject and timing; do not substitute a related but different event. "
+                        "Cite the selected publisher's reporting. Public search-index passages may supply "
+                        "reporting when a direct page request is blocked; a blocked page alone does not prove "
+                        "the outlet has no coverage. Titles, URLs and subscription messages alone are not reporting. "
                         f"Summarize what {source} reports about this topic, including key facts, "
                         f"figures, quotes, and their perspective or framing. "
                         f"If you cannot find relevant coverage from {source}, say "
@@ -206,6 +214,13 @@ async def search_one_source(
         result = "\n".join(text_parts).strip()
         if not result:
             return (source, None)
+
+        if domains:
+            result = (publisher_search_excerpts(response, domains, stored['url'] if stored else None)
+                      if source_found_coverage(result) else None)
+            if not result:
+                logger.info("search_sources: no cited publisher reporting from %s", source)
+                return (source, None)
 
         logger.info("search_sources: got %d chars from %s", len(result), source)
         return (source, result)
@@ -381,7 +396,7 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
 
     bodies = {}
     for source, text in reporting.items():
-        if text.startswith("Stored publisher excerpt"):
+        if text.startswith(("Stored publisher excerpt", "Retrieved publisher excerpts")):
             text = text.partition("\nExcerpt:\n")[2]
         bodies[source.strip().casefold()] = (source, normalize(text))
     grounded = []

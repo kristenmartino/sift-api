@@ -369,3 +369,19 @@ before publisher/date filtering. Story headline rewrites retain their previous
 exact headlines as aliases through migration 037's update trigger, so an
 existing Compare link continues to identify the same event. Aliases never
 fuzzy-match or merge stories; held stories remain excluded.
+
+Searches for known publisher hosts are constrained with `allowed_domains` and
+an explicit `site:` query. A known original article title is preferred to a
+generated Sift headline as the query target. Scoped search results count only
+when the provider supplies a substantive citation from the selected publisher;
+the comparison receives those cited passages, not an uncited search summary.
+If an article URL is already known, only citations for that article (including
+its canonical/AMP URL identity) can supply evidence. No direct-page scraping,
+access-control bypass or additional search attempt is used.
+
+The exact-event lookup examines up to eight recent matching publisher records
+so a newer metadata-only row does not hide usable reviewed original text.
+Pending/held/unavailable Sift articles can supply original URL/title hints;
+their generated copy and retained text never enter Compare as stored evidence.
+This does not publish or release held articles. Publisher-domain aliases live
+in `services/compare_search.py`; unlisted publishers keep name-based search.

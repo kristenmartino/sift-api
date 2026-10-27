@@ -58,17 +58,17 @@ WITH publisher AS (
     UNION
     SELECT id FROM articles WHERE LOWER(title) = LOWER($1)
 )
-SELECT a.title, a.source_url, a.published_date, a.generation_raw_content
+SELECT a.title, a.source_url, a.published_date, a.generation_raw_content,
+       a.generation_status, a.summary IS NOT NULL AS reviewed
 FROM articles a
 JOIN matched_articles m ON m.id = a.id
 WHERE LOWER(a.source_name) IN (SELECT name FROM names)
   AND a.published_date >= NOW() - INTERVAL '14 days'
   AND a.published_date <= NOW()
   AND NOT a.from_search AND NOT a.is_roundup
-  AND a.generation_status = 'complete' AND a.summary IS NOT NULL
   AND a.source_url ~ '^https?://'
 ORDER BY a.published_date DESC
-LIMIT 1
+LIMIT 8
 """
 
 
@@ -81,19 +81,24 @@ async def indexed_coverage(topic: str, source: str) -> dict[str, str | None] | N
     try:
         async with asyncio.timeout(INDEXED_LOOKUP_TIMEOUT):
             pool = await get_pool()
-            row = await pool.fetchrow(
+            rows = await pool.fetch(
                 INDEXED_COVERAGE_SQL, topic.strip(), source.strip(), timeout=INDEXED_LOOKUP_TIMEOUT,
             )
-        if not row:
+        if not rows:
             return None
-        body = unescape(re.sub(r"<[^>]*>", " ", row["generation_raw_content"] or ""))
-        body = re.sub(r"\s+", " ", body).strip()
-        excerpt = None
-        if _has_publisher_reporting(body, row["title"]):
-            excerpt = (f"Stored publisher excerpt (may be incomplete).\nHeadline: {row['title']}\n"
-                       f"Original: {row['source_url']}\nPublished: {row['published_date'].isoformat()}\n"
-                       f"Excerpt:\n{body[:12000]}")
-        return {"excerpt": excerpt, "title": row["title"], "url": row["source_url"]}
+        for row in rows:
+            if row['generation_status'] != 'complete' or not row['reviewed']:
+                continue
+            body = unescape(re.sub(r"<[^>]*>", " ", row["generation_raw_content"] or ""))
+            body = re.sub(r"\s+", " ", body).strip()
+            if _has_publisher_reporting(body, row["title"]):
+                excerpt = (f"Stored publisher excerpt (may be incomplete).\nHeadline: {row['title']}\n"
+                           f"Original: {row['source_url']}\nPublished: {row['published_date'].isoformat()}\n"
+                           f"Excerpt:\n{body[:12000]}")
+                return {"excerpt": excerpt, "title": row["title"], "url": row["source_url"]}
+        # Publisher URLs remain useful retrieval hints even when Sift's own
+        # generated copy is pending/held or the RSS text was too thin to review.
+        return {"excerpt": None, "title": rows[0]["title"], "url": rows[0]["source_url"]}
     except Exception as exc:
         logger.warning("compare indexed coverage unavailable for %s (%s); using live search",
                        source, type(exc).__name__)

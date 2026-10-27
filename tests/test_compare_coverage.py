@@ -18,7 +18,7 @@ from workflows import compare_workflow
 async def test_indexed_metadata_guides_retrieval_but_does_not_count_as_reporting(monkeypatch, body):
     row = {'title': 'A committee voted', 'source_url': 'https://example.com/vote',
            'published_date': datetime.now(timezone.utc), 'generation_raw_content': body}
-    pool = Mock(fetchrow=AsyncMock(return_value=row))
+    pool = Mock(fetch=AsyncMock(return_value=[{**row, 'generation_status': 'complete', 'reviewed': True}]))
     monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=pool))
     result = await compare_coverage.indexed_coverage('A committee voted', 'Reuters')
     assert result == {'excerpt': None, 'title': row['title'], 'url': row['source_url']}
@@ -28,7 +28,7 @@ async def test_indexed_metadata_guides_retrieval_but_does_not_count_as_reporting
 async def test_preserves_publisher_text_and_url_without_generated_summary(monkeypatch):
     row = {'title': 'A committee voted', 'source_url': 'https://example.com/vote',
            'published_date': datetime.now(timezone.utc), 'generation_raw_content': '<p>Original publisher reporting &amp; evidence. </p>' * 10}
-    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetchrow=AsyncMock(return_value=row))))
+    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetch=AsyncMock(return_value=[{**row, 'generation_status': 'complete', 'reviewed': True}]))))
     result = await compare_coverage.indexed_coverage('A committee voted', 'Reuters')
     assert result['excerpt'].count('Original publisher reporting & evidence.') == 10
     assert 'https://example.com/vote' in result['excerpt']
@@ -44,7 +44,7 @@ async def test_short_wired_publisher_reporting_reaches_compare_without_paid_sear
     row = {'title': 'Some iPhone Duo Models Are Breaking. iFixit’s Teardown Might Explain Why',
            'source_url': 'https://www.wired.com/story/some-iphone-duo-models-are-breaking-ifixits-teardown-might-explain-why/',
            'published_date': datetime.now(timezone.utc), 'generation_raw_content': body}
-    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetchrow=AsyncMock(return_value=row))))
+    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetch=AsyncMock(return_value=[{**row, 'generation_status': 'complete', 'reviewed': True}]))))
     paid = AsyncMock(side_effect=AssertionError('short publisher reporting must avoid paid search'))
     monkeypatch.setattr(compare_workflow, 'budgeted_message', paid)
     source, excerpt = await compare_workflow.search_one_source(Mock(), 'Apple confirms display failures', 'WIRED')
@@ -59,17 +59,45 @@ async def test_long_headline_description_is_not_reporting(monkeypatch):
     title = 'A committee voted on the proposed legislation after a lengthy meeting with representatives from each of the parties present'
     row = {'title': title, 'source_url': 'https://example.com/vote',
            'published_date': datetime.now(timezone.utc), 'generation_raw_content': f'<p>{title.upper()}.</p>'}
-    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetchrow=AsyncMock(return_value=row))))
+    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetch=AsyncMock(return_value=[{**row, 'generation_status': 'complete', 'reviewed': True}]))))
     result = await compare_coverage.indexed_coverage(title, 'Reuters')
     assert result['excerpt'] is None
 
 
 @pytest.mark.asyncio
+async def test_metadata_only_newer_article_does_not_hide_older_publisher_reporting(monkeypatch):
+    rows = [
+        {'title': 'Newer metadata', 'source_url': 'https://example.com/new',
+         'published_date': datetime.now(timezone.utc), 'generation_raw_content': None,
+         'generation_status': 'complete', 'reviewed': True},
+        {'title': 'Earlier reporting', 'source_url': 'https://example.com/earlier',
+         'published_date': datetime.now(timezone.utc),
+         'generation_raw_content': 'The committee approved the measure by ten votes to two after hearing testimony from residents at a public meeting on Monday.',
+         'generation_status': 'complete', 'reviewed': True},
+    ]
+    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetch=AsyncMock(return_value=rows))))
+    result = await compare_coverage.indexed_coverage('The measure passes', 'Reuters')
+    assert result['url'] == 'https://example.com/earlier'
+    assert rows[1]['generation_raw_content'] in result['excerpt']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', ['unavailable', 'copy_hold', 'pending'])
+async def test_held_generation_supplies_only_a_publisher_url_hint(monkeypatch, status):
+    row = {'title': 'A publisher article', 'source_url': 'https://example.com/article',
+           'generation_raw_content': 'Publisher reporting with enough words to pass the length gate. ' * 5,
+           'generation_status': status, 'reviewed': True}
+    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetch=AsyncMock(return_value=[row]))))
+    result = await compare_coverage.indexed_coverage('A publisher article', 'Reuters')
+    assert result == {'excerpt': None, 'title': row['title'], 'url': row['source_url']}
+
+
+@pytest.mark.asyncio
 async def test_index_miss_or_database_failure_falls_back_without_fabricating_coverage(monkeypatch):
-    pool = Mock(fetchrow=AsyncMock(return_value=None))
+    pool = Mock(fetch=AsyncMock(return_value=[]))
     monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=pool))
     assert await compare_coverage.indexed_coverage('Unrelated event', 'Reuters') is None
-    pool.fetchrow.side_effect = TimeoutError()
+    pool.fetch.side_effect = TimeoutError()
     assert await compare_coverage.indexed_coverage('Unrelated event', 'Reuters') is None
 
 
