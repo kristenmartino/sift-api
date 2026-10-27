@@ -17,6 +17,7 @@ from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_excerpts
+from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, public_feed_excerpt
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -164,6 +165,11 @@ async def search_one_source(
     if stored and stored["excerpt"]:
         logger.info("compare indexed coverage: using publisher excerpt for %s", source)
         return (source, stored["excerpt"])
+    if stored:
+        public_excerpt = await public_feed_excerpt(stored['url'], source)
+        if public_excerpt:
+            logger.info('compare public publisher feed: using exact original description for %s', source)
+            return source, public_excerpt
     article_hint = (f"\nA matching indexed article is {stored['title']} at {stored['url']}. "
                     "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
     domains = publisher_domains(source)
@@ -318,14 +324,24 @@ async def extract_and_compare_node(state: CompareState) -> dict:
             "claims": [],
         }
 
+    # A complete short public standfirst is safe to quote, but too limited to
+    # turn into inferred article facts or a purported dispute. Keep it out of
+    # model grouping and append its checked literal quotation below.
+    model_reporting = {s: text for s, text in search_results.items()
+                       if not (text.startswith(PUBLIC_DESCRIPTION_PREFIX) and _complete_short_excerpt(text))}
+    if not model_reporting:
+        claims = _retain_outlet_passages([], None, search_results)
+        return {"comparison": _grounded_comparison_summary(claims, list(search_results)),
+                "claims": claims, "analyzed_sources": list(search_results)}
+
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2)
 
     # Format source texts for the prompt
     source_texts = ""
-    for source, text in search_results.items():
+    for source, text in model_reporting.items():
         source_texts += f"\n--- {source.upper()} ---\n{text}\n"
 
-    sources_list = list(search_results.keys())
+    sources_list = list(model_reporting)
 
     response = await budgeted_message(client, EXTRACT_OPERATION,
         model=resolve(EXTRACT_OPERATION).model,
@@ -401,11 +417,11 @@ Return ONLY the JSON, no other text.""",
         return {"comparison": "", "claims": [], "analyzed_sources": []}
 
     original_count = len(claims)
-    claims = _ground_claim_attributions(claims, search_results)
+    claims = _ground_claim_attributions(claims, model_reporting)
     claims = _retain_outlet_passages(claims, parsed.get("outlet_passages"), search_results)
-    comparison = _grounded_comparison_summary(claims, sources_list)
+    comparison = _grounded_comparison_summary(claims, list(search_results))
     logger.info("extract_and_compare: %d grouped candidates, %d retained contributions", original_count, len(claims))
-    return {"comparison": comparison, "claims": claims, "analyzed_sources": sources_list}
+    return {"comparison": comparison, "claims": claims, "analyzed_sources": list(search_results)}
 
 
 def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[dict]:
@@ -420,7 +436,7 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
 
     bodies = {}
     for source, text in reporting.items():
-        if text.startswith(("Stored publisher excerpt", "Retrieved publisher excerpts")):
+        if text.startswith(("Stored publisher excerpt", "Retrieved publisher excerpts", PUBLIC_DESCRIPTION_PREFIX)):
             text = text.partition("\nExcerpt:\n")[2]
         bodies[source.strip().casefold()] = (source, normalize(text))
     grounded = []
@@ -454,6 +470,14 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
     return grounded
 
 
+def _complete_short_excerpt(text: str) -> str | None:
+    body = text.partition("\nExcerpt:\n")[2].strip()
+    if (6 <= len(body.split()) <= 30 and body.endswith((".", "!", "?"))
+            and not body.endswith("...")):
+        return body
+    return None
+
+
 def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, str]) -> list[dict]:
     """Retain a checked quotation when grouping omitted an outlet entirely.
 
@@ -472,13 +496,10 @@ def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, s
                 if isinstance(passages, dict) else {})
     for source, text in reporting.items():
         quote = passages.get(source.strip().casefold())
-        # Reviewed original excerpts already passed event-relevance retrieval.
+        # Original excerpts already passed event-relevance retrieval.
         # Preserve a whole short sentence even if the model overlooks opinion.
-        if text.startswith("Stored publisher excerpt"):
-            body = text.partition("\nExcerpt:\n")[2].strip()
-            if (6 <= len(body.split()) <= 30 and body.endswith((".", "!", "?"))
-                    and not body.endswith("...")):
-                quote = body
+        if text.startswith(("Stored publisher excerpt", PUBLIC_DESCRIPTION_PREFIX)):
+            quote = _complete_short_excerpt(text) or quote
         if (source in represented or not isinstance(quote, str)
                 or not 6 <= len(quote.split()) <= 30 or quote.rstrip().endswith(("...", "…"))):
             continue

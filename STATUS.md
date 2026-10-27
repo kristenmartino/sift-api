@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 National Review public descriptions: recover exact known articles from the configured public RSS feed before paid search when stored original text is missing. Prefer the substantive description over content:encoded photo captions. Keep access restrictions intact, retain complete short quotations, and never infer missing letter-related facts. No budget, outlet-limit or design changes.
+
 2026-10-27 Compare extraction: assess each outlet before grouping. Preserve a verified short factual or editorial passage as an attributed quotation when grouping omits that outlet; never fill missing context. Keep one extraction call, the existing token/eight-claim ceilings, five-outlet limit, budget policy and visual design.
 
 2026-10-27 National Review retrieval: scope its searches to the verified publisher domain, discover recent original-title hints for broad topics, require cited passages or reviewed original excerpts with explicit topic-relevance selection, and avoid masking usable text with newer empty records. Keep held copy excluded and other publishers' compatible search paths. Normalize quote typography and allow one supported claim from thin excerpts. No design, outlet-count or budget-policy changes.
