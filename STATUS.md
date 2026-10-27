@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 Compare publisher evidence: extend neutral publisher-scoped search and require owned citations for financial/political and technology counterparts; read exact accessible CBS originals and discover visible, freely accessible WIRED reporting with separate topic relevance selection. Normalize explicit outlet aliases without weakening quotation checks, log per-outlet retained contribution counts, and lower actual search output limits only when required by available budget. Keep blocked/missing coverage explicit, historical reservations, $15 cap, five-outlet limit and frontend design unchanged.
+
 2026-10-27 Compare capacity recovery: reserve the known initial prompt plus a full context for each web-search result pass, retain retrieved reporting when another outlet cannot reserve a search, and reuse completed comparisons for five minutes. Uncertain historical costs stay reserved; per-call atomic admission, the $15 daily cap, five-outlet limit, evidence checks and frontend design are unchanged. Missing accounting still fails closed.
 
 2026-10-27 four-topic Reuters recovery: when KSL has no verified originals, discover WTVB's public Reuters republications from its advertised monthly sitemaps. Require canonical URL, explicit schema and visible Reuters bylines, date and visible article body; metadata is never claim evidence. Bound discovery to five seconds, 13 cached month maps and three article reads. Reuse the existing budgeted event/timing selection; no search CAPTCHA, extra paid stage, cap, outlet-limit or frontend change.

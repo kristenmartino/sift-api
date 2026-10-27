@@ -9,6 +9,8 @@ from workflows import compare_workflow as workflow
 
 @pytest.fixture(autouse=True)
 def public_feed_miss(monkeypatch):
+    monkeypatch.setattr(workflow, 'public_article_excerpt', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'public_article_candidates', AsyncMock(return_value=[]))
     monkeypatch.setattr(workflow, 'public_feed_excerpt', AsyncMock(return_value=None))
     monkeypatch.setattr(workflow, 'public_feed_excerpts', AsyncMock(return_value={}))
     monkeypatch.setattr(workflow, 'reuters_archive_candidates', AsyncMock(return_value=[]))
@@ -181,6 +183,9 @@ async def test_broad_topic_public_description_requires_explicit_relevance_select
 @pytest.mark.parametrize(('name', 'domain'), [
     ('Reuters', 'reuters.com'), ('Fox News', 'foxnews.com'),
     ('CBS News', 'cbsnews.com'), ('NPR', 'npr.org'),
+    ('Financial Times', 'ft.com'), ('The Hill', 'thehill.com'), ('Axios', 'axios.com'),
+    ('The Verge', 'theverge.com'), ('WIRED', 'wired.com'), ('Ars Technica', 'arstechnica.com'),
+    ('CNBC', 'cnbc.com'),
 ])
 @pytest.mark.asyncio
 async def test_counterparts_use_scoped_query_and_only_own_publisher_passages(monkeypatch, name, domain):
@@ -242,3 +247,26 @@ async def test_unrelated_older_npr_case_stays_excluded_after_headline_matching_f
     monkeypatch.setattr(workflow, 'budgeted_message', AsyncMock(return_value=reply))
     monkeypatch.setattr(workflow, 'log_usage', Mock())
     assert (await workflow.search_one_source(Mock(), 'Colorado Catholic preschool funding case', 'NPR'))[1] is None
+
+
+@pytest.mark.asyncio
+async def test_low_headroom_reduces_actual_output_instead_of_under_reserving(monkeypatch):
+    from services.paid_calls import budget_scope, message_bound
+    monkeypatch.setattr(workflow.settings, 'ai_cost_guard_enabled', True)
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'budget_snapshot', AsyncMock(return_value={
+        'enabled': True, 'daily_limit_usd': 15, 'compare_share': .2,
+        'spent_usd': 13.26727666, 'held_usd': 1.4545}))
+    paid = AsyncMock(return_value=response(url='https://www.axios.com/a-vote/'))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    token = budget_scope.set('compare')
+    try:
+        _, text = await workflow.search_one_source(Mock(), 'A committee vote', 'Axios')
+    finally:
+        budget_scope.reset(token)
+    assert PASSAGE in text
+    params = paid.await_args.kwargs
+    assert params['max_tokens'] < 2048
+    assert message_bound(params) <= 15 - 13.26727666 - 1.4545
+    assert message_bound({**params, 'max_tokens': 2048}) > 15 - 13.26727666 - 1.4545

@@ -18,6 +18,7 @@ from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts
+from services.compare_public_article import public_article_excerpt, public_article_candidates
 from services.compare_syndication import PARTNER_DOMAINS, reuters_partner_excerpts, reuters_archive_candidates
 
 logger = logging.getLogger("sift-api.compare")
@@ -168,9 +169,10 @@ async def search_one_source(
         logger.info("compare indexed coverage: using publisher excerpt for %s", source)
         return (source, stored["excerpt"])
     if stored:
-        public_excerpt = await public_feed_excerpt(stored['url'], source)
+        public_excerpt = (await public_article_excerpt(stored['url'], source)
+                          or await public_feed_excerpt(stored['url'], source))
         if public_excerpt:
-            logger.info('compare public publisher feed: using exact original description for %s', source)
+            logger.info('compare public publisher text: using exact original for %s', source)
             return source, public_excerpt
     article_hint = (f"\nA matching indexed article is {stored['title']} at {stored['url']}. "
                     "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
@@ -193,8 +195,9 @@ async def search_one_source(
     archive_hints = []
     if reuters and not stored:
         archive_hints = await reuters_archive_candidates(topic, context=discovery_context) if discovery_context else await reuters_archive_candidates(topic)
-    hints = archive_hints or (await publisher_article_hints(topic) if not stored and domains else [])
-    originals_only = bool(archive_hints)
+    public_candidates = await public_article_candidates(topic, source) if not stored else []
+    hints = public_candidates or archive_hints or (await publisher_article_hints(topic) if not stored and domains else [])
+    originals_only = bool(archive_hints or public_candidates)
     if hints and not archive_hints:
         descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source)
         for hint in hints:
@@ -277,31 +280,42 @@ async def search_one_source(
             'Do not search, infer missing facts or use outside knowledge.\n'
         )
         selection_prompt = f'Requested topic: {json.dumps(topic)}\n{article_hint}\n{query_instruction}'
+    request_messages = [{"role": "user", "content": selection_prompt or (
+        f'Retrieve coverage from {source} about: {json.dumps(topic)}\n{article_hint}\n{query_instruction}'
+        'Match the subject and timing. For a broad ongoing issue, dated reporting within the past year may be relevant; '
+        'never substitute a related event for a specific event. Return one or two brief verbatim publisher passages '
+        '(8-30 words each) with citations, preserving attribution and uncertainty. Do not paraphrase quotations. '
+        'Public search-index passages may supply reporting when a direct page is blocked. '
+        'A blocked page alone does not establish that no coverage exists. '
+        'Headlines, URLs, access messages and another publisher are not evidence. '
+        f'If no relevant publisher reporting is accessible, return No relevant coverage found from {source}.') }]
+    max_output = 2048
+    if originals_only:
+        max_output = 128
+    elif settings.ai_cost_guard_enabled:
+        try:
+            budget = await budget_snapshot()
+            ceiling = budget['daily_limit_usd']
+            if budget_scope.get() != 'compare':
+                ceiling *= 1 - budget['compare_share']
+            available = ceiling - budget['spent_usd'] - budget['held_usd']
+            if budget['enabled'] and ceiling > 0:
+                for size in (2048, 1024, 512):
+                    params = {'model': resolve(SEARCH_OPERATION).model, 'max_tokens': size,
+                              'messages': request_messages, **call_tools}
+                    if message_bound(params) <= available:
+                        max_output = size
+                        break
+        except Exception as exc:
+            logger.info('compare output preflight unavailable (%s); retaining atomic admission', type(exc).__name__)
     try:
         response = await asyncio.wait_for(
             budgeted_message(client, SEARCH_OPERATION,
                 stream_response=True,
                 model=resolve(SEARCH_OPERATION).model,
-                max_tokens=2048,
+                max_tokens=max_output,
                 **call_tools,
-                messages=[{
-                    "role": "user",
-                    "content": selection_prompt or (
-                        f'Search for recent news coverage from {source} about: "{topic}"\n\n'
-                        f"{article_hint}"
-                        f"{query_instruction}"
-                        "Match the requested subject and timing, not literal headline wording. For a specific "
-                        "event, do not substitute an older case or related but different event. For a broad "
-                        "topic, find reporting addressing that issue; lexical overlap alone is insufficient. "
-                        "Cite the selected publisher's reporting. Public search-index passages may supply "
-                        "reporting when a direct page request is blocked; a blocked page alone does not prove "
-                        "the outlet has no coverage. Titles, URLs and subscription messages alone are not reporting. "
-                        f"Summarize what {source} reports about this topic, including key facts, "
-                        f"figures, quotes, and their perspective or framing. "
-                        f"If you cannot find relevant coverage from {source}, say "
-                        f"'No relevant coverage found from {source}.'"
-                    ),
-                }],
+                messages=request_messages,
             ),
             timeout=PER_SOURCE_TIMEOUT,
         )
@@ -490,6 +504,7 @@ Return ONLY a JSON object with this structure:
   ]
 }}
 
+Use EXACT keys from Available sources for outlet_passages, evidence and source lists.
 Available sources: {json.dumps(sources_list)}
 Return ONLY the JSON, no other text.""",
         }],
@@ -521,6 +536,9 @@ Return ONLY the JSON, no other text.""",
     claims = _ground_claim_attributions(claims, model_reporting)
     claims = _retain_outlet_passages(claims, parsed.get("outlet_passages"), search_results)
     comparison = _grounded_comparison_summary(claims, list(search_results))
+    for source in search_results:
+        count = sum(source in c.get('sources', []) + c.get('sources_for', []) + c.get('sources_against', []) for c in claims)
+        logger.info('compare grounded contributions: source=%s claims=%d', source, count)
     logger.info("extract_and_compare: %d grouped candidates, %d retained contributions", original_count, len(claims))
     return {"comparison": comparison, "claims": claims, "analyzed_sources": list(search_results)}
 
@@ -547,6 +565,11 @@ def _drops_numeric_estimate(claim: str, quote: str, body: str) -> bool:
     return False
 
 
+def _source_evidence_key(source):
+    value = re.sub(r'[^a-z0-9]', '', re.sub(r'^the\s+', '', source.strip().casefold()))
+    return {'ft': 'financialtimes', 'cbs': 'cbsnews', 'fox': 'foxnews'}.get(value, value)
+
+
 def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[dict]:
     """Reject borrowed/invented quotes before counting an outlet for a claim.
 
@@ -561,7 +584,7 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
     for source, text in reporting.items():
         if text.startswith(("Stored publisher excerpt", "Retrieved publisher excerpts", PUBLIC_DESCRIPTION_PREFIX)):
             text = text.partition("\nExcerpt:\n")[2]
-        bodies[source.strip().casefold()] = (source, normalize(text))
+        bodies[_source_evidence_key(source)] = (source, normalize(text))
     grounded = []
     for claim in claims:
         if not isinstance(claim, dict) or not isinstance(claim.get("claim"), str):
@@ -569,7 +592,7 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
         evidence = claim.get("evidence")
         if not isinstance(evidence, dict):
             continue
-        quotes = {s.strip().casefold(): q for s, q in evidence.items() if isinstance(s, str)}
+        quotes = {_source_evidence_key(s): q for s, q in evidence.items() if isinstance(s, str)}
         cleaned = {"claim": claim["claim"], "agreement": claim.get("agreement", "unique")}
         for field in ("sources", "sources_for", "sources_against"):
             credited = claim.get(field, [])
@@ -577,12 +600,12 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
             for source in credited if isinstance(credited, list) else []:
                 if not isinstance(source, str):
                     continue
-                key = source.strip().casefold()
-                quote = quotes.get(key)
-                if (key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
-                        and normalize(quote) in bodies[key][1]
-                        and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[key][1])):
-                    name = bodies[key][0]
+                source_key = _source_evidence_key(source)
+                quote = quotes.get(source_key)
+                if (source_key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
+                        and normalize(quote) in bodies[source_key][1]
+                        and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[source_key][1])):
+                    name = bodies[source_key][0]
                     if name not in cleaned[field]:
                         cleaned[field].append(name)
         if cleaned["agreement"] == "disputed":
@@ -615,10 +638,10 @@ def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, s
         return set(claim.get("sources", []) + claim.get("sources_for", []) + claim.get("sources_against", []))
 
     represented = set().union(*(credited(c) for c in candidates))
-    passages = ({s.strip().casefold(): q for s, q in passages.items() if isinstance(s, str)}
+    passages = ({_source_evidence_key(s): q for s, q in passages.items() if isinstance(s, str)}
                 if isinstance(passages, dict) else {})
     for source, text in reporting.items():
-        quote = passages.get(source.strip().casefold())
+        quote = passages.get(_source_evidence_key(source))
         # Original excerpts already passed event-relevance retrieval.
         # Preserve a whole short sentence even if the model overlooks opinion.
         if text.startswith(("Stored publisher excerpt", PUBLIC_DESCRIPTION_PREFIX)):

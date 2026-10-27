@@ -17,6 +17,13 @@ _SEARCH_DOMAINS = {
     'foxnews': ('foxnews.com',),
     'cbsnews': ('cbsnews.com',),
     'npr': ('npr.org',),
+    'financialtimes': ('ft.com',),
+    'hill': ('thehill.com',),
+    'axios': ('axios.com',),
+    'verge': ('theverge.com',),
+    'wired': ('wired.com',),
+    'arstechnica': ('arstechnica.com',),
+    'cnbc': ('cnbc.com',),
 }
 
 
