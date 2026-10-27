@@ -127,6 +127,15 @@ def _archive_query(topic: str) -> str:
         if words:
             return ' '.join(words) + ' IPO'
     words = re.findall(r"[\w'-]+", subject)[:12]
+    if len(words) > 6:
+        # Long event headlines can overconstrain an archive's literal search.
+        # Prefer a compact explicit named subject, never an inferred entity.
+        phrases = re.findall(r"\b[A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*){1,3}\b", subject)
+        phrases = [re.sub(r'^(?:FBI\s+)?(?:Director|President|Senator|Governor|Chief|CEO)\s+', '', p)
+                   for p in phrases]
+        phrases = [p for p in phrases if 2 <= len(p.split()) <= 4]
+        if phrases:
+            return max(phrases, key=lambda p: len(p.split()))[:120]
     while len(words) > 2 and words[-1].casefold() in {'reform', 'debate', 'analysis', 'explained'}:
         words.pop()
     return ' '.join(words)[:120]

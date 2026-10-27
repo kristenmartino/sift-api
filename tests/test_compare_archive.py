@@ -35,6 +35,10 @@ def candidate(i=123, title='A funding report', **kw):
     ('Anthropic files for IPO as AI company prepares for public markets', 'Anthropic IPO'),
     ('Example Systems plans an initial public offering', 'Example Systems IPO'),
     ('The governance of Example Systems IPO', 'Example Systems IPO'),
+    ('DOJ charges ex-FBI Director James Comey with leaking national defense information', 'James Comey'),
+    ('James Comey charged again by the DOJ', 'James Comey'),
+    ('FTC and 20 states sue Dollar General, alleging systematic checkout overcharging', 'Dollar General'),
+    ('US capital goods orders September', 'US capital goods orders September'),
     ('', ''),
 ])
 def test_archive_uses_subject_without_publisher_keyword_or_requiring_editorial_wording(topic, query):

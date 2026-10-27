@@ -443,6 +443,7 @@ Your task:
 Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts or explicitly attributed opinions present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
+Preserve attribution, uncertainty, timing and scope: an economist's estimate is not an official result; a forecast is not a released measurement; an allegation is not an established act. Retain words such as estimated, forecast, expected, could, only, remaining and up to when they qualify the proposition. Include the qualifier in both the supporting quotation and the claim; never trim it away to make a stronger statement.
 First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
 An article's headline may establish the topic of its excerpt, but cannot supply evidence for a claim. An editorial view about the underlying issue is a relevant contribution even when its excerpt does not repeat the event name. Retain it as that outlet's view without inferring a stance on specific policy details.
 For EVERY outlet attributed to a grouped claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not support that fact or attributed opinion, do not credit that outlet with it, even when other outlets confirm it.
@@ -511,6 +512,28 @@ Return ONLY the JSON, no other text.""",
     return {"comparison": comparison, "claims": claims, "analyzed_sources": list(search_results)}
 
 
+def _drops_numeric_estimate(claim: str, quote: str, body: str) -> bool:
+    """Catch a narrow certainty reversal even when a quote trims its prefix.
+
+    A verbatim subclause inside an attributed forecast cannot establish an
+    unqualified numerical result. Only scope the forecast's own sentence;
+    nearby actual figures remain usable. This is not general entailment QA.
+    """
+    if not re.search(r'\d', claim) or re.search(
+        r'\b(?:estimate[ds]?|forecast(?:s|ed)?|projected|projections?|expect(?:s|ed)?|'
+        r'predicted|predictions?|anticipate[ds]?|would|could|may|might)\b', claim, re.I
+    ):
+        return False
+    for sentence in re.finditer(
+        r'\b(?:economists?|analysts?|report|company|firm|it)\s+'
+        r'(?:estimate[ds]?|forecast(?:s|ed)?|project(?:s|ed)?|expect(?:s|ed)?|predict(?:s|ed)?|anticipate[ds]?)\b'
+        r'[^.!?]*(?:\.\d+[^.!?]*)*', body
+    ):
+        if quote in sentence[0]:
+            return True
+    return False
+
+
 def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[dict]:
     """Reject borrowed/invented quotes before counting an outlet for a claim.
 
@@ -544,7 +567,8 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
                 key = source.strip().casefold()
                 quote = quotes.get(key)
                 if (key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
-                        and normalize(quote) in bodies[key][1]):
+                        and normalize(quote) in bodies[key][1]
+                        and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[key][1])):
                     name = bodies[key][0]
                     if name not in cleaned[field]:
                         cleaned[field].append(name)
