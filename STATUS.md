@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 Axios RSS recovery: use the fixed public Axios feed for exact indexed articles; retain complete published paragraphs and exclude trailing image/document captions. Keep exact article identity, recent publication, body/headline checks and bounded retrieval; no additional paid stage, budget-policy or frontend changes.
+
 2026-10-27 Compare publisher evidence: extend neutral publisher-scoped search and require owned citations for financial/political and technology counterparts; read exact accessible CBS originals and discover visible, freely accessible WIRED reporting with separate topic relevance selection. Normalize explicit outlet aliases without weakening quotation checks, log per-outlet retained contribution counts, and lower actual search output limits only when required by available budget. Keep blocked/missing coverage explicit, historical reservations, $15 cap, five-outlet limit and frontend design unchanged.
 
 2026-10-27 Compare capacity recovery: reserve the known initial prompt plus a full context for each web-search result pass, retain retrieved reporting when another outlet cannot reserve a search, and reuse completed comparisons for five minutes. Uncertain historical costs stay reserved; per-call atomic admission, the $15 daily cap, five-outlet limit, evidence checks and frontend design are unchanged. Missing accounting still fails closed.

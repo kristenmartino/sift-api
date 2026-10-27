@@ -209,3 +209,20 @@ async def test_candidate_descriptions_share_one_bounded_public_feed_request(monk
     result = await feed.public_feed_excerpts([URL, URL, missing], 'National Review')
     assert list(result) == [URL]
     assert calls == [feed.PUBLIC_FEED]
+
+
+def test_axios_keeps_complete_reporting_but_not_a_trailing_document_caption():
+    from services.compare_publisher_feed import AXIOS_FEED, _feed_article_excerpt
+    body = ('<p>The committee approved the measure after a public hearing on Monday.</p>'
+            '<p>A spokesperson said the new rules take effect next month.</p>'
+            '<p>Unclassified document from the committee</p>')
+    feed = f'''<rss version="2.0"><channel><item><title>A committee vote</title>
+      <link>https://www.axios.com/2026/10/24/a-vote</link>
+      <pubDate>Sat, 24 Oct 2026 00:16:19 +0000</pubDate>
+      <description><![CDATA[{body}]]></description></item></channel></rss>'''.encode()
+    result = _feed_article_excerpt(feed, 'https://www.axios.com/2026/10/24/a-vote',
+        datetime(2026, 10, 27, tzinfo=timezone.utc), feed_url=AXIOS_FEED)
+    assert 'The committee approved the measure' in result
+    assert 'Unclassified document' not in result
+    assert AXIOS_FEED in result
+    assert 'nationalreview.com/feed' not in result
