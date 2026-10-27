@@ -89,3 +89,17 @@ async def test_visible_candidate_still_requires_full_topic_relevance_selection(m
     assert text == (original if accepted else None)
     assert 'tools' not in paid.await_args.kwargs
     assert paid.await_args.kwargs['max_tokens'] == 128
+
+
+def test_abbreviations_and_inline_markup_keep_complete_visible_paragraphs():
+    body = ('The U.S. committee approved a measure after reviewing the public report. '
+            'A spokesperson said the decision applies only to requests made this year. '
+            'The agency plans to publish an assessment after the next quarterly review. '
+            'Officials said no other decision was announced during the meeting.')
+    visible = '<p>' + body.replace('committee', '<a href="/committee">committee</a>') + '</p>'
+    result = article_excerpt(page(body=body, visible=visible), URL, 'wired', NOW)
+    assert result.partition('\nExcerpt:\n')[2] == body
+
+
+def test_schema_and_visible_partial_paragraphs_are_not_stitched_into_reporting():
+    assert article_excerpt(page(visible='<p>' + BODY[:85] + '</p><p>' + BODY[-70:] + '</p>'), URL, 'wired', NOW) is None

@@ -23,7 +23,8 @@ class _Page(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.stack = []
-        self.visible = []
+        self.paragraphs = []
+        self.paragraph = None
         self.schemas = []
         self.script = None
 
@@ -38,10 +39,13 @@ class _Page(HTMLParser):
             self.script = []
         if tag not in {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}:
             self.stack.append((tag, hidden or inherited, article))
-        if article and tag in {'p', 'div', 'br', 'li'}:
-            self.visible.append(' ')
+        if tag == 'p' and article and not (hidden or inherited):
+            self.paragraph = []
 
     def handle_endtag(self, tag):
+        if tag == 'p' and self.paragraph is not None:
+            self.paragraphs.append(''.join(self.paragraph))
+            self.paragraph = None
         if tag == 'script' and self.script is not None:
             self.schemas.append(''.join(self.script))
             self.script = None
@@ -49,13 +53,12 @@ class _Page(HTMLParser):
             if self.stack[i][0] == tag:
                 del self.stack[i:]
                 break
-        self.visible.append(' ')
 
     def handle_data(self, data):
         if self.script is not None:
             self.script.append(data)
-        if self.stack and self.stack[-1][2] and not self.stack[-1][1]:
-            self.visible.append(data)
+        if self.paragraph is not None and self.stack and self.stack[-1][2] and not self.stack[-1][1]:
+            self.paragraph.append(data)
 
 
 def _objects(value):
@@ -76,7 +79,6 @@ def article_excerpt(html: str, url: str, source: str, now: datetime) -> str | No
         return None
     page = _Page()
     page.feed(html)
-    visible = normalize_evidence_text(''.join(page.visible))
     for raw in page.schemas:
         try:
             schemas = list(_objects(json.loads(raw)))
@@ -103,16 +105,19 @@ def article_excerpt(html: str, url: str, source: str, now: datetime) -> str | No
             body = schema.get('articleBody')
             if not isinstance(body, str):
                 continue
-            # Require each complete sentence in the *visible* article. JSON-LD
-            # alone is not access to reporting and cannot bypass a gated page.
-            sentences = re.split(r'(?<=[.!?])\s+', ' '.join(body.split()))
+            # Whole visible paragraphs must also occur in the publisher's
+            # article body. Do not split at abbreviation periods or join a
+            # truncated fragment to a different paragraph.
+            normalized_body = normalize_evidence_text(body)
             retained = []
-            for sentence in sentences:
-                if (len(sentence.split()) >= 6 and sentence.endswith(('.', '!', '?', '”', '"'))
-                        and normalize_evidence_text(sentence) in visible):
-                    if sum(map(len, retained)) + len(sentence) > 12000:
+            for paragraph in page.paragraphs:
+                paragraph = ' '.join(paragraph.split())
+                if (len(paragraph.split()) >= 6 and paragraph.rstrip('“”"\'').endswith(('.', '!', '?'))
+                        and not paragraph.rstrip().endswith(('...', '…'))
+                        and normalize_evidence_text(paragraph) in normalized_body):
+                    if sum(map(len, retained)) + len(paragraph) > 12000:
                         break
-                    retained.append(sentence)
+                    retained.append(paragraph)
             if sum(len(s.split()) for s in retained) < 40:
                 continue
             return (f'Retrieved publisher excerpts (may be incomplete).\nOriginal: {url}\n'
