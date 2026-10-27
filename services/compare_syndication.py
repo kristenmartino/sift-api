@@ -254,10 +254,10 @@ async def _ksl_archive_candidates(topic: str) -> list[dict]:
     return [completed[i] for i in sorted(completed)]
 
 
-async def reuters_archive_candidates(topic: str) -> list[dict]:
+async def reuters_archive_candidates(topic: str, *, context: str | None = None) -> list[dict]:
     from services.compare_radio import radio_candidates
     originals = await _ksl_archive_candidates(topic)
-    return originals or await radio_candidates(topic)
+    return originals or await radio_candidates(topic, context=context)
 
 
 async def reuters_partner_excerpts(response) -> str | None:

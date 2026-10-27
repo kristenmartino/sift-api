@@ -26,6 +26,9 @@ TIMEOUT = 5
 MAX_BYTES = 2_000_000
 # Parsed URL metadata only; populated by reader requests, never a timer or DB poll.
 _cache: dict[str, tuple[float, list[str]]] = {}
+_STOP = set(('the and for from with about over into us of to a an in on at by as is are be '
+             'can could will would may should has have had that this its it not no new says said '
+             'after before under why how what which their').split())
 
 
 def article_url(url: str) -> str | None:
@@ -146,17 +149,23 @@ def reporting(data: bytes, url: str, now: datetime) -> dict | None:
     return None
 
 
-async def radio_candidates(topic: str) -> list[dict]:
+async def radio_candidates(topic: str, *, context: str | None = None) -> list[dict]:
     """At most 13 month maps and 3 public article pages, within five seconds.
 
     Sitemap paths rank discovery hints only. The existing budgeted semantic
     selection must still approve the full topic, event and timing.
     """
     from services.compare_syndication import _archive_query
-    words = set(re.findall(r'[a-z0-9]+', _archive_query(topic).casefold())) - {
-        'the', 'and', 'for', 'from', 'with', 'about', 'over', 'into', 'us', 'of', 'to', 'a', 'an'}
+    words = set(re.findall(r'[a-z0-9]+', _archive_query(topic).casefold())) - _STOP
     if len(words) < 2:
         return []
+    # Another publisher's reviewed/public original can locate an event hidden
+    # behind an editorial headline. It never supplies this outlet's evidence.
+    context_words = set(re.findall(r'[a-z0-9]+',
+        (topic + ' ' + context.partition('Excerpt:\n')[2]).casefold())) - _STOP if context else set()
+    context_names = {w.casefold() for w in re.findall(r'\b[A-Z][a-zA-Z]+\b',
+        context.partition('Excerpt:\n')[2])} - _STOP if context else set()
+    topic_words = set(re.findall(r'[a-z0-9]+', topic.casefold())) - _STOP
     found, attempted = [], set()
     try:
         async with asyncio.timeout(TIMEOUT):
@@ -198,8 +207,12 @@ async def radio_candidates(topic: str) -> list[dict]:
                             continue
                         title_words = set(urlparse(url).path.rsplit('/', 2)[1].split('-'))
                         overlap = len(words & title_words)
-                        if overlap >= 2 and overlap / len(words) >= 0.5:
-                            ranked.append((overlap, url))
+                        context_overlap = len(context_words & title_words)
+                        matches = (bool(context_names & title_words)
+                            and len(topic_words & title_words) >= 2 and context_overlap >= 3
+                            if context_names else overlap >= 2 and overlap / len(words) >= 0.5)
+                        if matches:
+                            ranked.append((max(overlap, context_overlap), url))
                     for _, url in sorted(ranked, reverse=True):
                         if len(attempted) >= 3:
                             return found

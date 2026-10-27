@@ -499,7 +499,11 @@ carry both a structured Thomson Reuters author and visible Reuters byline,
 and contain substantive visible article text with a Reuters dateline.
 Related stories, hidden content, scripts and photo credits cannot supply text.
 The original complete topic still needs semantic event/timing selection through
-the existing budgeted call. Cited WTVB passages in the paid-search fallback
+the existing budgeted call. For editorial headlines, an already retrieved
+original description from another publisher can locate the subject: require
+its explicit named context plus headline subject terms in candidate paths.
+That description cannot supply any Reuters fact or quotation.
+Cited WTVB passages in the paid-search fallback
 require the same public-page checks and exact supporting text. This adds no
 paid stage, changes no budget policy and does not access the partner's gated
 site-search form.

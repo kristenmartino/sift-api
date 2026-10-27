@@ -197,3 +197,39 @@ async def test_article_read_limit_applies_even_when_every_page_is_unavailable(mo
     monkeypatch.setattr(radio.httpx, 'AsyncClient', lambda **kw: actual(**kw, transport=httpx.MockTransport(serve)))
     assert await radio.radio_candidates('Dollar General') == []
     assert len([u for u in calls if radio.article_url(u)]) == 3
+
+
+@pytest.mark.asyncio
+async def test_editorial_context_only_discovers_a_separately_verified_original(monkeypatch):
+    def serve(req):
+        u = str(req.url)
+        if u == radio.INDEX:
+            return httpx.Response(200, content=xml('sitemapindex', ['https://wtvbam.com/sitemap-post.202610.xml']), headers={'content-type': 'text/xml'})
+        if u.endswith('.xml'):
+            return httpx.Response(200, content=xml('urlset', [URL]), headers={'content-type': 'text/xml'})
+        assert u == URL
+        return httpx.Response(200, content=page(), headers={'content-type': 'text/html'})
+    actual = httpx.AsyncClient
+    monkeypatch.setattr(radio.httpx, 'AsyncClient', lambda **kw: actual(**kw, transport=httpx.MockTransport(serve)))
+    topic = 'States sue alleging violations of fundamental consumer protection and privacy rights'
+    assert await radio.radio_candidates(topic) == []
+    result = await radio.radio_candidates(topic, context='Original: https://other.example/\nExcerpt:\nA dispute involves Dollar General and states. Other publisher alleges imaginary losses.')
+    assert result[0]['url'] == URL
+    assert 'imaginary losses' not in result[0]['excerpt']
+
+
+@pytest.mark.asyncio
+async def test_workflow_passes_editorial_context_only_for_discovery_not_claim_evidence(monkeypatch):
+    from workflows import compare_workflow as workflow
+    from unittest.mock import Mock
+    context = 'Public description\nExcerpt:\nA Colorado case concerns religious funding.'
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(side_effect=[None,
+        {'url': 'https://nationalreview.com/case/', 'title': 'Editorial headline', 'excerpt': context}]))
+    evidence = 'Retrieved publisher excerpts.\nExcerpt:\n' + BODY
+    discovery = AsyncMock(return_value=[{'url': URL, 'title': TITLE, 'excerpt': evidence}])
+    monkeypatch.setattr(workflow, 'reuters_archive_candidates', discovery)
+    monkeypatch.setattr(workflow, 'budgeted_message', AsyncMock(return_value=Obj(content=[Obj(type='text', text='SELECTED_STORED_CANDIDATE=0')])))
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    _, result = await workflow.search_one_source(Mock(), 'Editorial headline', 'Reuters')
+    discovery.assert_awaited_once_with('Editorial headline', context=context)
+    assert result == evidence and context not in result
