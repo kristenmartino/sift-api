@@ -327,6 +327,7 @@ Only compare the {len(sources_list)} successfully retrieved sources in Available
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
 For EVERY outlet attributed to a claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not state a fact, do not credit that outlet with it, even when other outlets confirm it.
+Select the verbatim supporting passage first, then write only the claim it supports. Do not invent or paraphrase a quotation to fit a claim already written. Where the text supports it, include a factual claim or clearly attributed position from each available outlet; do not silently omit an outlet's supported perspective. An outlet with no supportable passage may be omitted.
 1. Extract up to 8 supportable claims. A short excerpt may support only one claim; that is valid. Do not pad to a minimum. Keep an opinion or interpretation explicitly attributed to its outlet instead of presenting it as an established fact. Return no claims only when none is supported by the supplied reporting.
 2. For each claim, determine the agreement level:
    - "unanimous": every available source reports this claim (at least two sources)
@@ -340,17 +341,17 @@ Return ONLY a JSON object with this structure:
 {{
   "claims": [
     {{
+      "evidence": {{"source1": "verbatim supporting quotation from source1 reporting", "source2": "verbatim supporting quotation from source2 reporting"}},
       "claim": "specific factual statement",
       "agreement": "unanimous",
-      "sources": ["source1", "source2"],
-      "evidence": {{"source1": "verbatim supporting quotation from source1 reporting", "source2": "verbatim supporting quotation from source2 reporting"}}
+      "sources": ["source1", "source2"]
     }},
     {{
+      "evidence": {{"source1": "verbatim quotation supporting the claim", "source2": "verbatim quotation contradicting the claim"}},
       "claim": "a disputed point",
       "agreement": "disputed",
       "sources_for": ["source1"],
-      "sources_against": ["source2"],
-      "evidence": {{"source1": "verbatim quotation supporting the claim", "source2": "verbatim quotation contradicting the claim"}}
+      "sources_against": ["source2"]
     }}
   ]
 }}
