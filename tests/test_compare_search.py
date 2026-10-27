@@ -36,6 +36,7 @@ def test_other_hosts_and_insecure_urls_never_supply_selected_outlet_evidence(url
 
 @pytest.mark.parametrize(('quote', 'title'), [
     ('Subscribe to read the full article and get unlimited access to our reporting.', 'A vote'),
+    ('\n Subscribe to read the full article and get unlimited access to our reporting.', 'A vote'),
     ('The committee approved the measure by ten votes to two', 'The committee approved the measure by ten votes to two'),
     ('Read more', 'A vote'),
 ])
@@ -54,6 +55,13 @@ def test_known_article_does_not_substitute_neighboring_publisher_search_results(
     assert publisher_search_excerpts(response(url='https://nationalreview.com/2026/10/a-vote/amp/'),
                                      ('nationalreview.com',),
                                      'https://www.nationalreview.com/2026/10/a-vote/')
+
+
+def test_article_identity_preserves_content_query_ids_and_ignores_tracking():
+    assert publisher_search_excerpts(response(url='https://nationalreview.com/?p=2'),
+                                     ('nationalreview.com',), 'https://nationalreview.com/?p=1') is None
+    assert publisher_search_excerpts(response(), ('nationalreview.com',),
+                                     'https://nationalreview.com/2026/10/a-vote/?utm_source=rss')
 
 
 @pytest.mark.asyncio

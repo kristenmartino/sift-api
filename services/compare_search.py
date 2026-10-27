@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 
 # Content hosts, rather than feed/CDN/rating-service hosts. Unknown publishers
 # retain the name-based fallback; never guess a domain from the outlet's name.
@@ -29,12 +29,15 @@ def publisher_domains(source: str) -> tuple[str, ...]:
     return _DOMAINS.get(re.sub(r'[^a-z0-9]', '', name), ())
 
 
-def _article_identity(url: str) -> tuple[str, str] | None:
+def _article_identity(url: str) -> tuple | None:
     try:
         parsed = urlparse(url)
         host = (parsed.hostname or '').removeprefix('www.')
         path = parsed.path.rstrip('/').removesuffix('/amp')
-        return host, path
+        query = tuple(sorted((k, v) for k, v in parse_qsl(parsed.query)
+                             if not k.casefold().startswith('utm_')
+                             and k.casefold() not in {'amp', 'output', 'mod', 'ref', 'source', 'smid'}))
+        return host, path, query
     except (TypeError, ValueError):
         return None
 
@@ -65,7 +68,10 @@ def publisher_search_excerpts(response, domains: tuple[str, ...], preferred_url:
             if preferred_url and _article_identity(url) != _article_identity(preferred_url):
                 continue
             quote = getattr(citation, 'cited_text', '')
-            if not isinstance(quote, str) or len(quote.split()) < 8:
+            if not isinstance(quote, str):
+                continue
+            quote = quote.strip()
+            if len(quote.split()) < 8:
                 continue
             normalized = ' '.join(re.findall(r'\w+', quote.casefold()))
             title = ' '.join(re.findall(r'\w+', (getattr(citation, 'title', '') or '').casefold()))
