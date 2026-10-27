@@ -1,6 +1,7 @@
 """Read original publisher excerpts for an exact, already indexed event."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from html import unescape
@@ -8,6 +9,11 @@ from html import unescape
 from app.db import get_pool
 
 logger = logging.getLogger("sift-api.compare")
+# A measured first lookup after deployment took 3.74s; the old 3s query
+# deadline discarded indexed evidence when the database resumed. Bound the
+# entire lookup (including pool acquisition), leaving time for search fallback
+# and extraction within Compare's existing 50s request deadline.
+INDEXED_LOOKUP_TIMEOUT = 8
 
 # RSS descriptions can contain usable reporting in fewer than 200 characters.
 # This is a minimum evidence check, not a completeness test: extraction must
@@ -67,8 +73,11 @@ async def indexed_coverage(topic: str, source: str) -> dict[str, str | None] | N
     publication gate, never input to the comparison. Misses use live search.
     """
     try:
-        pool = await get_pool()
-        row = await pool.fetchrow(INDEXED_COVERAGE_SQL, topic.strip(), source.strip(), timeout=3)
+        async with asyncio.timeout(INDEXED_LOOKUP_TIMEOUT):
+            pool = await get_pool()
+            row = await pool.fetchrow(
+                INDEXED_COVERAGE_SQL, topic.strip(), source.strip(), timeout=INDEXED_LOOKUP_TIMEOUT,
+            )
         if not row:
             return None
         body = unescape(re.sub(r"<[^>]*>", " ", row["generation_raw_content"] or ""))
@@ -79,6 +88,7 @@ async def indexed_coverage(topic: str, source: str) -> dict[str, str | None] | N
                        f"Original: {row['source_url']}\nPublished: {row['published_date'].isoformat()}\n"
                        f"Excerpt:\n{body[:12000]}")
         return {"excerpt": excerpt, "title": row["title"], "url": row["source_url"]}
-    except Exception:
-        logger.warning("compare indexed coverage unavailable for %s; using live search", source)
+    except Exception as exc:
+        logger.warning("compare indexed coverage unavailable for %s (%s); using live search",
+                       source, type(exc).__name__)
         return None

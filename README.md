@@ -351,3 +351,8 @@ live search; metadata and Sift-generated summaries never count as retrieved cove
 index misses use live search. Search responses are read as provider streams and
 settled from final usage through the existing budget guard. Interrupted calls
 retain their uncertain-cost holds; no retry spends outside the cap.
+
+The indexed lookup has an eight-second deadline including pool acquisition, so
+a database resume does not prematurely discard stored reporting. It falls back
+to search on a miss or database failure, logging the exception type without
+connection details. The overall Compare request deadline remains 50 seconds.

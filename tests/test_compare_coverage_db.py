@@ -1,6 +1,7 @@
 """Exercise event matching in an isolated local PostgreSQL schema."""
 from __future__ import annotations
 
+import asyncio
 import os
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -9,6 +10,7 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
+from services import compare_coverage
 from services.compare_coverage import INDEXED_COVERAGE_SQL
 
 
@@ -65,3 +67,26 @@ async def test_same_event_and_publisher_aliases_are_required(coverage_db):
 async def test_unusable_records_never_supply_coverage(coverage_db, change):
     await coverage_db.execute('UPDATE articles SET '+change)
     assert await coverage_db.fetchrow(INDEXED_COVERAGE_SQL, 'The committee approved the measure', 'fox news') is None
+
+
+@pytest.mark.asyncio
+async def test_resuming_database_preserves_indexed_reporting(coverage_db, monkeypatch):
+    # Production's first post-deployment lookup took 3.74s and the previous 3s
+    # limit discarded all five sources. Exercise a real delayed PostgreSQL
+    # response, not just a mocked successful fetchrow.
+    body = ('The committee approved the measure by ten votes to two after hearing '
+            'testimony from residents at a public meeting on Monday.')
+    await coverage_db.execute('UPDATE articles SET generation_raw_content=$1', body)
+
+    class ResumingDatabase:
+        async def fetchrow(self, query, *args, timeout):
+            async with asyncio.timeout(timeout):
+                await coverage_db.execute('SELECT pg_sleep(3.2)')
+                return await coverage_db.fetchrow(query, *args)
+
+    async def get_resuming_database():
+        return ResumingDatabase()
+
+    monkeypatch.setattr(compare_coverage, 'get_pool', get_resuming_database)
+    result = await compare_coverage.indexed_coverage('The committee approved the measure', 'fox news')
+    assert body in result['excerpt']

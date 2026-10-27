@@ -74,6 +74,19 @@ async def test_index_miss_or_database_failure_falls_back_without_fabricating_cov
 
 
 @pytest.mark.asyncio
+async def test_index_lookup_deadline_includes_pool_acquisition(monkeypatch, caplog):
+    import asyncio
+
+    async def unavailable_pool():
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(compare_coverage, 'get_pool', unavailable_pool)
+    monkeypatch.setattr(compare_coverage, 'INDEXED_LOOKUP_TIMEOUT', 0.01)
+    assert await compare_coverage.indexed_coverage('A vote', 'Reuters') is None
+    assert '(TimeoutError)' in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_stored_reporting_avoids_a_paid_search(monkeypatch):
     monkeypatch.setattr(compare_workflow, 'indexed_coverage', AsyncMock(return_value={'excerpt': 'Original reporting.', 'title': 'A vote', 'url': 'https://example.com/a'}))
     paid = AsyncMock(side_effect=AssertionError('paid search must not run'))
