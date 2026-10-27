@@ -389,3 +389,8 @@ adapters require live verification: Reuters rejects the provider's domain
 constraint, so its working search path is preserved. Claim quotations normalize
 Unicode typography while retaining word/number identity. Short excerpts may
 yield one supported claim; attributed opinions remain attributed.
+
+For a broad National Review topic with no exact indexed match, the existing
+full-text index supplies up to three recent original-title/URL search hints.
+They never count as retrieved reporting or change story membership. The same
+single budgeted publisher search must return relevant cited passages.

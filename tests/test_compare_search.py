@@ -104,3 +104,19 @@ async def test_explicit_no_coverage_does_not_promote_unrelated_search_citations(
     monkeypatch.setattr(workflow, 'budgeted_message', AsyncMock(return_value=no_coverage))
     monkeypatch.setattr(workflow, 'log_usage', Mock())
     assert await workflow.search_one_source(Mock(), 'An unrelated topic', 'National Review') == ('National Review', None)
+
+
+@pytest.mark.asyncio
+async def test_broad_topic_uses_publisher_title_hints_without_counting_metadata(monkeypatch):
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'publisher_article_hints', AsyncMock(return_value=[
+        {'title': 'A committee vote explained', 'url': 'https://www.nationalreview.com/2026/10/a-vote/'},
+    ]))
+    paid = AsyncMock(return_value=response())
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    _, evidence = await workflow.search_one_source(Mock(), 'Public policy committee decision', 'National Review')
+    assert PASSAGE in evidence
+    assert 'site:nationalreview.com A committee vote explained' in paid.await_args.kwargs['messages'][0]['content']
+    paid.return_value = Obj(content=[Obj(type='text', text='A committee vote explained')])
+    assert await workflow.search_one_source(Mock(), 'Public policy committee decision', 'National Review') == ('National Review', None)

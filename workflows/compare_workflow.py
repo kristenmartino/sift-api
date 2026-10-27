@@ -15,7 +15,7 @@ from services.cost_guard import budget_snapshot
 from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scope, message_bound
 from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
-from services.compare_coverage import indexed_coverage
+from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_excerpts
 
 logger = logging.getLogger("sift-api.compare")
@@ -167,10 +167,15 @@ async def search_one_source(
     article_hint = (f"\nA matching indexed article is {stored['title']} at {stored['url']}. "
                     "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
     domains = publisher_domains(source)
+    hints = await publisher_article_hints(topic) if not stored and domains else []
+    if hints:
+        article_hint += ('\nPossible publisher articles (discovery hints only; verify the subject and timing):\n'
+                         + '\n'.join(f"{h['title']} at {h['url']}" for h in hints)
+                         + '\nDo not treat a suggested title or URL as reporting.\n')
     search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
     if domains:
         search_tool['allowed_domains'] = list(domains)
-    target = stored['title'] if stored else topic
+    target = stored['title'] if stored else hints[0]['title'] if hints else topic
     query = f'site:{domains[0]} {target}' if domains else f'{source} {target}'
     try:
         response = await asyncio.wait_for(
