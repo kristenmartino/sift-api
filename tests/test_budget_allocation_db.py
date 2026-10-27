@@ -106,6 +106,7 @@ async def test_zero_background_allocation_and_unreadable_policy_fail_closed(budg
 
 @pytest.mark.asyncio
 async def test_five_outlet_compare_reuses_capacity_when_only_80_cents_remain(budget_db, monkeypatch):
+    from contextlib import asynccontextmanager
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, Mock
     from workflows import compare_workflow as workflow
@@ -123,10 +124,14 @@ async def test_five_outlet_compare_reuses_capacity_when_only_80_cents_remain(bud
             SimpleNamespace(type="text", text="The outlet reports the event."),
             SimpleNamespace(type="server_tool_use", name="web_search"),
         ])
-    client = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=create)))
+    @asynccontextmanager
+    async def stream(**_):
+        yield SimpleNamespace(get_final_message=AsyncMock(side_effect=create))
+    client = SimpleNamespace(messages=SimpleNamespace(stream=stream))
     client.with_options = Mock(return_value=client)
     monkeypatch.setattr(workflow.anthropic, "AsyncAnthropic", lambda **_: client)
     monkeypatch.setattr(workflow, "load_allowed_sources", AsyncMock(return_value={"a", "b", "c", "d", "e"}))
+    monkeypatch.setattr(workflow, "indexed_coverage", AsyncMock(return_value=None))
     token = budget_scope.set("compare")
     try:
         assert await workflow.compare_search_parallelism(5) == 1
