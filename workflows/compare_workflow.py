@@ -18,7 +18,7 @@ from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts
-from services.compare_syndication import PARTNER_DOMAIN, reuters_partner_excerpts
+from services.compare_syndication import PARTNER_DOMAIN, reuters_partner_excerpts, reuters_archive_candidates
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -186,12 +186,32 @@ async def search_one_source(
                 article_hint += ('\nContext from a different publisher to identify the requested event only. '
                                  'This is NOT evidence from the selected outlet; never borrow its facts or quotes:\n'
                                  + context + '\n')
-    hints = await publisher_article_hints(topic) if not stored and domains else []
-    if hints:
+    reuters = search_domains == ('reuters.com',)
+    archive_hints = await reuters_archive_candidates(topic) if reuters and not stored else []
+    hints = archive_hints or (await publisher_article_hints(topic) if not stored and domains else [])
+    originals_only = bool(archive_hints)
+    if hints and not archive_hints:
         descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source)
         for hint in hints:
             if hint['url'] in descriptions:
                 hint['excerpt'] = descriptions[hint['url']]
+    verified = [h for h in hints if h.get('excerpt')]
+    if verified and not originals_only and settings.ai_cost_guard_enabled:
+        try:
+            budget = await budget_snapshot()
+            ceiling = budget['daily_limit_usd']
+            if budget_scope.get() != 'compare':
+                ceiling *= 1 - budget['compare_share']
+            bound = message_bound({'model': resolve(SEARCH_OPERATION).model, 'max_tokens': 2048,
+                'messages': [], 'tools': [{'name': 'web_search', 'max_uses': 1}]})
+            if budget['enabled'] and ceiling > 0 and ceiling - budget['spent_usd'] - budget['held_usd'] < bound:
+                # Available originals can still be assessed within the cap.
+                # Unretrieved metadata cannot become a candidate in this mode.
+                hints = verified
+                originals_only = True
+        except Exception as exc:
+            logger.info('compare candidate budget preflight unavailable (%s); retaining atomic admission', type(exc).__name__)
+    if hints:
         article_hint += ('\nPossible publisher articles (discovery hints only; verify the subject and timing):\n'
                          + '\n'.join(f"Candidate {i}: {h['title']} at {h['url']}\n{h.get('excerpt', '')}" for i, h in enumerate(hints))
                          + '\nDo not treat a suggested title or URL as reporting.\n')
@@ -200,7 +220,7 @@ async def search_one_source(
             'the requested subject and timing, its excerpt can supply limited reporting or an attributed '
             'opinion even when the page is blocked. Do not select a merely related event or passing reference. '
             'Confirm selection with a standalone line SELECTED_STORED_CANDIDATE=N using its candidate number. '
-            'Never select a candidate without an excerpt. You may search once if needed.\n'
+            'Never select a candidate without an excerpt.\n'
         )
     search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
     if domains:
@@ -215,7 +235,6 @@ async def search_one_source(
                              "rather than an older policy announcement. "
                              "The requested topic may be another outlet's headline: do not require the selected "
                              "publisher to use the same headline or viewpoint.\n")
-    reuters = search_domains == ('reuters.com',)
     if reuters and not stored:
         # Broad requests often put several competing options after a colon.
         # AND-ing all of them excludes reporting that uses different terms.
@@ -236,16 +255,33 @@ async def search_one_source(
             'may be useful; keep its publication date and do not present it as a new event. '
             'For a specific event, require the same event and timing.\n'
         )
+    call_tools = {'tools': [search_tool]}
+    selection_prompt = None
+    if originals_only:
+        # Public retrieval already supplied verified originals. Reuse the
+        # search-stage call solely for relevance selection, without reserving
+        # or billing a web-tool round trip that is not needed.
+        call_tools = {}
+        query_instruction = (
+            f'Assess the verified {source} original excerpts above against the full requested topic. '
+            'Select a candidate only if it substantively covers the same subject and, for a specific '
+            'event, the same event/action and timing. Related background or shared keywords alone '
+            'do not match a specific event. For broad ongoing issues, older reporting within the '
+            'provided date window may be relevant; never imply it reports a new event. '
+            f'Return only SELECTED_STORED_CANDIDATE=N, or No relevant coverage found from {source}. '
+            'Do not search, infer missing facts or use outside knowledge.\n'
+        )
+        selection_prompt = f'Requested topic: {json.dumps(topic)}\n{article_hint}\n{query_instruction}'
     try:
         response = await asyncio.wait_for(
             budgeted_message(client, SEARCH_OPERATION,
                 stream_response=True,
                 model=resolve(SEARCH_OPERATION).model,
                 max_tokens=2048,
-                tools=[search_tool],
+                **call_tools,
                 messages=[{
                     "role": "user",
-                    "content": (
+                    "content": selection_prompt or (
                         f'Search for recent news coverage from {source} about: "{topic}"\n\n'
                         f"{article_hint}"
                         f"{query_instruction}"

@@ -14,6 +14,11 @@ QUOTE = 'The fund would pay only a portion of scheduled benefits after reserves 
 NOW = datetime(2026, 10, 27, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def archive_miss(monkeypatch):
+    monkeypatch.setattr(workflow, 'reuters_archive_candidates', AsyncMock(return_value=[]))
+
+
 def html(*, author='Reuters', body=QUOTE, visible=QUOTE, url=URL, stamp='2026-06-09T12:32:00-06:00'):
     schema = {'@type': 'NewsArticle', 'author': [{'name': author}], 'url': url,
               'datePublished': stamp, 'headline': 'A funding report', 'articleBody': body}
