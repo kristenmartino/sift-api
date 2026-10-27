@@ -18,7 +18,7 @@ from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts
-from services.compare_syndication import PARTNER_DOMAIN, reuters_partner_excerpts, reuters_archive_candidates
+from services.compare_syndication import PARTNER_DOMAINS, reuters_partner_excerpts, reuters_archive_candidates
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -245,9 +245,9 @@ async def search_one_source(
         query_instruction = (
             f'Use exactly one targeted search query: Reuters {subject}\n'
             'Do not restrict the query to reuters.com: it would exclude Reuters republications. '
-            f'Only reuters.com and verified Reuters-byline articles at {PARTNER_DOMAIN} can supply evidence. '
+            f'Only reuters.com and verified Reuters-byline articles at {PARTNER_DOMAINS} can supply evidence. '
             'Search results from other hosts cannot supply Reuters claims. '
-            'Reuters reporting can be republished by KSL with a Reuters article byline. '
+            'Reuters reporting can be republished by KSL or WTVB with a Reuters article byline. '
             'Cite the actual Reuters-authored article passages; a Reuters photo credit or a mention of '
             'Reuters in another writer\'s article is not Reuters reporting. The topic may be editorial: '
             'do not require the selected publisher to use the same headline or viewpoint. '

@@ -487,3 +487,19 @@ grounding guard rejects an unqualified numerical result when its quotation is
 inside an explicitly attributed estimate/forecast sentence, including when the
 quotation trims away that sentence's prefix. Actual measurements in adjacent
 sentences remain usable. This narrow check does not replace semantic review.
+
+When KSL discovery returns no verified originals, Compare checks WTVB's public
+monthly sitemaps advertised in its robots.txt. This fallback has one shared
+five-second deadline, at most 13 month maps and three article reads, and a
+2 MB limit per response. Only parsed URL metadata is cached on demand for
+five minutes (13 entries); there are no background or database polls.
+Sitemap URLs and titles only rank candidates. Each accepted public page must
+match its canonical URL, a current publication date and visible headline,
+carry both a structured Thomson Reuters author and visible Reuters byline,
+and contain substantive visible article text with a Reuters dateline.
+Related stories, hidden content, scripts and photo credits cannot supply text.
+The original complete topic still needs semantic event/timing selection through
+the existing budgeted call. Cited WTVB passages in the paid-search fallback
+require the same public-page checks and exact supporting text. This adds no
+paid stage, changes no budget policy and does not access the partner's gated
+site-search form.

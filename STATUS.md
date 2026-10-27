@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 four-topic Reuters recovery: when KSL has no verified originals, discover WTVB's public Reuters republications from its advertised monthly sitemaps. Require canonical URL, explicit schema and visible Reuters bylines, date and visible article body; metadata is never claim evidence. Bound discovery to five seconds, 13 cached month maps and three article reads. Reuse the existing budgeted event/timing selection; no search CAPTCHA, extra paid stage, cap, outlet-limit or frontend change.
+
 2026-10-27 Reuters live headline follow-up: remove only a trailing issuer possessive from IPO discovery queries. Literal apostrophe suffixes narrowed the public archive candidate set for another outlet's headline; preserve internal apostrophes and full event/timing selection. No additional requests, paid stages, budget or design changes.
 
 2026-10-27 live Reuters estimate repair: preserve forecast/estimate attribution and reject numerical certainty reversals even when supporting quotes trim the original sentence prefix. Retain adjacent actual measurements and existing source/claim limits; no added model call or frontend change.
