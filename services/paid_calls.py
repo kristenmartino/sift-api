@@ -70,7 +70,12 @@ async def budgeted_message(client, operation: str, *, stream_response: bool = Fa
     async def create_response(provider):
         if stream_response:
             async with provider.messages.stream(**params) as stream:
-                return await stream.get_final_message()
+                response = await stream.get_final_message()
+                headers = getattr(getattr(stream, 'response', None), 'headers', {})
+                request_id = headers.get('request-id') if hasattr(headers, 'get') else None
+                if isinstance(request_id, str):
+                    object.__setattr__(response, '_request_id', request_id)
+                return response
         return await provider.messages.create(**params)
 
     if not settings.ai_cost_guard_enabled:

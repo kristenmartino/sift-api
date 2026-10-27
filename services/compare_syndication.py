@@ -119,6 +119,13 @@ def _archive_query(topic: str) -> str:
     # Use the subject for discovery; the selection call sees the full title.
     if re.match(r'^(?:the|an?)\b', subject, re.I) and re.search(r'\bof\b', subject, re.I):
         subject = re.split(r'\bof\b', subject, flags=re.I)[-1]
+    ipo = re.search(r'\b(?:IPO|initial public offering)\b', subject, re.I)
+    if ipo:
+        company = re.split(r'\b(?:files?|filed|filing|plans?|prepares?|for|as)\b', subject[:ipo.start()], flags=re.I)[0]
+        company = re.sub(r'^(?:the|an?)\s+', '', company.strip(), flags=re.I)
+        words = re.findall(r"[\w'-]+", company)[:6]
+        if words:
+            return ' '.join(words) + ' IPO'
     words = re.findall(r"[\w'-]+", subject)[:12]
     while len(words) > 2 and words[-1].casefold() in {'reform', 'debate', 'analysis', 'explained'}:
         words.pop()
@@ -202,6 +209,7 @@ async def reuters_archive_candidates(topic: str) -> list[dict]:
     query = _archive_query(topic)
     if not query:
         return []
+    completed = {}
     try:
         async with asyncio.timeout(ARCHIVE_TIMEOUT):
             async with httpx.AsyncClient(timeout=ARCHIVE_TIMEOUT, follow_redirects=False) as client:
@@ -211,13 +219,27 @@ async def reuters_archive_candidates(topic: str) -> list[dict]:
                     return []
                 now = datetime.now(timezone.utc)
                 urls = _archive_candidates(data, now)
-                pages = await asyncio.gather(*(_public_bytes(client, u, 'text/html') for u in urls), return_exceptions=True)
-                candidates = [_archive_reporting(page, url, now) for url, page in zip(urls, pages, strict=True)
-                              if isinstance(page, bytes)]
-                return [c for c in candidates if c]
+
+                async def verify_one(index, url):
+                    try:
+                        page = await _public_bytes(client, url, 'text/html')
+                        candidate = _archive_reporting(page, url, now) if page else None
+                        if candidate:
+                            completed[index] = candidate
+                    except Exception as exc:
+                        logger.info('compare Reuters candidate rejected (%s)', type(exc).__name__)
+
+                tasks = [asyncio.create_task(verify_one(i, url)) for i, url in enumerate(urls)]
+                try:
+                    await asyncio.gather(*tasks)
+                finally:
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
     except Exception as exc:
-        logger.info('compare Reuters archive unavailable (%s); using existing search', type(exc).__name__)
-        return []
+        logger.info('compare Reuters archive ended (%s), retaining %d verified candidates', type(exc).__name__, len(completed))
+    return [completed[i] for i in sorted(completed)]
 
 
 async def reuters_partner_excerpts(response) -> str | None:

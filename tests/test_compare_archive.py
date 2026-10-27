@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace as Obj
@@ -30,6 +31,10 @@ def candidate(i=123, title='A funding report', **kw):
     ('Social Security reform: benefit cuts versus tax increases', 'Social Security'),
     ('The Hidden Dividend of Social Security Reform', 'Social Security'),
     ('Colorado preschool Supreme Court case', 'Colorado preschool Supreme Court case'),
+    ('Anthropic files for initial public offering', 'Anthropic IPO'),
+    ('Anthropic files for IPO as AI company prepares for public markets', 'Anthropic IPO'),
+    ('Example Systems plans an initial public offering', 'Example Systems IPO'),
+    ('The governance of Example Systems IPO', 'Example Systems IPO'),
     ('', ''),
 ])
 def test_archive_uses_subject_without_publisher_keyword_or_requiring_editorial_wording(topic, query):
@@ -97,6 +102,34 @@ async def test_public_archive_discovery_verifies_body_before_returning_candidate
     found = await archive.reuters_archive_candidates('Social Security reform: benefit cuts versus tax increases')
     assert bool(found) is (outcome == 'verified')
     assert len(calls) <= 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', ['malformed', 'slow'])
+async def test_one_bad_page_cannot_discard_an_already_verified_original(monkeypatch, failure):
+    cancelled = []
+
+    async def serve(request):
+        if request.url.path == '/search/api':
+            return httpx.Response(200, json={'news': [candidate(), candidate(124, 'Another article')]})
+        if str(request.url) == URL:
+            return httpx.Response(200, content=page(), headers={'content-type': 'text/html'})
+        if failure == 'malformed':
+            return httpx.Response(200, content=b'\xff', headers={'content-type': 'text/html'})
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+        raise AssertionError('Slow page must be cancelled at the shared deadline')
+
+    actual = httpx.AsyncClient
+    monkeypatch.setattr(archive.httpx, 'AsyncClient', lambda **kwargs:
+        actual(**kwargs, transport=httpx.MockTransport(serve)))
+    monkeypatch.setattr(archive, 'ARCHIVE_TIMEOUT', 0.05)
+    found = await archive.reuters_archive_candidates('A funding report')
+    assert len(found) == 1 and found[0]['url'] == URL
+    assert bool(cancelled) is (failure == 'slow')
 
 
 @pytest.mark.asyncio
