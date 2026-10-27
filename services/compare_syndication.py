@@ -185,6 +185,7 @@ def _archive_reporting(data: bytes, url: str, now: datetime) -> dict | None:
         # Reuse the same authorship, date, URL and visible-body verification.
         # Archive descriptions, sponsorship copy and photo credits add nothing.
         if _verified_passages(data, url, [body], now):
+            body = ''.join(c for c in body if unicodedata.category(c) != 'Cf')
             excerpt = (f'Retrieved publisher excerpts (may be incomplete).\nPublisher: Reuters\n'
                        f'Republished by: KSL\nHeadline: {title}\nOriginal: {url}\n'
                        f'Published: {article["datePublished"]}\nExcerpt:\n{body[:4000]}')

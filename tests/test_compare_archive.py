@@ -14,9 +14,9 @@ URL = 'https://www.ksl.com/article/123/a-funding-report'
 BODY = 'The trustees reported a funding shortfall that could reduce scheduled retirement benefits in coming years.'
 
 
-def page(author='Reuters', visible=BODY):
+def page(author='Reuters', visible=BODY, body=BODY):
     data = {'@type': 'NewsArticle', 'author': [{'name': author}], 'url': URL,
-            'headline': 'A funding report', 'datePublished': '2026-06-09T12:00:00+00:00', 'articleBody': BODY}
+            'headline': 'A funding report', 'datePublished': '2026-06-09T12:00:00+00:00', 'articleBody': body}
     return (f'<script type="application/ld+json">{json.dumps(data)}</script>'
             f'<article id="kslMainArticle"><p>{visible}</p></article>').encode()
 
@@ -64,6 +64,12 @@ def test_named_reuters_byline_and_entire_visible_body_are_verified(author):
 
 def test_photo_credits_and_archive_descriptions_never_become_reuters_reporting():
     assert archive._archive_reporting(page('KSL staff; photo by Reuters'), URL, NOW) is None
+
+
+def test_invisible_formatting_cannot_break_later_claim_quote_matching():
+    body = BODY.replace('funding', 'f\u200bunding')
+    result = archive._archive_reporting(page(body=body, visible=body), URL, NOW)
+    assert result['excerpt'].endswith(BODY)
 
 
 @pytest.mark.asyncio
