@@ -17,6 +17,8 @@ logger = logging.getLogger('sift-api.compare')
 # Only publishers exercised against normal public HTTP responses.
 _HOSTS = {'cbs news': 'cbsnews.com', 'wired': 'wired.com'}
 MAX_BYTES = 2_000_000
+# Advertised publisher archive, verified through its article topic links.
+_WIRED_ARCHIVES = {'data brokers': 'https://www.wired.com/tag/data-brokers/'}
 
 
 class _Page(HTMLParser):
@@ -161,11 +163,14 @@ async def public_article_candidates(topic: str, source: str) -> list[dict]:
     words = re.findall(r'[\w-]+', subject)[:6]
     if len(words) < 2:
         words = re.findall(r'[\w-]+', topic)[:6]
+    archive = next((url for phrase, url in _WIRED_ARCHIVES.items()
+                    if re.search(r'\b' + re.escape(phrase) + r'\b', topic, re.I)), None)
+    discovery_url = archive or 'https://www.wired.com/search/?q=' + quote(' '.join(words))
     candidates = []
     try:
         async with asyncio.timeout(5):
             async with httpx.AsyncClient(timeout=3, follow_redirects=False) as client:
-                html = await _get(client, 'https://www.wired.com/search/?q=' + quote(' '.join(words)))
+                html = await _get(client, discovery_url)
                 if not html:
                     return []
                 paths = list(dict.fromkeys(re.findall(r'/story/[a-z0-9-]+/', html)))[:2]

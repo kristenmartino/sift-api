@@ -279,6 +279,29 @@ async def search_one_source(
             f'Return only SELECTED_STORED_CANDIDATE=N, or No relevant coverage found from {source}. '
             'Do not search, infer missing facts or use outside knowledge.\n'
         )
+        if public_candidates:
+            query_instruction = (
+                f'Assess only the verified {source} originals against the full requested topic. '
+                'Do not search or use outside knowledge. '
+                'For a broad explanatory topic, a concrete case study can match when the supplied '
+                'reporting explicitly documents the mechanism or practice named in the request. '
+                'The article need not be a general overview or make that mechanism its headline or '
+                'primary focus. A product example that explicitly demonstrates the requested practice '
+                'can contribute on that narrow point. Judge the practice actually described rather than '
+                'requiring the publisher to use the headline terminology. For example, a company generating '
+                'AI characterizations or personal judgments from assembled records is a concrete example '
+                'of inference about people; a guide to opting out of record collection alone is not. '
+                'Shared keywords or inferred connections still '
+                'do not qualify, and a specific event still requires the same event/action and timing. '
+                'Before selecting, locate a verbatim self-contained passage of 6-60 words explicitly '
+                'supporting the requested subject. Prefer a short quotation; longer contiguous passages up to '
+                '300 words are accepted when needed for context. If none exists, return no relevant coverage. '
+                'For a match, return exactly two lines: SELECTED_STORED_CANDIDATE=N and '
+                'SUPPORTING_PASSAGE=the verbatim passage. Copy ONE CONTIGUOUS substring from the '
+                'article body after Excerpt, with its original words and punctuation. Never stitch '
+                'separate passages, insert ellipses, paraphrase, or add surrounding quotation marks. '
+                f'Otherwise return No relevant coverage found from {source}. Do not add reasoning.\n'
+            )
         selection_prompt = f'Requested topic: {json.dumps(topic)}\n{article_hint}\n{query_instruction}'
     request_messages = [{"role": "user", "content": selection_prompt or (
         f'Retrieve coverage from {source} about: {json.dumps(topic)}\n{article_hint}\n{query_instruction}'
@@ -291,7 +314,7 @@ async def search_one_source(
         f'If no relevant publisher reporting is accessible, return No relevant coverage found from {source}.') }]
     max_output = 2048
     if originals_only:
-        max_output = 128
+        max_output = 1024
     elif settings.ai_cost_guard_enabled:
         try:
             budget = await budget_snapshot()
@@ -336,10 +359,24 @@ async def search_one_source(
         if not result:
             return (source, None)
 
+        if originals_only:
+            stop = getattr(response, 'stop_reason', None)
+            logger.info('compare relevance selection: source=%s stop=%s', source, stop)
+            if stop == 'max_tokens':
+                return source, None
+
         selected = re.search(r'^`{0,3}SELECTED_STORED_CANDIDATE=(\d+)`{0,3}\s*$', result, re.M)
         if hints and selected and source_found_coverage(result):
             index = int(selected[1])
             if index < len(hints) and hints[index].get('excerpt'):
+                if public_candidates:
+                    passage = re.search(r'^SUPPORTING_PASSAGE=(.+)$', result, re.M)
+                    quote = passage[1].strip().strip('\"“”') if passage else ''
+                    body = hints[index]['excerpt'].partition('\nExcerpt:\n')[2]
+                    if (not 6 <= len(quote.split()) <= 300
+                            or normalize_evidence_text(quote) not in normalize_evidence_text(body)):
+                        logger.info('compare relevance selection: source=%s missing original support', source)
+                        return source, None
                 logger.info('search_sources: verified original publisher candidate for %s (%s)', source, hints[index]['url'])
                 return source, hints[index]['excerpt']
 
@@ -470,6 +507,7 @@ Your task:
 Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts or explicitly attributed opinions present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
+For a concrete case study, scope the claim to that named example rather than generalizing to an entire industry. Resolve relative publication times from the provided publication date; do not present an older launch as happening today.
 Preserve attribution, uncertainty, timing and scope: an economist's estimate is not an official result; a forecast is not a released measurement; an allegation is not an established act. Retain words such as estimated, forecast, expected, could, only, remaining and up to when they qualify the proposition. Include the qualifier in both the supporting quotation and the claim; never trim it away to make a stronger statement.
 First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
 An article's headline may establish the topic of its excerpt, but cannot supply evidence for a claim. An editorial view about the underlying issue is a relevant contribution even when its excerpt does not repeat the event name. Retain it as that outlet's view without inferring a stance on specific policy details.
