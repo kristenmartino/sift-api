@@ -468,3 +468,11 @@ Atomic per-call admission and extraction accounting still apply. Budget
 reservation logs now include the hold ID, operation, scope and terminal outcome
 so future interrupted calls can be audited. Unknown costs are never released
 solely because a reservation is old or a worker restarted.
+
+Archive queries normalize "initial public offering" and IPO filing headlines
+to the company's IPO subject; the full original topic still controls semantic
+selection. Candidate fetches and parsing fail independently, retaining already
+verified originals when another page is malformed or reaches the shared
+deadline. This keeps the same single archive query, three-page bound and
+three-second deadline. Streamed calls capture the provider request ID from the
+response header so their reservation/settlement logs remain traceable.

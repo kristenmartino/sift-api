@@ -110,7 +110,8 @@ async def test_missing_usage_retains_hold(guarded):
 @pytest.mark.asyncio
 async def test_streamed_search_reserves_before_provider_and_settles_final_usage(guarded):
     client, response, reserve, persist, _ = guarded
-    stream = SimpleNamespace(get_final_message=AsyncMock(return_value=response))
+    stream = SimpleNamespace(get_final_message=AsyncMock(return_value=response),
+                             response=SimpleNamespace(headers={'request-id': 'req-stream-receipt'}))
     context = AsyncMock()
     context.__aenter__.return_value = stream
     def start(**params):
@@ -120,6 +121,7 @@ async def test_streamed_search_reserves_before_provider_and_settles_final_usage(
     client.messages.stream = Mock(side_effect=start)
     result = await paid_calls.budgeted_message(client, 'compare.search_sources', stream_response=True, **PARAMS)
     assert result is response
+    assert result._request_id == 'req-stream-receipt'
     persist.assert_awaited_once()
     client.messages.create.assert_not_awaited()
 

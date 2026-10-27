@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 Reuters topic audit: normalize IPO discovery wording, retain verified originals across unrelated page failures and shared-deadline expiry, and capture streamed provider request IDs for reservation settlement audits. Keep topic/event verification, author/body checks, public-fetch bounds, five-outlet limit, cap and frontend unchanged.
+
 2026-10-27 Reuters discovery and reservation audit: discover verified Reuters originals through KSL's public archive, then reuse the existing paid stage for semantic relevance selection without a web tool. When the web reservation cannot fit, assess available verified indexed originals and exclude metadata-only hints. Keep unknown historical costs reserved; log future hold IDs and outcomes for reconciliation. No cap, five-outlet limit or frontend changes.
 
 2026-10-27 Reuters republications: allow cited KSL passages only after verifying the exact public article, explicit Reuters byline, date and visible body. Search broad subjects without requiring every reform option in the query. Preserve exact-event relevance, fail closed on access/verification failures, and keep the single paid search, five-outlet maximum, daily cap and frontend unchanged.

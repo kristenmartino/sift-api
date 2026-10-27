@@ -321,7 +321,7 @@ async def search_one_source(
         if hints and selected and source_found_coverage(result):
             index = int(selected[1])
             if index < len(hints) and hints[index].get('excerpt'):
-                logger.info('search_sources: verified original publisher candidate for %s', source)
+                logger.info('search_sources: verified original publisher candidate for %s (%s)', source, hints[index]['url'])
                 return source, hints[index]['excerpt']
 
         if search_domains:
