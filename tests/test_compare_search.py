@@ -120,3 +120,24 @@ async def test_broad_topic_uses_publisher_title_hints_without_counting_metadata(
     assert 'site:nationalreview.com A committee vote explained' in paid.await_args.kwargs['messages'][0]['content']
     paid.return_value = Obj(content=[Obj(type='text', text='A committee vote explained')])
     assert await workflow.search_one_source(Mock(), 'Public policy committee decision', 'National Review') == ('National Review', None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('reply', 'has_excerpt', 'accepted'), [
+    ('SELECTED_STORED_CANDIDATE=0', True, True),
+    ('A title looks relevant.', True, False),
+    ('SELECTED_STORED_CANDIDATE=2', True, False),
+    ('SELECTED_STORED_CANDIDATE=0', False, False),
+    ('SELECTED_STORED_CANDIDATE=0\nNo relevant coverage found from National Review.', True, False),
+])
+async def test_stored_discovery_excerpt_requires_explicit_relevance_selection(monkeypatch, reply, has_excerpt, accepted):
+    original = 'Stored publisher excerpt (may be incomplete).\nExcerpt:\n' + PASSAGE
+    hint = {'title': 'A committee vote explained', 'url': 'https://www.nationalreview.com/a-vote'}
+    if has_excerpt:
+        hint['excerpt'] = original
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'publisher_article_hints', AsyncMock(return_value=[hint]))
+    monkeypatch.setattr(workflow, 'budgeted_message', AsyncMock(return_value=Obj(content=[Obj(type='text', text=reply)])))
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    _, evidence = await workflow.search_one_source(Mock(), 'Public policy committee decision', 'National Review')
+    assert evidence == (original if accepted else None)

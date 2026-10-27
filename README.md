@@ -396,3 +396,7 @@ They never count as retrieved reporting or change story membership. The same
 single budgeted publisher search must return relevant cited passages.
 Extraction selects supporting passages before writing claims and includes each
 outlet's supported perspective where possible; unsupported claims stay excluded.
+Discovery candidates may include reviewed original publisher excerpts. The
+existing budgeted search can explicitly confirm a candidate's topic relevance
+and return that original excerpt when a page/index supplies no usable text.
+Unselected candidates, title-only hints and held copy never count as evidence.

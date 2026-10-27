@@ -75,7 +75,8 @@ LIMIT 8
 # publisher titles. Never return generated summaries or credit a loose match
 # as coverage. The budgeted publisher search still verifies relevance/evidence.
 PUBLISHER_HINTS_SQL = """
-SELECT title, source_url,
+SELECT title, source_url, published_date, generation_status,
+       summary IS NOT NULL AS reviewed, generation_raw_content,
        ts_rank_cd(to_tsvector('english', COALESCE(title, '')),
                   websearch_to_tsquery('english', $1)) AS title_rank
 FROM articles
@@ -100,8 +101,19 @@ async def publisher_article_hints(topic: str) -> list[dict[str, str]]:
             pool = await get_pool()
             rows = await pool.fetch(PUBLISHER_HINTS_SQL, ' OR '.join(words), timeout=INDEXED_LOOKUP_TIMEOUT)
         best = float(rows[0]['title_rank']) if rows else 0
-        return [{'title': r['title'], 'url': r['source_url']} for r in rows
-                if float(r['title_rank']) >= best / 2]
+        hints = []
+        for row in rows:
+            if float(row['title_rank']) < best / 2:
+                continue
+            hint = {'title': row['title'], 'url': row['source_url']}
+            body = unescape(re.sub(r'<[^>]*>', ' ', row['generation_raw_content'] or ''))
+            body = re.sub(r'\s+', ' ', body).strip()
+            if row['generation_status'] == 'complete' and row['reviewed'] and _has_publisher_reporting(body, row['title']):
+                hint['excerpt'] = (f"Stored publisher excerpt (may be incomplete).\nHeadline: {row['title']}\n"
+                                   f"Original: {row['source_url']}\nPublished: {row['published_date'].isoformat()}\n"
+                                   f"Excerpt:\n{body[:12000]}")
+            hints.append(hint)
+        return hints
     except Exception as exc:
         logger.warning('compare publisher discovery unavailable (%s); using topic search', type(exc).__name__)
         return []
