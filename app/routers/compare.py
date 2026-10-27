@@ -17,6 +17,7 @@ from app.models import CompareRequest, CompareResponse
 from services.cost_estimates import estimate_cost
 from services.cost_guard import check_budget, budget_snapshot
 from services.paid_calls import BudgetUnavailable, budget_scope
+from services.compare_cache import get_comparison, store_comparison
 from services.daily_compare import refresh_daily_example
 from workflows.compare_workflow import (
     CompareState,
@@ -67,6 +68,11 @@ async def compare_sources(
 
     if len(body.sources) > 5:
         raise HTTPException(status_code=400, detail="Maximum 5 sources allowed")
+
+    cached = get_comparison(body.topic, body.sources)
+    if cached:
+        logger.info("compare completed-result cache hit")
+        return CompareResponse(**cached)
 
     # Reader comparisons can use the protected share and unused background
     # headroom. Each provider call also obtains an atomic shared reservation.
@@ -161,7 +167,7 @@ async def compare_sources(
             },
         )
 
-    return CompareResponse(
+    response = CompareResponse(
         topic=sanitized_topic,
         comparison=comparison,
         sources_checked=provenance["sources_analyzed"],
@@ -169,6 +175,9 @@ async def compare_sources(
         duration_ms=duration_ms,
         **provenance,
     )
+    if not result.get("capacity_limited"):
+        store_comparison(body.topic, body.sources, response.model_dump())
+    return response
 
 
 def _sse(event: str, data: dict) -> str:
@@ -200,6 +209,12 @@ async def compare_sources_stream(
 
     if len(body.sources) > 5:
         raise HTTPException(status_code=400, detail="Maximum 5 sources allowed")
+
+    cached = get_comparison(body.topic, body.sources)
+    if cached:
+        logger.info("compare completed-result cache hit")
+        return StreamingResponse(iter([_sse("results", cached)]), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     # Same fail-closed budget pre-check as the JSON endpoint. Raising here
     # (before the stream opens) lets the proxy surface a normal HTTP error.
@@ -264,20 +279,31 @@ async def compare_sources_stream(
                 gate = asyncio.Semaphore(await compare_search_parallelism(len(sources)))
                 async def search(source):
                     async with gate:
-                        return await search_one_source(client, sanitized_topic, source)
+                        try:
+                            return await search_one_source(client, sanitized_topic, source)
+                        except BudgetUnavailable as exc:
+                            if exc.code != "AI_BUDGET_EXCEEDED":
+                                raise
+                            return source, exc
                 tasks = [
                     asyncio.create_task(search(s))
                     for s in sources
                 ]
                 search_results: dict[str, str] = {}
+                capacity_errors = []
                 for finished in asyncio.as_completed(tasks):
                     source, text = await finished
+                    if isinstance(text, BudgetUnavailable):
+                        capacity_errors.append(text)
+                        text = None
                     found = source_found_coverage(text)
                     if found and text:
                         search_results[source] = text
                     yield _sse("source-done", {"source": source, "found": found})
 
                 if not search_results:
+                    if capacity_errors:
+                        raise capacity_errors[0]
                     yield _sse(
                         "error",
                         {
@@ -316,17 +342,17 @@ async def compare_sources_stream(
                     )
                     return
 
-                yield _sse(
-                    "results",
-                    {
-                        "topic": sanitized_topic,
-                        "comparison": comparison,
-                        "sources_checked": comparison_provenance(state)["sources_analyzed"],
-                        **comparison_provenance(state),
-                        "claims": claims,
-                        "duration_ms": int((time.time() - start) * 1000),
-                    },
-                )
+                payload = {
+                    "topic": sanitized_topic,
+                    "comparison": comparison,
+                    "sources_checked": comparison_provenance(state)["sources_analyzed"],
+                    **comparison_provenance(state),
+                    "claims": claims,
+                    "duration_ms": int((time.time() - start) * 1000),
+                }
+                if not capacity_errors:
+                    store_comparison(body.topic, body.sources, payload)
+                yield _sse("results", payload)
         except BudgetUnavailable as e:
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)

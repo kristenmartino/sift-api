@@ -39,7 +39,12 @@ def message_bound(params: dict, *, batch: bool = False) -> float:
             return float("inf")
         searches += int(tool["max_uses"])
     if searches:
-        inputs = max(inputs, 200_000) * (searches + 1)
+        # Before the first tool call the input is the supplied prompt, already
+        # bounded above. Only subsequent passes can include unknown search
+        # results. Reserve a full context for EACH such pass, including the
+        # original prompt again; do not reserve an imaginary initial 200k.
+        # https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool
+        inputs += max(inputs, 200_000) * searches
         outputs *= searches + 1
     return (
         (inputs * max(prices.input_per_m, prices.cache_write_per_m) + outputs * prices.output_per_m)

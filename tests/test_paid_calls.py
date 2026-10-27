@@ -14,7 +14,9 @@ PARAMS = {"model": "claude-haiku-4-5", "max_tokens": 2048, "messages": [{"role":
 def test_bounds_include_tool_iterations_and_batch_discount():
     plain = paid_calls.message_bound(PARAMS)
     search = paid_calls.message_bound({**PARAMS, "tools": [{"name": "web_search", "max_uses": 1}]})
-    assert search > 0.5
+    assert 0.28 < search < 0.30
+    # One known initial prompt, then one full 200k search-result context.
+    assert search == pytest.approx(plain + 200_000 * 1.25 / 1_000_000 + 2048 * 5 / 1_000_000 + 0.01)
     assert search * 5 + plain < 3  # Five outlet searches still fit the $3 reserve.
     assert paid_calls.message_bound(PARAMS, batch=True) == plain / 2
     assert paid_calls.message_bound({**PARAMS, "model": "unknown"}) == float("inf")

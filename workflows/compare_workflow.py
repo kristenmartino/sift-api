@@ -107,6 +107,7 @@ class CompareState(TypedDict):
     comparison: str
     errors: list[str]
     analyzed_sources: NotRequired[list[str]]
+    capacity_limited: NotRequired[bool]
 
 
 def comparison_provenance(state: CompareState) -> dict:
@@ -383,10 +384,14 @@ async def search_sources_node(state: CompareState) -> dict:
 
     search_results: dict[str, str] = {}
     errors: list[str] = list(state.get("errors", []))
+    capacity_errors = []
 
     for result in results:
         if isinstance(result, BudgetUnavailable):
-            raise result
+            if result.code != "AI_BUDGET_EXCEEDED":
+                raise result
+            capacity_errors.append(result)
+            continue
         if isinstance(result, Exception):
             errors.append(f"search: {result}")
             continue
@@ -396,13 +401,17 @@ async def search_sources_node(state: CompareState) -> dict:
         else:
             errors.append(f"No coverage found from {source_name}")
 
+    if capacity_errors and not search_results:
+        raise capacity_errors[0]
+
     logger.info(
         "search_sources: got results from %d/%d sources",
         len(search_results),
         len(sources),
     )
 
-    return {"search_results": search_results, "errors": errors}
+    return {"search_results": search_results, "errors": errors,
+            "capacity_limited": bool(capacity_errors)}
 
 
 async def extract_and_compare_node(state: CompareState) -> dict:
