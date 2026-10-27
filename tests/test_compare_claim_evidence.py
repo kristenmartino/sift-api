@@ -78,3 +78,12 @@ def test_summary_cannot_restore_rejected_unanimous_attribution():
     claims = [{'claim': APPLE_ACKNOWLEDGMENT, 'sources': ['CNBC', 'The Verge', 'Ars Technica']}]
     summary = workflow._grounded_comparison_summary(claims, ['CNBC', 'The Verge', 'Ars Technica', 'WIRED'])
     assert summary.startswith('3 of 4 retrieved outlets report:')
+
+
+def test_typographic_quote_changes_do_not_drop_a_supported_claim():
+    body = 'The committee’s chair said the measure would take effect on Monday.'
+    claim = {'claim': 'The chair said the measure takes effect on Monday.', 'sources': ['NR'],
+             'evidence': {'NR': "The committee's chair said the measure would take effect on Monday."}}
+    assert workflow._ground_claim_attributions([claim], {'NR': body})[0]['sources'] == ['NR']
+    claim['evidence']['NR'] = "The committee's chair said the measure would take effect on Friday."
+    assert workflow._ground_claim_attributions([claim], {'NR': body}) == []

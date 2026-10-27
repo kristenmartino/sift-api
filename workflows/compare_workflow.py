@@ -16,7 +16,7 @@ from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scop
 from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage
-from services.compare_search import publisher_domains, publisher_search_excerpts
+from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_excerpts
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -322,7 +322,7 @@ Only compare the {len(sources_list)} successfully retrieved sources in Available
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
 For EVERY outlet attributed to a claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not state a fact, do not credit that outlet with it, even when other outlets confirm it.
-1. Extract 3-8 key factual claims made across these sources.
+1. Extract up to 8 supportable claims. A short excerpt may support only one claim; that is valid. Do not pad to a minimum. Keep an opinion or interpretation explicitly attributed to its outlet instead of presenting it as an established fact. Return no claims only when none is supported by the supplied reporting.
 2. For each claim, determine the agreement level:
    - "unanimous": every available source reports this claim (at least two sources)
    - "majority": more than half of available sources report this claim
@@ -392,7 +392,7 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
     an excerpt without returning supporting text from that excerpt.
     """
     def normalize(text: str) -> str:
-        return " ".join(text.casefold().split())
+        return normalize_evidence_text(text)
 
     bodies = {}
     for source, text in reporting.items():

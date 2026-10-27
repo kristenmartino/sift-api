@@ -21,6 +21,20 @@ def test_national_review_name_and_slug_use_the_publisher_domain(name):
     assert publisher_domains(name) == ('nationalreview.com',)
 
 
+@pytest.mark.asyncio
+async def test_reuters_preserves_compatible_search_without_rejected_domain_constraint(monkeypatch):
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    legacy = Obj(content=[Obj(type='text', text='Reuters reports that the committee approved the measure after a public hearing.')])
+    paid = AsyncMock(return_value=legacy)
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    source, text = await workflow.search_one_source(Mock(), 'The committee vote', 'Reuters')
+    assert source == 'Reuters'
+    assert text == legacy.content[0].text
+    assert 'allowed_domains' not in paid.await_args.kwargs['tools'][0]
+    paid.assert_awaited_once()
+
+
 def test_public_search_passage_is_evidence_even_when_direct_page_is_blocked():
     evidence = publisher_search_excerpts(response(), ('nationalreview.com',))
     assert PASSAGE in evidence
