@@ -11,6 +11,13 @@ from urllib.parse import parse_qsl, urlparse
 _DOMAINS = {
     'nationalreview': ('nationalreview.com',),
 }
+_SEARCH_DOMAINS = {
+    **_DOMAINS,
+    'reuters': ('reuters.com',),
+    'foxnews': ('foxnews.com',),
+    'cbsnews': ('cbsnews.com',),
+    'npr': ('npr.org',),
+}
 
 
 def normalize_evidence_text(text: str) -> str:
@@ -24,6 +31,12 @@ def normalize_evidence_text(text: str) -> str:
 def publisher_domains(source: str) -> tuple[str, ...]:
     name = re.sub(r'^the[ -]+', '', source.strip().casefold())
     return _DOMAINS.get(re.sub(r'[^a-z0-9]', '', name), ())
+
+
+def publisher_search_domains(source: str) -> tuple[str, ...]:
+    """Verified query/citation sites, independent of provider filter support."""
+    name = re.sub(r'^the[ -]+', '', source.strip().casefold())
+    return _SEARCH_DOMAINS.get(re.sub(r'[^a-z0-9]', '', name), ())
 
 
 def _article_identity(url: str) -> tuple | None:

@@ -16,7 +16,7 @@ from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scop
 from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
-from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_excerpts
+from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts
 
 logger = logging.getLogger("sift-api.compare")
@@ -173,6 +173,18 @@ async def search_one_source(
     article_hint = (f"\nA matching indexed article is {stored['title']} at {stored['url']}. "
                     "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
     domains = publisher_domains(source)
+    search_domains = publisher_search_domains(source)
+    if search_domains and not domains and not stored:
+        # An editorial headline may hide the actual event (e.g. Colorado
+        # funding behind a generic religious-rights headline). Original NR
+        # text locates the subject only; it cannot supply counterpart claims.
+        origin = await indexed_coverage(topic, 'national review')
+        if origin:
+            context = origin['excerpt'] or await public_feed_excerpt(origin['url'], 'national review')
+            if context:
+                article_hint += ('\nContext from a different publisher to identify the requested event only. '
+                                 'This is NOT evidence from the selected outlet; never borrow its facts or quotes:\n'
+                                 + context + '\n')
     hints = await publisher_article_hints(topic) if not stored and domains else []
     if hints:
         descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source)
@@ -193,7 +205,15 @@ async def search_one_source(
     if domains:
         search_tool['allowed_domains'] = list(domains)
     target = stored['title'] if stored else hints[0]['title'] if hints else topic
-    query = f'site:{domains[0]} {target}' if domains else f'{source} {target}'
+    query = f'site:{search_domains[0]} {target}' if search_domains else f'{source} {target}'
+    query_instruction = f"Use one targeted search query: {query}\n"
+    if search_domains and not domains:
+        query_instruction = (f"Use one query restricted to site:{search_domains[0]}. Topic cue: {target}\n"
+                             "Choose concise neutral subject/event terms, omitting rhetorical headline wording. "
+                             "Preserve the distinguishing event/action from context, such as a court ruling "
+                             "rather than an older policy announcement. "
+                             "The requested topic may be another outlet's headline: do not require the selected "
+                             "publisher to use the same headline or viewpoint.\n")
     try:
         response = await asyncio.wait_for(
             budgeted_message(client, SEARCH_OPERATION,
@@ -206,8 +226,10 @@ async def search_one_source(
                     "content": (
                         f'Search for recent news coverage from {source} about: "{topic}"\n\n'
                         f"{article_hint}"
-                        f"Use one targeted search query: {query}\n"
-                        "Match the requested subject and timing; do not substitute a related but different event. "
+                        f"{query_instruction}"
+                        "Match the requested subject and timing, not literal headline wording. For a specific "
+                        "event, do not substitute an older case or related but different event. For a broad "
+                        "topic, find reporting addressing that issue; lexical overlap alone is insufficient. "
                         "Cite the selected publisher's reporting. Public search-index passages may supply "
                         "reporting when a direct page request is blocked; a blocked page alone does not prove "
                         "the outlet has no coverage. Titles, URLs and subscription messages alone are not reporting. "
@@ -244,8 +266,8 @@ async def search_one_source(
                 logger.info('search_sources: verified original publisher candidate for %s', source)
                 return source, hints[index]['excerpt']
 
-        if domains:
-            result = (publisher_search_excerpts(response, domains, stored['url'] if stored else None)
+        if search_domains:
+            result = (publisher_search_excerpts(response, search_domains, stored['url'] if stored else None)
                       if source_found_coverage(result) else None)
             if not result:
                 logger.info("search_sources: no cited publisher reporting from %s", source)

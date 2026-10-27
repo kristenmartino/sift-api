@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from services.compare_search import publisher_domains, publisher_search_excerpts
+from services.compare_search import publisher_domains, publisher_search_domains, publisher_search_excerpts
 from workflows import compare_workflow as workflow
 
 
@@ -30,13 +30,14 @@ def test_national_review_name_and_slug_use_the_publisher_domain(name):
 @pytest.mark.asyncio
 async def test_reuters_preserves_compatible_search_without_rejected_domain_constraint(monkeypatch):
     monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
-    legacy = Obj(content=[Obj(type='text', text='Reuters reports that the committee approved the measure after a public hearing.')])
+    legacy = response(url='https://www.reuters.com/world/a-vote/')
     paid = AsyncMock(return_value=legacy)
     monkeypatch.setattr(workflow, 'budgeted_message', paid)
     monkeypatch.setattr(workflow, 'log_usage', Mock())
     source, text = await workflow.search_one_source(Mock(), 'The committee vote', 'Reuters')
     assert source == 'Reuters'
-    assert text == legacy.content[0].text
+    assert PASSAGE in text
+    assert 'site:reuters.com' in paid.await_args.kwargs['messages'][0]['content']
     assert 'allowed_domains' not in paid.await_args.kwargs['tools'][0]
     paid.assert_awaited_once()
 
@@ -174,3 +175,66 @@ async def test_broad_topic_public_description_requires_explicit_relevance_select
     paid.assert_awaited_once()
     assert paid.await_args.kwargs['tools'][0]['max_uses'] == 1
     assert original in paid.await_args.kwargs['messages'][0]['content']
+
+
+@pytest.mark.parametrize(('name', 'domain'), [
+    ('Reuters', 'reuters.com'), ('Fox News', 'foxnews.com'),
+    ('CBS News', 'cbsnews.com'), ('NPR', 'npr.org'),
+])
+@pytest.mark.asyncio
+async def test_counterparts_use_scoped_query_and_only_own_publisher_passages(monkeypatch, name, domain):
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    paid = AsyncMock(return_value=response(url=f'https://www.{domain}/news/a-vote/'))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    _, text = await workflow.search_one_source(Mock(), 'An editorial headline about a committee vote', name)
+    assert PASSAGE in text
+    params = paid.await_args.kwargs
+    assert f'site:{domain}' in params['messages'][0]['content']
+    assert 'do not require the selected publisher to use the same headline' in params['messages'][0]['content']
+    assert 'allowed_domains' not in params['tools'][0]
+    assert params['tools'][0]['max_uses'] == 1
+    assert publisher_search_domains(name) == (domain,)
+    paid.assert_awaited_once()
+    paid.return_value = response(url='https://www.nationalreview.com/2026/10/a-vote/')
+    assert (await workflow.search_one_source(Mock(), 'The committee vote', name))[1] is None
+
+
+@pytest.mark.asyncio
+async def test_other_publisher_context_identifies_event_but_cannot_supply_counterpart_facts(monkeypatch):
+    origin = {'title': 'An editorial on religious rights', 'url': 'https://www.nationalreview.com/an-editorial/',
+              'excerpt': None}
+    async def lookup(topic, source):
+        return origin if source == 'national review' else None
+    monkeypatch.setattr(workflow, 'indexed_coverage', lookup)
+    context = 'Public publisher description (not full article text).\nExcerpt:\nA Colorado case concerns religious schools and public funding.'
+    monkeypatch.setattr(workflow, 'public_feed_excerpt', AsyncMock(return_value=context))
+    paid = AsyncMock(return_value=response(url='https://www.npr.org/news/a-vote/'))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    _, evidence = await workflow.search_one_source(Mock(), 'An editorial on religious rights', 'NPR')
+    assert context in paid.await_args.kwargs['messages'][0]['content']
+    assert 'NOT evidence from the selected outlet' in paid.await_args.kwargs['messages'][0]['content']
+    assert PASSAGE in evidence and 'Colorado' not in evidence
+    paid.return_value = Obj(content=[Obj(type='text', text='NPR reports the Colorado case.', citations=[])])
+    assert (await workflow.search_one_source(Mock(), 'An editorial on religious rights', 'NPR'))[1] is None
+
+
+def test_counterpart_reporting_can_be_inside_an_overview_with_a_different_headline():
+    quote = "It's another case out of Colorado. It's called St. Mary's Catholic Parish v. Roy."
+    evidence = publisher_search_excerpts(response(quote=quote,
+        url='https://www.npr.org/2026/10/04/nx-s1-5976691/the-supreme-courts-new-term-will-start-with-a-major-case-on-climate-change',
+        title="The Supreme Court's new term will start with a major case on climate change"), ('npr.org',))
+    assert quote in evidence
+    assert 'major case on climate change\n' not in evidence
+
+
+@pytest.mark.asyncio
+async def test_unrelated_older_npr_case_stays_excluded_after_headline_matching_fix(monkeypatch):
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    reply = response(url='https://www.npr.org/2021/06/17/a-foster-care-case/',
+        quote='The decision concerned a foster care dispute involving a different city.')
+    reply.content[0].text = 'No relevant coverage found for the requested Colorado preschool case.'
+    monkeypatch.setattr(workflow, 'budgeted_message', AsyncMock(return_value=reply))
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    assert (await workflow.search_one_source(Mock(), 'Colorado Catholic preschool funding case', 'NPR'))[1] is None
