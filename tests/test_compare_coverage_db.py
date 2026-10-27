@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -27,13 +28,13 @@ async def coverage_db():
     await c.execute('''
       CREATE TABLE outlet_profiles(slug text, name text);
       CREATE TABLE source_name_aliases(raw_source_name text, outlet_slug text);
-      CREATE TABLE stories(id text, headline text, synthesis_status text);
-      CREATE TABLE articles(title text, source_name text, source_url text, published_date timestamptz,
+      CREATE TABLE stories(id text, headline text, synthesis_status text, headline_aliases text[] NOT NULL DEFAULT '{}');
+      CREATE TABLE articles(id bigserial PRIMARY KEY, title text, source_name text, source_url text, published_date timestamptz,
         story_id text, generation_raw_content text, from_search boolean DEFAULT false,
         is_roundup boolean DEFAULT false, generation_status text DEFAULT 'complete', summary text DEFAULT 'Reviewed');
       INSERT INTO outlet_profiles VALUES('fox-news','Fox News'),('bbc-news','BBC News');
       INSERT INTO source_name_aliases VALUES('BBC World','bbc-news');
-      INSERT INTO stories VALUES('event','The committee approved the measure','complete'),('held','An unrelated event','copy_hold');
+      INSERT INTO stories(id,headline,synthesis_status) VALUES('event','The committee approved the measure','complete'),('held','An unrelated event','copy_hold');
       INSERT INTO articles(title,source_name,source_url,published_date,story_id,generation_raw_content) VALUES
        ('Lawmakers vote 10 to 2','Fox News','https://foxnews.com/event',NOW()-INTERVAL '1 day','event','Original Fox reporting.'),
        ('The vote passed','BBC World','https://bbc.com/event',NOW()-INTERVAL '1 day','event','Original BBC reporting.'),
@@ -57,6 +58,8 @@ async def test_same_event_and_publisher_aliases_are_required(coverage_db):
     assert await c.fetchrow(INDEXED_COVERAGE_SQL, 'committee', 'fox news') is None
     assert await c.fetchrow(INDEXED_COVERAGE_SQL, 'The committee approved the measure', 'Unknown publisher') is None
     assert await c.fetchrow(INDEXED_COVERAGE_SQL, 'An unrelated event', 'fox news') is None
+    exact_title = await c.fetchrow(INDEXED_COVERAGE_SQL, 'Lawmakers vote 10 to 2', 'fox news')
+    assert exact_title['source_url'] == fox['source_url']
 
 
 @pytest.mark.asyncio
@@ -90,3 +93,20 @@ async def test_resuming_database_preserves_indexed_reporting(coverage_db, monkey
     monkeypatch.setattr(compare_coverage, 'get_pool', get_resuming_database)
     result = await compare_coverage.indexed_coverage('The committee approved the measure', 'fox news')
     assert body in result['excerpt']
+
+
+@pytest.mark.asyncio
+async def test_headline_rewrites_preserve_exact_event_without_merging(coverage_db):
+    migration = (Path(__file__).resolve().parents[1] / 'migrations/037_compare_exact_events.sql').read_text()
+    await coverage_db.execute(migration.replace('CREATE INDEX CONCURRENTLY', 'CREATE INDEX'))
+    await coverage_db.execute("UPDATE stories SET headline='The measure passed after a committee vote' WHERE id='event'")
+    old = await coverage_db.fetchrow(INDEXED_COVERAGE_SQL, 'The committee approved the measure', 'fox news')
+    current = await coverage_db.fetchrow(INDEXED_COVERAGE_SQL, 'The measure passed after a committee vote', 'fox news')
+    assert old['source_url'] == current['source_url'] == 'https://foxnews.com/event'
+    assert await coverage_db.fetchrow(INDEXED_COVERAGE_SQL, 'committee vote', 'fox news') is None
+    # Reapplying startup DDL must retain history, and held stories stay held.
+    await coverage_db.execute(migration.replace('CREATE INDEX CONCURRENTLY', 'CREATE INDEX'))
+    await coverage_db.execute("UPDATE stories SET headline='Committee passes measure', synthesis_status='copy_hold' WHERE id='event'")
+    assert await coverage_db.fetchrow(INDEXED_COVERAGE_SQL, 'The committee approved the measure', 'fox news') is None
+    aliases = await coverage_db.fetchval("SELECT headline_aliases FROM stories WHERE id='event'")
+    assert set(aliases) == {'the committee approved the measure', 'the measure passed after a committee vote'}
