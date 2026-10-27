@@ -105,14 +105,17 @@ async def test_zero_background_allocation_and_unreadable_policy_fail_closed(budg
 
 
 @pytest.mark.asyncio
-async def test_five_outlet_compare_reuses_capacity_when_only_80_cents_remain(budget_db, monkeypatch):
+@pytest.mark.parametrize(('spent', 'held'), [(14.2, 0), (13.09966866, 1.4545)])
+async def test_five_outlet_compare_reuses_low_headroom_without_releasing_old_holds(budget_db, monkeypatch, spent, held):
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, Mock
     from workflows import compare_workflow as workflow
     from services.paid_calls import budget_scope
 
-    await budget_db.execute("INSERT INTO ai_usage_daily(usage_date, provider, model, operation, estimated_cost_usd) VALUES((NOW() AT TIME ZONE 'UTC')::date,'test','test','background',14.2)")
+    await budget_db.execute("INSERT INTO ai_usage_daily(usage_date, provider, model, operation, estimated_cost_usd) VALUES((NOW() AT TIME ZONE 'UTC')::date,'test','test','background',$1)", spent)
+    if held:
+        await budget_db.execute("INSERT INTO ai_budget_holds(id, scope, remaining_usd) VALUES('uncertain-old', 'background', $1)", held)
     active = peak = 0
     async def create(**_):
         nonlocal active, peak
@@ -142,6 +145,6 @@ async def test_five_outlet_compare_reuses_capacity_when_only_80_cents_remain(bud
     assert not result["errors"]
     assert peak == 1
     snapshot = await cost_guard.budget_snapshot()
-    assert snapshot["spent_usd"] == pytest.approx(14.3025)
-    assert snapshot["held_usd"] == 0
+    assert snapshot["spent_usd"] == pytest.approx(spent + 0.1025)
+    assert snapshot["held_usd"] == held
     assert snapshot["daily_limit_usd"] == 15

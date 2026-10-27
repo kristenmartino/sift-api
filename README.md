@@ -317,6 +317,14 @@ reconciliation; they must not be deleted merely to make room for more calls.
 Search concurrency adapts to available capacity so a five-outlet request can reuse
 reservations as earlier searches settle, rather than requiring five simultaneous
 maximum holds when the pool is low. Atomic admission still applies to every call.
+The first search pass reserves the supplied prompt; each following tool pass
+reserves a full context window. A denied outlet search does not discard usable
+reporting from other outlets, but an unreadable guard or missing provider usage
+still fails closed. If no usable reporting remains, the budget error is preserved.
+Completed comparisons can be reused for five minutes for the same exact topic
+and outlet set (up to 64 in-process entries). Reuse requires normal authentication
+and makes no provider call. Errors, empty output and capacity-limited results are
+not cached, so newly available capacity can be retried immediately.
 
 Guarded calls disable automatic provider retries. Compare uses one targeted web
 search per outlet, up to five outlets, followed by the existing claim comparison.
