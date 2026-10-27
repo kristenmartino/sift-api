@@ -400,3 +400,12 @@ Discovery candidates may include reviewed original publisher excerpts. The
 existing budgeted search can explicitly confirm a candidate's topic relevance
 and return that original excerpt when a page/index supplies no usable text.
 Unselected candidates, title-only hints and held copy never count as evidence.
+
+Extraction assesses every retrieved outlet before grouping claims, using the
+same single budgeted call and token ceiling. If grouping omits an outlet with
+a verified, self-contained passage, retain that passage as an explicitly
+attributed quotation. Never complete truncated text or borrow another outlet’s
+evidence. Reserve room for supported outlet contributions within the existing
+eight-claim ceiling. Complete short reviewed original excerpts can be retained
+verbatim even when the model overlooks them; null, metadata-only, unfinished
+and unsupported passages otherwise add nothing.

@@ -339,8 +339,10 @@ async def extract_and_compare_node(state: CompareState) -> dict:
 Your task:
 Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
-Stored publisher excerpts may be incomplete. Use only facts present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
-For EVERY outlet attributed to a claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not state a fact, do not credit that outlet with it, even when other outlets confirm it.
+Stored publisher excerpts may be incomplete. Use only facts or explicitly attributed opinions present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
+First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
+An article's headline may establish the topic of its excerpt, but cannot supply evidence for a claim. An editorial view about the underlying issue is a relevant contribution even when its excerpt does not repeat the event name. Retain it as that outlet's view without inferring a stance on specific policy details.
+For EVERY outlet attributed to a grouped claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not support that fact or attributed opinion, do not credit that outlet with it, even when other outlets confirm it.
 Select the verbatim supporting passage first, then write only the claim it supports. Do not invent or paraphrase a quotation to fit a claim already written. Where the text supports it, include a factual claim or clearly attributed position from each available outlet; do not silently omit an outlet's supported perspective. An outlet with no supportable passage may be omitted.
 1. Extract up to 8 supportable claims. A short excerpt may support only one claim; that is valid. Do not pad to a minimum. Keep an opinion or interpretation explicitly attributed to its outlet instead of presenting it as an established fact. Return no claims only when none is supported by the supplied reporting.
 2. For each claim, determine the agreement level:
@@ -353,6 +355,7 @@ Select the verbatim supporting passage first, then write only the claim it suppo
 
 Return ONLY a JSON object with this structure:
 {{
+  "outlet_passages": {{"source1": "verbatim self-contained passage from source1", "source2": null}},
   "claims": [
     {{
       "evidence": {{"source1": "verbatim supporting quotation from source1 reporting", "source2": "verbatim supporting quotation from source2 reporting"}},
@@ -399,8 +402,9 @@ Return ONLY the JSON, no other text.""",
 
     original_count = len(claims)
     claims = _ground_claim_attributions(claims, search_results)
+    claims = _retain_outlet_passages(claims, parsed.get("outlet_passages"), search_results)
     comparison = _grounded_comparison_summary(claims, sources_list)
-    logger.info("extract_and_compare: kept %d/%d text-grounded claims", len(claims), original_count)
+    logger.info("extract_and_compare: %d grouped candidates, %d retained contributions", original_count, len(claims))
     return {"comparison": comparison, "claims": claims, "analyzed_sources": sources_list}
 
 
@@ -448,6 +452,56 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
             continue
         grounded.append(cleaned)
     return grounded
+
+
+def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, str]) -> list[dict]:
+    """Retain a checked quotation when grouping omitted an outlet entirely.
+
+    Quote the passage itself, rather than inventing a fallback paraphrase or
+    treating editorial opinion as established fact. This uses the same model
+    call and provenance guard; null, metadata and unfinished text add nothing.
+    Reserve coverage before filling the eight slots with additional claims.
+    """
+    candidates = list(claims)
+
+    def credited(claim):
+        return set(claim.get("sources", []) + claim.get("sources_for", []) + claim.get("sources_against", []))
+
+    represented = set().union(*(credited(c) for c in candidates))
+    passages = ({s.strip().casefold(): q for s, q in passages.items() if isinstance(s, str)}
+                if isinstance(passages, dict) else {})
+    for source, text in reporting.items():
+        quote = passages.get(source.strip().casefold())
+        # Reviewed original excerpts already passed event-relevance retrieval.
+        # Preserve a whole short sentence even if the model overlooks opinion.
+        if text.startswith("Stored publisher excerpt"):
+            body = text.partition("\nExcerpt:\n")[2].strip()
+            if (6 <= len(body.split()) <= 30 and body.endswith((".", "!", "?"))
+                    and not body.endswith("...")):
+                quote = body
+        if (source in represented or not isinstance(quote, str)
+                or not 6 <= len(quote.split()) <= 30 or quote.rstrip().endswith(("...", "…"))):
+            continue
+        fallback = {"claim": f'{source} writes: “{quote}”', "agreement": "unique",
+                    "sources": [source], "evidence": {source: quote}}
+        candidates.extend(_ground_claim_attributions([fallback], reporting))
+
+    selected = set()
+    covered = set()
+    # Keep at least one supported contribution per outlet, then disputes.
+    for i, claim in enumerate(candidates):
+        sources = credited(claim)
+        if len(selected) < 8 and sources - covered:
+            selected.add(i)
+            covered.update(sources)
+    for i, claim in enumerate(candidates):
+        if len(selected) < 8 and claim.get("agreement") == "disputed":
+            selected.add(i)
+    for i in range(len(candidates)):
+        if len(selected) >= 8:
+            break
+        selected.add(i)
+    return [c for i, c in enumerate(candidates) if i in selected]
 
 
 def _grounded_comparison_summary(claims: list[dict], sources: list[str]) -> str:
