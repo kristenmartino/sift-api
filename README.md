@@ -409,3 +409,15 @@ evidence. Reserve room for supported outlet contributions within the existing
 eight-claim ceiling. Complete short reviewed original excerpts can be retained
 verbatim even when the model overlooks them; null, metadata-only, unfinished
 and unsupported passages otherwise add nothing.
+
+For an exact indexed National Review article with missing stored text, Compare
+first checks the publisher’s configured public RSS feed. Match the original
+article URL (including canonical/AMP identity), require a current substantive
+description, and exclude the content:encoded field because NR can put only a
+photo caption there. This is original publisher text, never Sift-generated copy.
+The request has a two-second deadline and one-megabyte limit; redirects, access
+errors, missing/stale articles and unusable descriptions fall back to the same
+single budgeted search. No article-page access workaround is used. Complete
+short public descriptions are quoted directly and kept out of model grouping
+into factual agreement or disputes. They cannot support absent facts or inferred
+context. Richer reporting retains the existing grounded extraction call.

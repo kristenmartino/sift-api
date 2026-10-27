@@ -7,6 +7,11 @@ from services.compare_search import publisher_domains, publisher_search_excerpts
 from workflows import compare_workflow as workflow
 
 
+@pytest.fixture(autouse=True)
+def public_feed_miss(monkeypatch):
+    monkeypatch.setattr(workflow, 'public_feed_excerpt', AsyncMock(return_value=None))
+
+
 PASSAGE = 'The committee approved the measure by ten votes to two after a public hearing on Monday.'
 
 
