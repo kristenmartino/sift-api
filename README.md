@@ -356,3 +356,10 @@ The indexed lookup has an eight-second deadline including pool acquisition, so
 a database resume does not prematurely discard stored reporting. It falls back
 to search on a miss or database failure, logging the exception type without
 connection details. The overall Compare request deadline remains 50 seconds.
+
+Each claim attribution requires a supporting quotation from that outlet's
+retrieved text. A deterministic check rejects invented or borrowed quotations;
+stored headline/URL metadata cannot serve as the supporting passage. Agreement
+counts and the summary are built from the remaining attributions. This verifies
+text provenance, not factual truth or semantic entailment. It uses the same
+single extraction call and token ceiling; no extra paid review call is added.

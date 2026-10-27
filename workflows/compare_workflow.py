@@ -306,6 +306,7 @@ Your task:
 Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
+For EVERY outlet attributed to a claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not state a fact, do not credit that outlet with it, even when other outlets confirm it.
 1. Extract 3-8 key factual claims made across these sources.
 2. For each claim, determine the agreement level:
    - "unanimous": every available source reports this claim (at least two sources)
@@ -313,22 +314,23 @@ Stored publisher excerpts may be incomplete. Use only facts present in the suppl
    - "partial": at least two, but no more than half, report this claim
    - "disputed": sources contradict each other on this point
    - "unique": only one source reports this
-3. Write a 2-3 sentence overall comparison summary describing how coverage differs or aligns.
+3. Include an evidence map for every claim. Unsupported outlet attributions will be removed.
 
 Return ONLY a JSON object with this structure:
 {{
-  "comparison": "2-3 sentence summary of how the sources compare...",
   "claims": [
     {{
       "claim": "specific factual statement",
       "agreement": "unanimous",
-      "sources": ["source1", "source2"]
+      "sources": ["source1", "source2"],
+      "evidence": {{"source1": "verbatim supporting quotation from source1 reporting", "source2": "verbatim supporting quotation from source2 reporting"}}
     }},
     {{
       "claim": "a disputed point",
       "agreement": "disputed",
       "sources_for": ["source1"],
-      "sources_against": ["source2"]
+      "sources_against": ["source2"],
+      "evidence": {{"source1": "verbatim quotation supporting the claim", "source2": "verbatim quotation contradicting the claim"}}
     }}
   ]
 }}
@@ -351,18 +353,88 @@ Return ONLY the JSON, no other text.""",
     if not parsed:
         logger.error("Failed to parse comparison JSON: %s", text[:500])
         return {
-            "comparison": text.strip()[:500] if text.strip() else "Comparison analysis failed.",
+            "comparison": "Comparison analysis could not be completed. Try again.",
             "claims": [],
             "errors": state.get("errors", []) + ["Failed to parse comparison JSON"],
         }
 
-    comparison = parsed.get("comparison", "")
     claims = parsed.get("claims", [])
-    if not isinstance(comparison, str) or not isinstance(claims, list):
+    if not isinstance(claims, list):
         return {"comparison": "", "claims": [], "analyzed_sources": []}
 
-    logger.info("extract_and_compare: got %d claims", len(claims))
+    original_count = len(claims)
+    claims = _ground_claim_attributions(claims, search_results)
+    comparison = _grounded_comparison_summary(claims, sources_list)
+    logger.info("extract_and_compare: kept %d/%d text-grounded claims", len(claims), original_count)
     return {"comparison": comparison, "claims": claims, "analyzed_sources": sources_list}
+
+
+def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[dict]:
+    """Reject borrowed/invented quotes before counting an outlet for a claim.
+
+    This checks provenance, not factual truth or semantic entailment. The model
+    still interprets the quote, but can no longer silently attribute a fact to
+    an excerpt without returning supporting text from that excerpt.
+    """
+    def normalize(text: str) -> str:
+        return " ".join(text.casefold().split())
+
+    bodies = {}
+    for source, text in reporting.items():
+        if text.startswith("Stored publisher excerpt"):
+            text = text.partition("\nExcerpt:\n")[2]
+        bodies[source.strip().casefold()] = (source, normalize(text))
+    grounded = []
+    for claim in claims:
+        if not isinstance(claim, dict) or not isinstance(claim.get("claim"), str):
+            continue
+        evidence = claim.get("evidence")
+        if not isinstance(evidence, dict):
+            continue
+        quotes = {s.strip().casefold(): q for s, q in evidence.items() if isinstance(s, str)}
+        cleaned = {"claim": claim["claim"], "agreement": claim.get("agreement", "unique")}
+        for field in ("sources", "sources_for", "sources_against"):
+            credited = claim.get(field, [])
+            cleaned[field] = []
+            for source in credited if isinstance(credited, list) else []:
+                if not isinstance(source, str):
+                    continue
+                key = source.strip().casefold()
+                quote = quotes.get(key)
+                if (key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
+                        and normalize(quote) in bodies[key][1]):
+                    name = bodies[key][0]
+                    if name not in cleaned[field]:
+                        cleaned[field].append(name)
+        if cleaned["agreement"] == "disputed":
+            if not cleaned["sources_for"] or not cleaned["sources_against"]:
+                continue
+        elif not cleaned["sources"]:
+            continue
+        grounded.append(cleaned)
+    return grounded
+
+
+def _grounded_comparison_summary(claims: list[dict], sources: list[str]) -> str:
+    """Build the headline comparison from checked attribution counts.
+
+    A separate free-form model summary could reintroduce unsupported 'all
+    outlets confirm' claims even after their source lists had been corrected.
+    """
+    if not claims:
+        return "No claims could be tied to supporting passages in the retrieved text."
+    shared = [c for c in claims if c.get("agreement") != "disputed" and c.get("sources")]
+    if not shared:
+        return "Review the claims below for the differences supported by the retrieved reporting."
+    broadest = max(shared, key=lambda c: len(c["sources"]))
+    statement = broadest["claim"].rstrip(". ")
+    if len(sources) == 1:
+        return f"{sources[0]} reports: {statement}."
+    summary = f"{len(broadest['sources'])} of {len(sources)} retrieved outlets report: {statement}."
+    unique = next((c for c in shared if len(c["sources"]) == 1 and c is not broadest), None)
+    if unique:
+        summary += f" {unique['sources'][0]} also reports: {unique['claim'].rstrip('. ')}."
+    return summary
 
 
 async def format_response_node(state: CompareState) -> dict:
