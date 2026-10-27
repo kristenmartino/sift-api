@@ -9,6 +9,27 @@ from app.db import get_pool
 
 logger = logging.getLogger("sift-api.compare")
 
+# RSS descriptions can contain usable reporting in fewer than 200 characters.
+# This is a minimum evidence check, not a completeness test: extraction must
+# continue to treat accepted text as an incomplete publisher excerpt.
+_ACCESS_PROMPT = re.compile(
+    r"^(?:subscribe\b|sign (?:in|up)\b|log in\b|read more\b|continue reading\b)",
+    re.IGNORECASE,
+)
+
+
+def _has_publisher_reporting(body: str, title: str) -> bool:
+    if not body or _ACCESS_PROMPT.match(body):
+        return False
+    # A long headline repeated as the description is still only metadata.
+    def normalized(text: str) -> str:
+        return " ".join(re.findall(r"\w+", text.casefold()))
+
+    if normalized(body) == normalized(title):
+        return False
+    return len(body.split()) >= 20
+
+
 INDEXED_COVERAGE_SQL = """
 WITH publisher AS (
     SELECT slug, name FROM outlet_profiles
@@ -53,7 +74,7 @@ async def indexed_coverage(topic: str, source: str) -> dict[str, str | None] | N
         body = unescape(re.sub(r"<[^>]*>", " ", row["generation_raw_content"] or ""))
         body = re.sub(r"\s+", " ", body).strip()
         excerpt = None
-        if len(body) >= 200:
+        if _has_publisher_reporting(body, row["title"]):
             excerpt = (f"Stored publisher excerpt (may be incomplete).\nHeadline: {row['title']}\n"
                        f"Original: {row['source_url']}\nPublished: {row['published_date'].isoformat()}\n"
                        f"Excerpt:\n{body[:12000]}")

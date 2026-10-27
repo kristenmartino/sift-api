@@ -8,7 +8,13 @@ from workflows import compare_workflow
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('body', [None, 'A short teaser.'])
+@pytest.mark.parametrize('body', [
+    None,
+    'A short teaser.',
+    'A committee voted',
+    'Subscribe to read the full article. ' * 8,
+    'Sign in to continue reading this story and get unlimited access to our reporting. ' * 4,
+])
 async def test_indexed_metadata_guides_retrieval_but_does_not_count_as_reporting(monkeypatch, body):
     row = {'title': 'A committee voted', 'source_url': 'https://example.com/vote',
            'published_date': datetime.now(timezone.utc), 'generation_raw_content': body}
@@ -27,6 +33,35 @@ async def test_preserves_publisher_text_and_url_without_generated_summary(monkey
     assert result['excerpt'].count('Original publisher reporting & evidence.') == 10
     assert 'https://example.com/vote' in result['excerpt']
     assert '<p>' not in result['excerpt']
+
+
+@pytest.mark.asyncio
+async def test_short_wired_publisher_reporting_reaches_compare_without_paid_search(monkeypatch):
+    # Live regression: this 157-character RSS excerpt was rejected by the old
+    # 200-character gate, then the search fallback incorrectly lost the outlet.
+    body = ('The repair company iFixit released its repairability rating for Apple’s very first '
+            'foldable iPhone. It comes as users report a wave of cracked-screen issues.')
+    row = {'title': 'Some iPhone Duo Models Are Breaking. iFixit’s Teardown Might Explain Why',
+           'source_url': 'https://www.wired.com/story/some-iphone-duo-models-are-breaking-ifixits-teardown-might-explain-why/',
+           'published_date': datetime.now(timezone.utc), 'generation_raw_content': body}
+    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetchrow=AsyncMock(return_value=row))))
+    paid = AsyncMock(side_effect=AssertionError('short publisher reporting must avoid paid search'))
+    monkeypatch.setattr(compare_workflow, 'budgeted_message', paid)
+    source, excerpt = await compare_workflow.search_one_source(Mock(), 'Apple confirms display failures', 'WIRED')
+    assert source == 'WIRED'
+    assert body in excerpt
+    assert 'may be incomplete' in excerpt
+    paid.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_long_headline_description_is_not_reporting(monkeypatch):
+    title = 'A committee voted on the proposed legislation after a lengthy meeting with representatives from each of the parties present'
+    row = {'title': title, 'source_url': 'https://example.com/vote',
+           'published_date': datetime.now(timezone.utc), 'generation_raw_content': f'<p>{title.upper()}.</p>'}
+    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=Mock(fetchrow=AsyncMock(return_value=row))))
+    result = await compare_coverage.indexed_coverage(title, 'Reuters')
+    assert result['excerpt'] is None
 
 
 @pytest.mark.asyncio
