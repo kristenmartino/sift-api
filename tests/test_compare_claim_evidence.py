@@ -186,3 +186,15 @@ def test_quotation_in_second_summary_sentence_keeps_one_attribution():
     assert text.startswith('2 of 3 retrieved outlets report:')
     assert text.endswith(quote['claim'])
     assert 'also reports: National Review writes' not in text
+
+
+def test_explicit_outlet_aliases_retain_only_their_own_verbatim_evidence():
+    quote = 'The committee approved the measure after a public hearing on Monday.'
+    reporting = {'financial times': quote, 'cbs news': 'A separate meeting was postponed until the following week.'}
+    claims = [{'claim': quote, 'agreement': 'unanimous', 'sources': ['FT', 'CBS'],
+               'evidence': {'FT': quote, 'CBS': quote}}]
+    grounded = workflow._ground_claim_attributions(claims, reporting)
+    assert grounded[0]['sources'] == ['financial times']
+    retained = workflow._retain_outlet_passages(grounded,
+        {'CBS': 'A separate meeting was postponed until the following week.'}, reporting)
+    assert retained[-1]['sources'] == ['cbs news']
