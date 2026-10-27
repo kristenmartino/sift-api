@@ -6,7 +6,7 @@
 
 ## Active focus
 
-2026-10-27 National Review retrieval: scope its searches to the verified publisher domain, discover recent original-title hints for broad topics, require provider-cited passages, preserve metadata-only hints, and avoid masking usable original text with newer empty records. Keep other publishers' compatible search paths. Normalize quote typography and allow one supported claim from thin excerpts. No design, outlet-count or budget-policy changes.
+2026-10-27 National Review retrieval: scope its searches to the verified publisher domain, discover recent original-title hints for broad topics, require cited passages or reviewed original excerpts with explicit topic-relevance selection, and avoid masking usable text with newer empty records. Keep held copy excluded and other publishers' compatible search paths. Normalize quote typography and allow one supported claim from thin excerpts. No design, outlet-count or budget-policy changes.
 
 2026-10-26 Compare retrieval: prefer original publisher excerpts for exact indexed events, preserve prior exact story headlines, select candidates through title/story-ID indexes, and require supporting text for each outlet's claim attribution. Missing-text searches and provider streams retain existing budget admission and settlement. The five-outlet limit and daily cap stay unchanged.
 

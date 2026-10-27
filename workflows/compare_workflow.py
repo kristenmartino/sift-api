@@ -170,8 +170,15 @@ async def search_one_source(
     hints = await publisher_article_hints(topic) if not stored and domains else []
     if hints:
         article_hint += ('\nPossible publisher articles (discovery hints only; verify the subject and timing):\n'
-                         + '\n'.join(f"{h['title']} at {h['url']}" for h in hints)
+                         + '\n'.join(f"Candidate {i}: {h['title']} at {h['url']}\n{h.get('excerpt', '')}" for i, h in enumerate(hints))
                          + '\nDo not treat a suggested title or URL as reporting.\n')
+        article_hint += (
+            'Some candidates include original publisher excerpts. If such a candidate genuinely covers '
+            'the requested subject and timing, its excerpt can supply limited reporting or an attributed '
+            'opinion even when the page is blocked. Do not select a merely related event or passing reference. '
+            'Confirm selection with a standalone line SELECTED_STORED_CANDIDATE=N using its candidate number. '
+            'Never select a candidate without an excerpt. You may search once if needed.\n'
+        )
     search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
     if domains:
         search_tool['allowed_domains'] = list(domains)
@@ -219,6 +226,13 @@ async def search_one_source(
         result = "\n".join(text_parts).strip()
         if not result:
             return (source, None)
+
+        selected = re.search(r'^`{0,3}SELECTED_STORED_CANDIDATE=(\d+)`{0,3}\s*$', result, re.M)
+        if hints and selected and source_found_coverage(result):
+            index = int(selected[1])
+            if index < len(hints) and hints[index].get('excerpt'):
+                logger.info('search_sources: verified original publisher candidate for %s', source)
+                return source, hints[index]['excerpt']
 
         if domains:
             result = (publisher_search_excerpts(response, domains, stored['url'] if stored else None)

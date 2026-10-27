@@ -150,3 +150,8 @@ async def test_publisher_discovery_returns_only_recent_original_title_hints(cove
     monkeypatch.setattr(compare_coverage, 'get_pool', get_connection)
     hints = await compare_coverage.publisher_article_hints('Cornell University fraternity party ban')
     assert hints == [{'title': 'Cornell fraternity party ban', 'url': 'https://www.nationalreview.com/cornell'}]
+    body = 'The university announced that fraternity houses cannot host large social events during the school year after a review of campus safety rules.'
+    await coverage_db.execute("UPDATE articles SET generation_status='complete',summary='Reviewed',generation_raw_content=$1 WHERE source_url='https://www.nationalreview.com/cornell'", body)
+    hints = await compare_coverage.publisher_article_hints('Cornell University fraternity party ban')
+    assert body in hints[0]['excerpt']
+    assert 'Reviewed' not in hints[0]['excerpt']
