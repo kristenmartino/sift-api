@@ -55,11 +55,14 @@ def _xml(data: bytes):
 async def _read(client, url, kind):
     async with client.stream('GET', url) as r:
         if r.status_code != 200 or r.headers.get('content-type', '').split(';')[0] not in kind:
+            logger.info('compare Reuters WTVB public response rejected: url=%s status=%s type=%s',
+                url, r.status_code, r.headers.get('content-type'))
             return None
         data = bytearray()
         async for chunk in r.aiter_bytes():
             data.extend(chunk)
             if len(data) > MAX_BYTES:
+                logger.info('compare Reuters WTVB public response exceeded byte limit: url=%s', url)
                 return None
         return bytes(data)
 
@@ -226,6 +229,8 @@ async def radio_candidates(topic: str, *, context: str | None = None) -> list[di
                             logger.info('compare Reuters WTVB page rejected (%s)', type(exc).__name__)
                     if found:
                         return found
+                logger.info('compare Reuters WTVB discovery completed: months=%d article_reads=%d originals=%d',
+                    min(len(set(maps)), 13), len(attempted), len(found))
     except Exception as exc:
         logger.info('compare Reuters WTVB discovery ended (%s), retaining %d originals', type(exc).__name__, len(found))
     return found
