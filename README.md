@@ -343,9 +343,11 @@ the five-outlet request limit and daily budget are unchanged.
 
 For an exact indexed article title or completed story headline, Compare first
 checks recent, completed, non-roundup reporting from that publisher. Retained
-original publisher text can supply an explicitly labeled excerpt. If the old
-record has no retained text, its original URL guides live search; metadata and
-Sift-generated summaries never count as retrieved coverage. Broad topics and
+original publisher text can supply an explicitly labeled, possibly incomplete
+excerpt, including descriptions shorter than 200 characters with at least 20
+words. Empty, thin, headline-only and access-prompt descriptions remain search
+hints. If the old record has no usable retained text, its original URL guides
+live search; metadata and Sift-generated summaries never count as retrieved coverage. Broad topics and
 index misses use live search. Search responses are read as provider streams and
 settled from final usage through the existing budget guard. Interrupted calls
 retain their uncertain-cost holds; no retry spends outside the cap.
