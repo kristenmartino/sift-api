@@ -83,6 +83,9 @@ CREATE INDEX IF NOT EXISTS idx_articles_generation_pending
 
         # migrations/036_compare_budget.sql is additive and transaction-safe.
         await conn.execute((Path(__file__).resolve().parent.parent / "migrations/036_compare_budget.sql").read_text())
+        # Mirror the operator-safe concurrent index with startup-safe DDL.
+        await conn.execute((Path(__file__).resolve().parent.parent / "migrations/037_compare_exact_events.sql")
+                           .read_text().replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX"))
         conflict = ("DO UPDATE SET enabled = EXCLUDED.enabled, "
                     "daily_limit_usd = EXCLUDED.daily_limit_usd, compare_share = EXCLUDED.compare_share"
                     if settings.environment == "production" else "DO NOTHING")

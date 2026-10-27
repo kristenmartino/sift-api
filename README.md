@@ -363,3 +363,9 @@ stored headline/URL metadata cannot serve as the supporting passage. Agreement
 counts and the summary are built from the remaining attributions. This verifies
 text provenance, not factual truth or semantic entailment. It uses the same
 single extraction call and token ceiling; no extra paid review call is added.
+
+Indexed candidates are selected through the story-ID and exact-title indexes
+before publisher/date filtering. Story headline rewrites retain their previous
+exact headlines as aliases through migration 037's update trigger, so an
+existing Compare link continues to identify the same event. Aliases never
+fuzzy-match or merge stories; held stories remain excluded.

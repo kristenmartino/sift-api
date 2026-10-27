@@ -6,7 +6,7 @@
 
 ## Active focus
 
-2026-10-26 Compare retrieval: prefer original publisher excerpts for exact indexed events, use known article URLs to guide missing-text searches, and stream provider responses through existing budget admission and settlement. The five-outlet limit and daily cap stay unchanged.
+2026-10-26 Compare retrieval: prefer original publisher excerpts for exact indexed events, preserve prior exact story headlines, select candidates through title/story-ID indexes, and require supporting text for each outlet's claim attribution. Missing-text searches and provider streams retain existing budget admission and settlement. The five-outlet limit and daily cap stay unchanged.
 
 2026-10-26 post-grouping audit: retain substantive same-game coverage with incidental fan context, reject passing-reference bridges, and recover coherent copy-held clusters. No design changes.
 
@@ -176,6 +176,8 @@ it refuted Y, here is why we did not do Z — and architecture-level decisions p
 An entry below describes what was true on its date and is never edited to stay current.
 
 ## Recent decisions (last 7 days)
+
+- **2026-10-26** — Retain prior exact story headlines during rewrites so existing Compare topics resolve to the same event. Do not introduce fuzzy event matching. Migration 037 and the README document this internal retrieval repair.
 
 - **2026-10-26** — Keep the $15 production cap; protect 20% for interactive Compare. Background generation, reviews, daily examples and frontend topic AI share the first 80%. Durable atomic reservations cover provider calls and batches; uncertain costs remain held for reconciliation. No design changes. See README shared AI budget allocation.
 

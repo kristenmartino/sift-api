@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS stories (
     id TEXT PRIMARY KEY,
     copy_rules_version TEXT,
     headline TEXT NOT NULL,
+    headline_aliases TEXT[] NOT NULL DEFAULT '{}',
     summary TEXT NOT NULL,
     category TEXT NOT NULL,
     framings JSONB DEFAULT '[]'::jsonb,
@@ -623,3 +624,22 @@ BEGIN
  INSERT INTO ai_budget_holds(id, scope, remaining_usd) VALUES (hold_id, budget_scope, amount);
  RETURN TRUE;
 END $$;
+
+-- Compare exact-title lookup and headline identity (migrations/037).
+CREATE INDEX IF NOT EXISTS idx_articles_title_lower ON articles (LOWER(title));
+CREATE OR REPLACE FUNCTION preserve_story_headline_alias() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.headline IS DISTINCT FROM NEW.headline THEN
+        NEW.headline_aliases := ARRAY(
+            SELECT DISTINCT alias FROM unnest(
+                COALESCE(NEW.headline_aliases, '{}'::text[]) || ARRAY[LOWER(OLD.headline)]
+            ) AS alias
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS preserve_story_headline_alias ON stories;
+CREATE TRIGGER preserve_story_headline_alias BEFORE UPDATE OF headline ON stories
+    FOR EACH ROW EXECUTE FUNCTION preserve_story_headline_alias();

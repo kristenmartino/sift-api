@@ -50,12 +50,18 @@ WITH publisher AS (
     SELECT LOWER(sa.raw_source_name) FROM source_name_aliases sa
     JOIN publisher p ON p.slug = sa.outlet_slug
 ), event AS (
-    SELECT id FROM stories WHERE LOWER(headline) = LOWER($1) AND synthesis_status = 'complete'
+    SELECT id FROM stories
+    WHERE (LOWER(headline) = LOWER($1) OR headline_aliases @> ARRAY[LOWER($1)])
+      AND synthesis_status = 'complete'
+), matched_articles AS MATERIALIZED (
+    SELECT id FROM articles WHERE story_id IN (SELECT id FROM event)
+    UNION
+    SELECT id FROM articles WHERE LOWER(title) = LOWER($1)
 )
 SELECT a.title, a.source_url, a.published_date, a.generation_raw_content
 FROM articles a
+JOIN matched_articles m ON m.id = a.id
 WHERE LOWER(a.source_name) IN (SELECT name FROM names)
-  AND (a.story_id IN (SELECT id FROM event) OR LOWER(a.title) = LOWER($1))
   AND a.published_date >= NOW() - INTERVAL '14 days'
   AND a.published_date <= NOW()
   AND NOT a.from_search AND NOT a.is_roundup
