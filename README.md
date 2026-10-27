@@ -476,3 +476,8 @@ verified originals when another page is malformed or reaches the shared
 deadline. This keeps the same single archive query, three-page bound and
 three-second deadline. Streamed calls capture the provider request ID from the
 response header so their reservation/settlement logs remain traceable.
+For verbose event headlines, discovery can use an explicit compact named
+subject from the headline instead of requiring every verb and detail in the
+literal archive query. The complete request still governs subject, action and
+timing selection; relatives, similarly named people and related cases do not
+become matching coverage automatically.
