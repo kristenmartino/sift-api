@@ -15,6 +15,7 @@ from services.cost_guard import budget_snapshot
 from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scope, message_bound
 from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
+from services.compare_coverage import indexed_coverage
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -158,9 +159,16 @@ async def search_one_source(
     can fan these out with as_completed and emit a per-source event the
     moment each one finishes — the same work, reported live.
     """
+    stored = await indexed_coverage(topic, source)
+    if stored and stored["excerpt"]:
+        logger.info("compare indexed coverage: using publisher excerpt for %s", source)
+        return (source, stored["excerpt"])
+    article_hint = (f"\nA matching indexed article is {stored['title']} at {stored['url']}. "
+                    "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
     try:
         response = await asyncio.wait_for(
             budgeted_message(client, SEARCH_OPERATION,
+                stream_response=True,
                 model=resolve(SEARCH_OPERATION).model,
                 max_tokens=2048,
                 tools=[{
@@ -172,6 +180,7 @@ async def search_one_source(
                     "role": "user",
                     "content": (
                         f'Search for recent news coverage from {source} about: "{topic}"\n\n'
+                        f"{article_hint}"
                         f"Summarize what {source} reports about this topic, including key facts, "
                         f"figures, quotes, and their perspective or framing. "
                         f"If you cannot find relevant coverage from {source}, say "
@@ -296,6 +305,7 @@ async def extract_and_compare_node(state: CompareState) -> dict:
 Your task:
 Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
+Stored publisher excerpts may be incomplete. Use only facts present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
 1. Extract 3-8 key factual claims made across these sources.
 2. For each claim, determine the agreement level:
    - "unanimous": every available source reports this claim (at least two sources)

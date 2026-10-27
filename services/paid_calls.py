@@ -64,15 +64,21 @@ async def persist_payload(
     )
 
 
-async def budgeted_message(client, operation: str, **params):
+async def budgeted_message(client, operation: str, *, stream_response: bool = False, **params):
+    async def create_response(provider):
+        if stream_response:
+            async with provider.messages.stream(**params) as stream:
+                return await stream.get_final_message()
+        return await provider.messages.create(**params)
+
     if not settings.ai_cost_guard_enabled:
-        return await client.messages.create(**params)
+        return await create_response(client)
     hold_id = await reserve_budget(message_bound(params), scope=budget_scope.get())
     if hold_id is None:
         raise BudgetUnavailable("Paid call blocked by shared AI budget")
     # Unknown outcome (timeout/cancellation) intentionally retains its hold.
     try:
-        response = await client.with_options(max_retries=0).messages.create(**params)
+        response = await create_response(client.with_options(max_retries=0))
     except anthropic.APIStatusError as exc:
         # Definitive rejection: no generation was accepted or billed.
         if exc.status_code in {400, 401, 403, 404, 413, 422, 429}:
