@@ -123,6 +123,9 @@ def _archive_query(topic: str) -> str:
     if ipo:
         company = re.split(r'\b(?:files?|filed|filing|plans?|prepares?|for|as)\b', subject[:ipo.start()], flags=re.I)[0]
         company = re.sub(r'^(?:the|an?)\s+', '', company.strip(), flags=re.I)
+        # Publisher headlines often make the issuer possessive. The archive
+        # treats that suffix literally, excluding the issuer's other wording.
+        company = re.sub(r"['’]s$", '', company, flags=re.I)
         words = re.findall(r"[\w'-]+", company)[:6]
         if words:
             return ' '.join(words) + ' IPO'
