@@ -11,6 +11,7 @@ from workflows import compare_workflow as workflow
 def public_feed_miss(monkeypatch):
     monkeypatch.setattr(workflow, 'public_feed_excerpt', AsyncMock(return_value=None))
     monkeypatch.setattr(workflow, 'public_feed_excerpts', AsyncMock(return_value={}))
+    monkeypatch.setattr(workflow, 'reuters_archive_candidates', AsyncMock(return_value=[]))
 
 
 PASSAGE = 'The committee approved the measure by ten votes to two after a public hearing on Monday.'

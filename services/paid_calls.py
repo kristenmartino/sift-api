@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import anthropic
 from contextvars import ContextVar
 
@@ -11,6 +12,7 @@ from services.cost_guard import reserve_budget, release_budget, record_usage
 from services.usage_tracker import PRICES, log_usage, count_web_searches
 
 budget_scope: ContextVar[str] = ContextVar("ai_budget_scope", default="background")
+logger = logging.getLogger('sift-api.paid_calls')
 
 
 class BudgetUnavailable(RuntimeError):
@@ -73,18 +75,27 @@ async def budgeted_message(client, operation: str, *, stream_response: bool = Fa
 
     if not settings.ai_cost_guard_enabled:
         return await create_response(client)
-    hold_id = await reserve_budget(message_bound(params), scope=budget_scope.get())
+    bound = message_bound(params)
+    hold_id = await reserve_budget(bound, scope=budget_scope.get())
     if hold_id is None:
         raise BudgetUnavailable("Paid call blocked by shared AI budget")
+    audit = {'event': 'paid_call_reservation', 'hold_id': hold_id,
+             'operation': operation, 'model': params['model'], 'scope': budget_scope.get()}
+    logger.info(json.dumps({**audit, 'outcome': 'reserved', 'reserved_usd': bound}))
     # Unknown outcome (timeout/cancellation) intentionally retains its hold.
     try:
         response = await create_response(client.with_options(max_retries=0))
-    except anthropic.APIStatusError as exc:
+    except BaseException as exc:
         # Definitive rejection: no generation was accepted or billed.
-        if exc.status_code in {400, 401, 403, 404, 413, 422, 429}:
+        rejected = isinstance(exc, anthropic.APIStatusError) and exc.status_code in {400, 401, 403, 404, 413, 422, 429}
+        if rejected:
             await release_budget(hold_id)
+        logger.warning(json.dumps({**audit, 'outcome': 'released_rejection' if rejected else 'uncertain',
+            'error_type': type(exc).__name__, 'status_code': getattr(exc, 'status_code', None),
+            'request_id': getattr(exc, 'request_id', None)}))
         raise
     if getattr(response, "usage", None) is None:
+        logger.error(json.dumps({**audit, 'outcome': 'held_missing_usage'}))
         raise BudgetUnavailable("Provider usage missing; budget remains held", "COST_GUARD_UNAVAILABLE")
     payload = log_usage(
         operation, response, model=params["model"], web_searches=count_web_searches(response), persist=False
@@ -92,8 +103,11 @@ async def budgeted_message(client, operation: str, *, stream_response: bool = Fa
     if payload and await persist_payload(payload, params["model"], operation, hold_id):
         object.__setattr__(response, "_sift_usage_payload", payload)
         object.__setattr__(response, "_sift_usage_recorded", True)
+        logger.info(json.dumps({**audit, 'outcome': 'settled', 'cost_usd': payload.get('cost_usd'),
+                               'request_id': getattr(response, '_request_id', None)}))
     else:
         # Prevent legacy best-effort logging from settling this a second time.
         object.__setattr__(response, "_sift_usage_recorded", True)
+        logger.error(json.dumps({**audit, 'outcome': 'held_accounting_unavailable'}))
         raise BudgetUnavailable("Paid response held: usage accounting unavailable", "COST_GUARD_UNAVAILABLE")
     return response

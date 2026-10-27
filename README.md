@@ -450,3 +450,21 @@ no redirects or credentials, and no extra paid call. Exact indexed article
 requests cannot silently substitute a republication. Keep the existing one-search
 limit and event/timing relevance checks;
 older or different cases and missing primary passages remain unavailable.
+
+Reuters discovery first queries KSL's public archive for the core subject,
+without the publisher keyword that dilutes archive relevance. Inspect the
+first twenty metadata hits, deduplicate headlines and read at most three
+canonical articles inside a three-second deadline. Only recent articles with
+an explicit Reuters byline and a full structured body matching visible text
+become candidates. The existing paid search-stage operation then selects a
+candidate for the full requested subject/event/timing, without a web tool;
+no match, titles alone and access failures add no claims. Archive failure keeps
+the existing single paid web-search fallback.
+
+When web-search admission cannot fit the remaining cap but verified indexed
+originals exist, Compare can review only those originals with the same paid
+stage and no web tool. Metadata-only candidates are excluded in that mode.
+Atomic per-call admission and extraction accounting still apply. Budget
+reservation logs now include the hold ID, operation, scope and terminal outcome
+so future interrupted calls can be audited. Unknown costs are never released
+solely because a reservation is old or a worker restarted.
