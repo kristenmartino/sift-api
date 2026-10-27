@@ -135,3 +135,18 @@ async def test_newer_empty_record_does_not_mask_usable_same_event_text(coverage_
     result = await compare_coverage.indexed_coverage('The committee approved the measure', 'fox news')
     assert body in result['excerpt']
     assert result['url'] == 'https://foxnews.com/event'
+
+
+@pytest.mark.asyncio
+async def test_publisher_discovery_returns_only_recent_original_title_hints(coverage_db, monkeypatch):
+    await coverage_db.execute("""INSERT INTO articles(title,source_name,source_url,published_date,generation_status,summary) VALUES
+      ('Cornell fraternity party ban','National Review','https://www.nationalreview.com/cornell',NOW(),'unavailable',NULL),
+      ('Cornell fraternity policy','Fox News','https://foxnews.com/cornell',NOW(),'complete','Reviewed'),
+      ('Another ban','National Review','https://www.nationalreview.com/other-ban',NOW(),'complete','Reviewed'),
+      ('Cornell fraternity old ban','National Review','https://www.nationalreview.com/old',NOW()-INTERVAL '20 days','complete','Reviewed'),
+      ('Unrelated politics','National Review','https://www.nationalreview.com/unrelated',NOW(),'complete','Cornell fraternity party ban')""")
+    async def get_connection():
+        return coverage_db
+    monkeypatch.setattr(compare_coverage, 'get_pool', get_connection)
+    hints = await compare_coverage.publisher_article_hints('Cornell University fraternity party ban')
+    assert hints == [{'title': 'Cornell fraternity party ban', 'url': 'https://www.nationalreview.com/cornell'}]

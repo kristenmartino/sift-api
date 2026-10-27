@@ -15,7 +15,7 @@ from services.cost_guard import budget_snapshot
 from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scope, message_bound
 from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
-from services.compare_coverage import indexed_coverage
+from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_excerpts
 
 logger = logging.getLogger("sift-api.compare")
@@ -167,10 +167,15 @@ async def search_one_source(
     article_hint = (f"\nA matching indexed article is {stored['title']} at {stored['url']}. "
                     "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
     domains = publisher_domains(source)
+    hints = await publisher_article_hints(topic) if not stored and domains else []
+    if hints:
+        article_hint += ('\nPossible publisher articles (discovery hints only; verify the subject and timing):\n'
+                         + '\n'.join(f"{h['title']} at {h['url']}" for h in hints)
+                         + '\nDo not treat a suggested title or URL as reporting.\n')
     search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
     if domains:
         search_tool['allowed_domains'] = list(domains)
-    target = stored['title'] if stored else topic
+    target = stored['title'] if stored else hints[0]['title'] if hints else topic
     query = f'site:{domains[0]} {target}' if domains else f'{source} {target}'
     try:
         response = await asyncio.wait_for(
@@ -322,6 +327,7 @@ Only compare the {len(sources_list)} successfully retrieved sources in Available
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
 For EVERY outlet attributed to a claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not state a fact, do not credit that outlet with it, even when other outlets confirm it.
+Select the verbatim supporting passage first, then write only the claim it supports. Do not invent or paraphrase a quotation to fit a claim already written. Where the text supports it, include a factual claim or clearly attributed position from each available outlet; do not silently omit an outlet's supported perspective. An outlet with no supportable passage may be omitted.
 1. Extract up to 8 supportable claims. A short excerpt may support only one claim; that is valid. Do not pad to a minimum. Keep an opinion or interpretation explicitly attributed to its outlet instead of presenting it as an established fact. Return no claims only when none is supported by the supplied reporting.
 2. For each claim, determine the agreement level:
    - "unanimous": every available source reports this claim (at least two sources)
@@ -335,17 +341,17 @@ Return ONLY a JSON object with this structure:
 {{
   "claims": [
     {{
+      "evidence": {{"source1": "verbatim supporting quotation from source1 reporting", "source2": "verbatim supporting quotation from source2 reporting"}},
       "claim": "specific factual statement",
       "agreement": "unanimous",
-      "sources": ["source1", "source2"],
-      "evidence": {{"source1": "verbatim supporting quotation from source1 reporting", "source2": "verbatim supporting quotation from source2 reporting"}}
+      "sources": ["source1", "source2"]
     }},
     {{
+      "evidence": {{"source1": "verbatim quotation supporting the claim", "source2": "verbatim quotation contradicting the claim"}},
       "claim": "a disputed point",
       "agreement": "disputed",
       "sources_for": ["source1"],
-      "sources_against": ["source2"],
-      "evidence": {{"source1": "verbatim quotation supporting the claim", "source2": "verbatim quotation contradicting the claim"}}
+      "sources_against": ["source2"]
     }}
   ]
 }}
