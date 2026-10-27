@@ -2,26 +2,23 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from urllib.parse import parse_qsl, urlparse
 
-# Content hosts, rather than feed/CDN/rating-service hosts. Unknown publishers
-# retain the name-based fallback; never guess a domain from the outlet's name.
+# Verified publisher-specific adapter. Some publishers (including Reuters)
+# reject provider allowed_domains filters, so they retain name-based search.
+# Extend only after exercising the publisher with the live provider.
 _DOMAINS = {
-    'axios': ('axios.com',), 'npr': ('npr.org',), 'pbsnewshour': ('pbs.org',),
-    'washingtonexaminer': ('washingtonexaminer.com',), 'cbsnews': ('cbsnews.com',),
-    'foxnews': ('foxnews.com',), 'newyorktimes': ('nytimes.com',),
-    'dailywire': ('dailywire.com',), 'newyorkpost': ('nypost.com',),
-    'hill': ('thehill.com',), 'wallstreetjournal': ('wsj.com',),
-    'arstechnica': ('arstechnica.com',), 'verge': ('theverge.com',),
-    'wired': ('wired.com',), 'cnbc': ('cnbc.com',),
-    'nationalreview': ('nationalreview.com',), 'reuters': ('reuters.com',),
-    'bloomberg': ('bloomberg.com',), 'bloombergnews': ('bloomberg.com',),
-    'bbc': ('bbc.com', 'bbc.co.uk'), 'bbcnews': ('bbc.com', 'bbc.co.uk'),
-    'bbcworld': ('bbc.com', 'bbc.co.uk'), 'associatedpress': ('apnews.com',),
-    'apnews': ('apnews.com',), 'ap': ('apnews.com',),
-    'guardian': ('theguardian.com',), 'guardianus': ('theguardian.com',),
-    'washingtonpost': ('washingtonpost.com',),
+    'nationalreview': ('nationalreview.com',),
 }
+
+
+def normalize_evidence_text(text: str) -> str:
+    """Ignore typography without changing words, numbers or attribution."""
+    text = unicodedata.normalize('NFKC', text).translate(str.maketrans({
+        '’': "'", '‘': "'", '“': '"', '”': '"', '–': '-', '—': '-',
+    }))
+    return ' '.join(text.casefold().split())
 
 
 def publisher_domains(source: str) -> tuple[str, ...]:

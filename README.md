@@ -370,7 +370,7 @@ exact headlines as aliases through migration 037's update trigger, so an
 existing Compare link continues to identify the same event. Aliases never
 fuzzy-match or merge stories; held stories remain excluded.
 
-Searches for known publisher hosts are constrained with `allowed_domains` and
+National Review searches are constrained with `allowed_domains` and
 an explicit `site:` query. A known original article title is preferred to a
 generated Sift headline as the query target. Scoped search results count only
 when the provider supplies a substantive citation from the selected publisher;
@@ -384,4 +384,8 @@ so a newer metadata-only row does not hide usable reviewed original text.
 Pending/held/unavailable Sift articles can supply original URL/title hints;
 their generated copy and retained text never enter Compare as stored evidence.
 This does not publish or release held articles. Publisher-domain aliases live
-in `services/compare_search.py`; unlisted publishers keep name-based search.
+in `services/compare_search.py`; other publishers keep name-based search. Domain
+adapters require live verification: Reuters rejects the provider's domain
+constraint, so its working search path is preserved. Claim quotations normalize
+Unicode typography while retaining word/number identity. Short excerpts may
+yield one supported claim; attributed opinions remain attributed.
