@@ -481,3 +481,8 @@ subject from the headline instead of requiring every verb and detail in the
 literal archive query. The complete request still governs subject, action and
 timing selection; relatives, similarly named people and related cases do not
 become matching coverage automatically.
+Claim extraction preserves uncertainty, attribution, timing and scope. A
+grounding guard rejects an unqualified numerical result when its quotation is
+inside an explicitly attributed estimate/forecast sentence, including when the
+quotation trims away that sentence's prefix. Actual measurements in adjacent
+sentences remain usable. This narrow check does not replace semantic review.

@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 live Reuters estimate repair: preserve forecast/estimate attribution and reject numerical certainty reversals even when supporting quotes trim the original sentence prefix. Retain adjacent actual measurements and existing source/claim limits; no added model call or frontend change.
+
 2026-10-27 Reuters named-subject discovery: use explicit compact names from verbose event headlines to recover matching reporting; preserve the full event/action/timing review so related relatives' cases cannot substitute. No additional lookup, paid stage, budget or frontend change.
 
 2026-10-27 Reuters topic audit: normalize IPO discovery wording, retain verified originals across unrelated page failures and shared-deadline expiry, and capture streamed provider request IDs for reservation settlement audits. Keep topic/event verification, author/body checks, public-fetch bounds, five-outlet limit, cap and frontend unchanged.
