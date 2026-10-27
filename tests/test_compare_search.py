@@ -125,6 +125,7 @@ async def test_broad_topic_uses_publisher_title_hints_without_counting_metadata(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(('reply', 'has_excerpt', 'accepted'), [
     ('SELECTED_STORED_CANDIDATE=0', True, True),
+    ('`SELECTED_STORED_CANDIDATE=0`', True, True),
     ('A title looks relevant.', True, False),
     ('SELECTED_STORED_CANDIDATE=2', True, False),
     ('SELECTED_STORED_CANDIDATE=0', False, False),

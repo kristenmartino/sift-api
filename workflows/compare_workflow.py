@@ -227,7 +227,7 @@ async def search_one_source(
         if not result:
             return (source, None)
 
-        selected = re.search(r'^SELECTED_STORED_CANDIDATE=(\d+)\s*$', result, re.M)
+        selected = re.search(r'^`{0,3}SELECTED_STORED_CANDIDATE=(\d+)`{0,3}\s*$', result, re.M)
         if hints and selected and source_found_coverage(result):
             index = int(selected[1])
             if index < len(hints) and hints[index].get('excerpt'):
