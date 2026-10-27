@@ -1,10 +1,12 @@
 # sift-api — STATUS
 
-**Updated:** 2026-10-26
+**Updated:** 2026-10-27
 **Tier:** v1.5 (civic-literacy pivot backend) — **feature work active**; the D46 pause was lifted 2026-08-05 ([`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md), amended). Android stays paused and the week-one evidence test is still the next action — what was withdrawn is the blanket prohibition on building, not those.
 **Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). **2026-07-31: 8 PRs merged** (#116, #117, #120, #121, #123, #124, #126, #127) — a burst, not a new baseline. This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
 ## Active focus
+
+2026-10-27 National Review retrieval: scope known publishers to their content domains, target known article titles, require provider-cited publisher passages, preserve metadata-only hints, and avoid masking usable original text with newer empty records. No design, outlet-count or budget-policy changes.
 
 2026-10-26 Compare retrieval: prefer original publisher excerpts for exact indexed events, preserve prior exact story headlines, select candidates through title/story-ID indexes, and require supporting text for each outlet's claim attribution. Missing-text searches and provider streams retain existing budget admission and settlement. The five-outlet limit and daily cap stay unchanged.
 

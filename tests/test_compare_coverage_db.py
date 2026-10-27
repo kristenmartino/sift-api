@@ -65,7 +65,7 @@ async def test_same_event_and_publisher_aliases_are_required(coverage_db):
 @pytest.mark.asyncio
 @pytest.mark.parametrize('change', [
     "published_date=NOW()+INTERVAL '1 day'", "published_date=NOW()-INTERVAL '15 days'",
-    "from_search=true", "is_roundup=true", "generation_status='copy_hold'", "source_url='javascript:alert(1)'",
+    "from_search=true", "is_roundup=true", "source_url='javascript:alert(1)'",
 ])
 async def test_unusable_records_never_supply_coverage(coverage_db, change):
     await coverage_db.execute('UPDATE articles SET '+change)
@@ -82,10 +82,10 @@ async def test_resuming_database_preserves_indexed_reporting(coverage_db, monkey
     await coverage_db.execute('UPDATE articles SET generation_raw_content=$1', body)
 
     class ResumingDatabase:
-        async def fetchrow(self, query, *args, timeout):
+        async def fetch(self, query, *args, timeout):
             async with asyncio.timeout(timeout):
                 await coverage_db.execute('SELECT pg_sleep(3.2)')
-                return await coverage_db.fetchrow(query, *args)
+                return await coverage_db.fetch(query, *args)
 
     async def get_resuming_database():
         return ResumingDatabase()
@@ -110,3 +110,28 @@ async def test_headline_rewrites_preserve_exact_event_without_merging(coverage_d
     assert await coverage_db.fetchrow(INDEXED_COVERAGE_SQL, 'The committee approved the measure', 'fox news') is None
     aliases = await coverage_db.fetchval("SELECT headline_aliases FROM stories WHERE id='event'")
     assert set(aliases) == {'the committee approved the measure', 'the measure passed after a committee vote'}
+
+
+@pytest.mark.asyncio
+async def test_held_generation_is_a_metadata_hint_not_publisher_evidence(coverage_db, monkeypatch):
+    await coverage_db.execute("UPDATE articles SET generation_status='copy_hold',summary=NULL")
+    async def get_connection():
+        return coverage_db
+    monkeypatch.setattr(compare_coverage, 'get_pool', get_connection)
+    result = await compare_coverage.indexed_coverage('The committee approved the measure', 'fox news')
+    assert result['excerpt'] is None
+    assert result['url'] == 'https://foxnews.com/event'
+
+
+@pytest.mark.asyncio
+async def test_newer_empty_record_does_not_mask_usable_same_event_text(coverage_db, monkeypatch):
+    body = 'The committee approved the measure by ten votes to two after hearing testimony from residents at a public meeting on Monday.'
+    await coverage_db.execute('UPDATE articles SET generation_raw_content=$1', body)
+    await coverage_db.execute("""INSERT INTO articles(title,source_name,source_url,published_date,story_id)
+      VALUES('Newer article without text','Fox News','https://foxnews.com/new',NOW(),'event')""")
+    async def get_connection():
+        return coverage_db
+    monkeypatch.setattr(compare_coverage, 'get_pool', get_connection)
+    result = await compare_coverage.indexed_coverage('The committee approved the measure', 'fox news')
+    assert body in result['excerpt']
+    assert result['url'] == 'https://foxnews.com/event'
