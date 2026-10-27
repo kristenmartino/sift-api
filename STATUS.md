@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-26 Compare retrieval: prefer original publisher excerpts for exact indexed events, use known article URLs to guide missing-text searches, and stream provider responses through existing budget admission and settlement. The five-outlet limit and daily cap stay unchanged.
+
 2026-10-26 post-grouping audit: retain substantive same-game coverage with incidental fan context, reject passing-reference bridges, and recover coherent copy-held clusters. No design changes.
 
 2026-10-26 NFL event repair: split the 149-member mixed-topic cluster, validate full proposed membership before writes, and prevent same-week game/promotion bridges. No design changes.

@@ -105,3 +105,33 @@ async def test_missing_usage_retains_hold(guarded):
         await paid_calls.budgeted_message(client, "judge.batch", **PARAMS)
     release.assert_not_awaited()
     persist.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_streamed_search_reserves_before_provider_and_settles_final_usage(guarded):
+    client, response, reserve, persist, _ = guarded
+    stream = SimpleNamespace(get_final_message=AsyncMock(return_value=response))
+    context = AsyncMock()
+    context.__aenter__.return_value = stream
+    def start(**params):
+        reserve.assert_awaited_once()
+        assert 'stream_response' not in params
+        return context
+    client.messages.stream = Mock(side_effect=start)
+    result = await paid_calls.budgeted_message(client, 'compare.search_sources', stream_response=True, **PARAMS)
+    assert result is response
+    persist.assert_awaited_once()
+    client.messages.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_interrupted_stream_keeps_uncertain_cost_reserved(guarded):
+    client, _, _, persist, release = guarded
+    stream = SimpleNamespace(get_final_message=AsyncMock(side_effect=asyncio.CancelledError))
+    context = AsyncMock()
+    context.__aenter__.return_value = stream
+    client.messages.stream = Mock(return_value=context)
+    with pytest.raises(asyncio.CancelledError):
+        await paid_calls.budgeted_message(client, 'compare.search_sources', stream_response=True, **PARAMS)
+    release.assert_not_awaited()
+    persist.assert_not_awaited()

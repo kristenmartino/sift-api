@@ -333,3 +333,19 @@ unresolved holds and provider outcomes before reconciling uncertain commitments.
 Local concurrency tests: set `AI_BUDGET_TEST_DATABASE_URL` to an isolated localhost
 PostgreSQL database and run `pytest tests/test_budget_allocation_db.py`. CI runs
 these against its disposable PostgreSQL service, with no production/provider keys.
+
+### Compare publisher registry and retrieval
+
+Compare accepts curated publisher names, slugs and RSS aliases from
+`outlet_profiles` and `source_name_aliases`. The frontend picker reads the same
+registry and offers one choice per publisher, including right-leaning outlets;
+the five-outlet request limit and daily budget are unchanged.
+
+For an exact indexed article title or completed story headline, Compare first
+checks recent, completed, non-roundup reporting from that publisher. Retained
+original publisher text can supply an explicitly labeled excerpt. If the old
+record has no retained text, its original URL guides live search; metadata and
+Sift-generated summaries never count as retrieved coverage. Broad topics and
+index misses use live search. Search responses are read as provider streams and
+settled from final usage through the existing budget guard. Interrupted calls
+retain their uncertain-cost holds; no retry spends outside the cap.
