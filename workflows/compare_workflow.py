@@ -18,7 +18,7 @@ from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts
-from services.compare_syndication import PARTNER_DOMAIN, reuters_partner_excerpts, reuters_archive_candidates
+from services.compare_syndication import PARTNER_DOMAINS, reuters_partner_excerpts, reuters_archive_candidates
 
 logger = logging.getLogger("sift-api.compare")
 
@@ -175,6 +175,7 @@ async def search_one_source(
                     "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
     domains = publisher_domains(source)
     search_domains = publisher_search_domains(source)
+    discovery_context = None
     if search_domains and not domains and not stored:
         # An editorial headline may hide the actual event (e.g. Colorado
         # funding behind a generic religious-rights headline). Original NR
@@ -183,11 +184,14 @@ async def search_one_source(
         if origin:
             context = origin['excerpt'] or await public_feed_excerpt(origin['url'], 'national review')
             if context:
+                discovery_context = context
                 article_hint += ('\nContext from a different publisher to identify the requested event only. '
                                  'This is NOT evidence from the selected outlet; never borrow its facts or quotes:\n'
                                  + context + '\n')
     reuters = search_domains == ('reuters.com',)
-    archive_hints = await reuters_archive_candidates(topic) if reuters and not stored else []
+    archive_hints = []
+    if reuters and not stored:
+        archive_hints = await reuters_archive_candidates(topic, context=discovery_context) if discovery_context else await reuters_archive_candidates(topic)
     hints = archive_hints or (await publisher_article_hints(topic) if not stored and domains else [])
     originals_only = bool(archive_hints)
     if hints and not archive_hints:
@@ -245,9 +249,9 @@ async def search_one_source(
         query_instruction = (
             f'Use exactly one targeted search query: Reuters {subject}\n'
             'Do not restrict the query to reuters.com: it would exclude Reuters republications. '
-            f'Only reuters.com and verified Reuters-byline articles at {PARTNER_DOMAIN} can supply evidence. '
+            f'Only reuters.com and verified Reuters-byline articles at {PARTNER_DOMAINS} can supply evidence. '
             'Search results from other hosts cannot supply Reuters claims. '
-            'Reuters reporting can be republished by KSL with a Reuters article byline. '
+            'Reuters reporting can be republished by KSL or WTVB with a Reuters article byline. '
             'Cite the actual Reuters-authored article passages; a Reuters photo credit or a mention of '
             'Reuters in another writer\'s article is not Reuters reporting. The topic may be editorial: '
             'do not require the selected publisher to use the same headline or viewpoint. '

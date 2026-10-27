@@ -107,7 +107,7 @@ async def test_public_archive_discovery_verifies_body_before_returning_candidate
         assert kwargs['follow_redirects'] is False
         return actual(**kwargs, transport=httpx.MockTransport(serve))
     monkeypatch.setattr(archive.httpx, 'AsyncClient', client)
-    found = await archive.reuters_archive_candidates('Social Security reform: benefit cuts versus tax increases')
+    found = await archive._ksl_archive_candidates('Social Security reform: benefit cuts versus tax increases')
     assert bool(found) is (outcome == 'verified')
     assert len(calls) <= 2
 
@@ -135,7 +135,7 @@ async def test_one_bad_page_cannot_discard_an_already_verified_original(monkeypa
     monkeypatch.setattr(archive.httpx, 'AsyncClient', lambda **kwargs:
         actual(**kwargs, transport=httpx.MockTransport(serve)))
     monkeypatch.setattr(archive, 'ARCHIVE_TIMEOUT', 0.05)
-    found = await archive.reuters_archive_candidates('A funding report')
+    found = await archive._ksl_archive_candidates('A funding report')
     assert len(found) == 1 and found[0]['url'] == URL
     assert bool(cancelled) is (failure == 'slow')
 

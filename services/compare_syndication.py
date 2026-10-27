@@ -16,7 +16,7 @@ import httpx
 from services.compare_search import _article_identity, normalize_evidence_text
 
 logger = logging.getLogger('sift-api.compare')
-PARTNER_DOMAIN = 'ksl.com'
+PARTNER_DOMAINS = 'ksl.com and wtvbam.com'
 VERIFY_TIMEOUT = 2
 MAX_PAGE_BYTES = 1_000_000
 ARCHIVE_URL = 'https://www.ksl.com/search/api'
@@ -212,7 +212,7 @@ def _archive_reporting(data: bytes, url: str, now: datetime) -> dict | None:
     return None
 
 
-async def reuters_archive_candidates(topic: str) -> list[dict]:
+async def _ksl_archive_candidates(topic: str) -> list[dict]:
     """One public archive lookup and at most three article reads, no paid search.
 
     A returned original excerpt still requires semantic event/timing selection
@@ -254,6 +254,12 @@ async def reuters_archive_candidates(topic: str) -> list[dict]:
     return [completed[i] for i in sorted(completed)]
 
 
+async def reuters_archive_candidates(topic: str, *, context: str | None = None) -> list[dict]:
+    from services.compare_radio import radio_candidates
+    originals = await _ksl_archive_candidates(topic)
+    return originals or await radio_candidates(topic, context=context)
+
+
 async def reuters_partner_excerpts(response) -> str | None:
     """At most two public pages, inside one two-second verification deadline.
 
@@ -261,6 +267,7 @@ async def reuters_partner_excerpts(response) -> str | None:
     promote every search hit. No redirects, credentials, access workarounds
     or extra paid searches. Verification failure leaves coverage unavailable.
     """
+    from services.compare_radio import article_url, reporting
     candidates = {}
     for block in response.content:
         if block.type != 'text':
@@ -269,7 +276,8 @@ async def reuters_partner_excerpts(response) -> str | None:
             url = getattr(citation, 'url', '')
             quote = getattr(citation, 'cited_text', '')
             if (getattr(citation, 'type', '') == 'web_search_result_location'
-                    and _partner_url(url) and isinstance(quote, str) and len(quote.split()) >= 8):
+                    and (_partner_url(url) or article_url(url) == url)
+                    and isinstance(quote, str) and len(quote.split()) >= 8):
                 candidates.setdefault(url, []).append(quote.strip())
     if not candidates:
         return None
@@ -287,7 +295,14 @@ async def reuters_partner_excerpts(response) -> str | None:
                                 break
                         if len(data) > MAX_PAGE_BYTES:
                             continue
-                    evidence = _verified_passages(bytes(data), url, quotes, datetime.now(timezone.utc))
+                    now = datetime.now(timezone.utc)
+                    if article_url(url) == url:
+                        original = reporting(bytes(data), url, now)
+                        header, _, body = original['excerpt'].partition('Excerpt:\n') if original else ('', '', '')
+                        passages = [q for q in quotes if _normalized(q) in _normalized(body)]
+                        evidence = header + 'Excerpt:\n' + '\n\n'.join(passages) if passages else None
+                    else:
+                        evidence = _verified_passages(bytes(data), url, quotes, now)
                     if evidence:
                         return evidence
     except Exception as exc:
