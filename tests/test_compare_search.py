@@ -10,6 +10,7 @@ from workflows import compare_workflow as workflow
 @pytest.fixture(autouse=True)
 def public_feed_miss(monkeypatch):
     monkeypatch.setattr(workflow, 'public_feed_excerpt', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'public_feed_excerpts', AsyncMock(return_value={}))
 
 
 PASSAGE = 'The committee approved the measure by ten votes to two after a public hearing on Monday.'
@@ -147,3 +148,29 @@ async def test_stored_discovery_excerpt_requires_explicit_relevance_selection(mo
     monkeypatch.setattr(workflow, 'log_usage', Mock())
     _, evidence = await workflow.search_one_source(Mock(), 'Public policy committee decision', 'National Review')
     assert evidence == (original if accepted else None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('reply', 'accepted'), [
+    ('SELECTED_STORED_CANDIDATE=0', True),
+    ('An article title looks similar.', False),
+    ('SELECTED_STORED_CANDIDATE=0\nNo relevant coverage found from National Review.', False),
+    ('SELECTED_STORED_CANDIDATE=1', False),
+])
+async def test_broad_topic_public_description_requires_explicit_relevance_selection(monkeypatch, reply, accepted):
+    original = 'Public publisher description (not full article text).\nExcerpt:\n' + PASSAGE
+    url = 'https://www.nationalreview.com/2026/10/a-vote/'
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'publisher_article_hints', AsyncMock(return_value=[
+        {'title': 'A committee vote', 'url': url}]))
+    feed_reader = AsyncMock(return_value={url: original})
+    monkeypatch.setattr(workflow, 'public_feed_excerpts', feed_reader)
+    paid = AsyncMock(return_value=Obj(content=[Obj(type='text', text=reply)]))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    _, evidence = await workflow.search_one_source(Mock(), 'Public committee decision', 'National Review')
+    assert evidence == (original if accepted else None)
+    feed_reader.assert_awaited_once_with([url], 'National Review')
+    paid.assert_awaited_once()
+    assert paid.await_args.kwargs['tools'][0]['max_uses'] == 1
+    assert original in paid.await_args.kwargs['messages'][0]['content']

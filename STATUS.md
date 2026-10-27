@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 NR RSS topic audit: retain complete short publisher statements as literal quotations while excluding slogans, teasers and unfinished text. Enrich broad-topic discovery candidates from one bounded public-feed request; keep explicit relevance selection, stored-text review gates, daily cap and visual style unchanged.
+
 2026-10-27 National Review public descriptions: recover exact known articles from the configured public RSS feed before paid search when stored original text is missing. Prefer the substantive description over content:encoded photo captions. Keep access restrictions intact, retain complete short quotations, and never infer missing letter-related facts. No budget, outlet-limit or design changes.
 
 2026-10-27 Compare extraction: assess each outlet before grouping. Preserve a verified short factual or editorial passage as an attributed quotation when grouping omits that outlet; never fill missing context. Keep one extraction call, the existing token/eight-claim ceilings, five-outlet limit, budget policy and visual design.

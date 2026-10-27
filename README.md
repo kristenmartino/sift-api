@@ -421,3 +421,12 @@ single budgeted search. No article-page access workaround is used. Complete
 short public descriptions are quoted directly and kept out of model grouping
 into factual agreement or disputes. They cannot support absent facts or inferred
 context. Richer reporting retains the existing grounded extraction call.
+
+The public RSS description gate accepts complete statements of at least six
+words as literal attributed quotations; the twenty-word stored-reporting gate
+remains unchanged. Slogans below that bound, incomplete/spaced ellipses, access
+messages, calls to read more and headline duplicates remain excluded. Discovery
+checks up to three known candidate URLs in one bounded public-feed request.
+Their descriptions remain hints until the existing single budgeted search
+explicitly selects a candidate for the requested subject and timing. No extra
+AI call, automatic event match, generated held copy or budget increase is added.

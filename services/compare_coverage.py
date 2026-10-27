@@ -24,7 +24,7 @@ _ACCESS_PROMPT = re.compile(
 )
 
 
-def _has_publisher_reporting(body: str, title: str) -> bool:
+def _has_publisher_reporting(body: str, title: str, *, minimum_words: int = 20) -> bool:
     if not body or _ACCESS_PROMPT.match(body):
         return False
     # A long headline repeated as the description is still only metadata.
@@ -33,7 +33,7 @@ def _has_publisher_reporting(body: str, title: str) -> bool:
 
     if normalized(body) == normalized(title):
         return False
-    return len(body.split()) >= 20
+    return len(body.split()) >= minimum_words
 
 
 INDEXED_COVERAGE_SQL = """

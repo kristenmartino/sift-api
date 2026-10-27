@@ -157,3 +157,55 @@ async def test_only_complete_public_description_needs_no_model_interpretation(mo
     assert result['comparison'] == f'National Review writes: “{DESCRIPTION}”'
     assert len(result['claims']) == 1
     paid.assert_not_awaited()
+
+
+@pytest.mark.parametrize('description', [
+    'Pursuing benefit cuts over tax hikes would grow the economy and reduce the national debt burden.',
+    'A Colorado case shows how reliance on taxpayer funding can lead to religious discrimination.',
+    'Registering at welfare agencies may be letting people on voter rolls illegally.',
+    'California’s governor tried to outlaw oil production by executive fiat. A state judge has exposed the deception.',
+])
+def test_complete_short_public_positions_are_quoted_without_added_facts(description):
+    excerpt = feed._feed_article_excerpt(rss(description=description), URL, NOW)
+    assert excerpt and excerpt.endswith(description)
+    result = workflow._retain_outlet_passages([], None, {'National Review': excerpt})
+    assert result[0]['claim'] == f'National Review writes: “{description}”'
+    assert result[0]['sources'] == ['National Review']
+
+
+@pytest.mark.parametrize('description', [
+    'Moral values without moral commitments.',
+    'In our brave new tech world, there’s nothing to fear but . . . everything.',
+    'The committee approved the measure but its next step...',
+    'Read the full story to find out more.',
+    'Already have an account? Sign in to read more.',
+    'Get full access to this article by subscribing.',
+])
+def test_slogans_unfinished_text_and_access_teasers_stay_excluded(description):
+    assert feed._feed_article_excerpt(rss(description=description), URL, NOW) is None
+
+
+def test_html_headline_is_not_mistaken_for_substantive_description():
+    headline = 'The committee approved a new policy after an overnight debate.'
+    assert feed._feed_article_excerpt(rss(title=f'<i>{headline}</i>', description=headline), URL, NOW) is None
+
+
+def test_generic_stored_reporting_keeps_its_twenty_word_minimum():
+    from services.compare_coverage import _has_publisher_reporting
+    body = 'A Colorado case shows how reliance on taxpayer funding can lead to religious discrimination.'
+    assert not _has_publisher_reporting(body, TITLE)
+
+
+@pytest.mark.asyncio
+async def test_candidate_descriptions_share_one_bounded_public_feed_request(monkeypatch):
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, headers={'content-type': 'application/rss+xml'},
+            content=rss(description='The committee approved a new measure after a lengthy debate.',
+                        stamp=datetime.now(timezone.utc) - timedelta(days=1)))
+    mock_http(monkeypatch, handler)
+    missing = 'https://www.nationalreview.com/a-different-event/'
+    result = await feed.public_feed_excerpts([URL, URL, missing], 'National Review')
+    assert list(result) == [URL]
+    assert calls == [feed.PUBLIC_FEED]
