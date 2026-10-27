@@ -471,7 +471,8 @@ solely because a reservation is old or a worker restarted.
 
 Archive queries normalize "initial public offering" and IPO filing headlines
 to the company's IPO subject; the full original topic still controls semantic
-selection. Candidate fetches and parsing fail independently, retaining already
+selection. A trailing issuer possessive is removed from this discovery query;
+internal apostrophes remain intact. Candidate fetches and parsing fail independently, retaining already
 verified originals when another page is malformed or reaches the shared
 deadline. This keeps the same single archive query, three-page bound and
 three-second deadline. Streamed calls capture the provider request ID from the

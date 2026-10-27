@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 Reuters live headline follow-up: remove only a trailing issuer possessive from IPO discovery queries. Literal apostrophe suffixes narrowed the public archive candidate set for another outlet's headline; preserve internal apostrophes and full event/timing selection. No additional requests, paid stages, budget or design changes.
+
 2026-10-27 live Reuters estimate repair: preserve forecast/estimate attribution and reject numerical certainty reversals even when supporting quotes trim the original sentence prefix. Retain adjacent actual measurements and existing source/claim limits; no added model call or frontend change.
 
 2026-10-27 Reuters named-subject discovery: use explicit compact names from verbose event headlines to recover matching reporting; preserve the full event/action/timing review so related relatives' cases cannot substitute. No additional lookup, paid stage, budget or frontend change.
