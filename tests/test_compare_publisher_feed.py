@@ -73,7 +73,7 @@ async def test_reader_requests_only_fixed_public_feed_with_no_redirects(monkeypa
 @pytest.mark.parametrize(('status', 'content_type', 'body'), [
     (302, 'application/rss+xml', b''), (403, 'text/html', b'Access denied'),
     (200, 'text/html', b'Sign in'), (200, 'application/rss+xml', b'x' * (feed.MAX_FEED_BYTES + 1)),
-])
+], ids=['redirect', 'blocked', 'html', 'oversized'])
 async def test_reader_rejects_redirects_restrictions_html_and_oversized_responses(monkeypatch, status, content_type, body):
     calls = []
     def handler(request):
