@@ -430,3 +430,13 @@ checks up to three known candidate URLs in one bounded public-feed request.
 Their descriptions remain hints until the existing single budgeted search
 explicitly selects a candidate for the requested subject and timing. No extra
 AI call, automatic event match, generated held copy or budget increase is added.
+
+Counterpart searches for Reuters, Fox News, CBS News and NPR use publisher-site
+queries without adding provider domain filters (Reuters rejects that filter).
+Treat another outlet’s headline as a subject cue, preserve the distinguishing
+event/action and allow different headlines. An exact indexed NR article can
+supply original event context solely to locate counterpart coverage; its text
+never supplies counterpart claims. Accept only the selected publisher’s cited
+passages, not uncited model summaries, third-party pages or another outlet’s
+quotes. Keep the existing one-search limit and event/timing relevance checks;
+older or different cases and missing primary passages remain unavailable.

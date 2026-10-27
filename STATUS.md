@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 counterpart retrieval: use publisher-site queries and neutral event terms for Reuters/Fox/CBS/NPR, allow differing headlines, and use original NR context only to locate the event. Require counterpart-owned citations; preserve provider-filter compatibility, event/timing checks, the daily cap and visual design.
+
 2026-10-27 NR RSS topic audit: retain complete short publisher statements as literal quotations while excluding slogans, teasers and unfinished text. Enrich broad-topic discovery candidates from one bounded public-feed request; keep explicit relevance selection, stored-text review gates, daily cap and visual style unchanged.
 
 2026-10-27 National Review public descriptions: recover exact known articles from the configured public RSS feed before paid search when stored original text is missing. Prefer the substantive description over content:encoded photo captions. Keep access restrictions intact, retain complete short quotations, and never infer missing letter-related facts. No budget, outlet-limit or design changes.
