@@ -517,12 +517,22 @@ def _grounded_comparison_summary(claims: list[dict], sources: list[str]) -> str:
         return "Review the claims below for the differences supported by the retrieved reporting."
     broadest = max(shared, key=lambda c: len(c["sources"]))
     statement = broadest["claim"].rstrip(". ")
+
+    def attributed_quotation(claim: dict) -> str | None:
+        if (len(claim["sources"]) == 1
+                and claim["claim"].startswith(f'{claim["sources"][0]} writes: “')):
+            text = claim["claim"].strip()
+            return text if text.rstrip('”').endswith((".", "!", "?")) else text + "."
+        return None
+
+    quotation = attributed_quotation(broadest)
     if len(sources) == 1:
-        return f"{sources[0]} reports: {statement}."
-    summary = f"{len(broadest['sources'])} of {len(sources)} retrieved outlets report: {statement}."
+        return quotation or f"{sources[0]} reports: {statement}."
+    summary = quotation or f"{len(broadest['sources'])} of {len(sources)} retrieved outlets report: {statement}."
     unique = next((c for c in shared if len(c["sources"]) == 1 and c is not broadest), None)
     if unique:
-        summary += f" {unique['sources'][0]} also reports: {unique['claim'].rstrip('. ')}."
+        summary += " " + (attributed_quotation(unique)
+                          or f"{unique['sources'][0]} also reports: {unique['claim'].rstrip('. ')}.")
     return summary
 
 

@@ -171,3 +171,18 @@ def test_complete_reviewed_short_editorial_survives_even_null_model_assessment()
 def test_incomplete_short_excerpt_has_no_automatic_contribution(body):
     text = 'Stored publisher excerpt (may be incomplete).\nExcerpt:\n' + body
     assert workflow._retain_outlet_passages([], {'National Review': None}, {'National Review': text}) == []
+
+
+@pytest.mark.parametrize('sources', [['National Review'], ['National Review', 'CBS News']])
+def test_quotation_summary_does_not_double_attribution_or_punctuation(sources):
+    claim = {'claim': f'National Review writes: “{CORNELL_OPINION}”', 'sources': ['National Review']}
+    assert workflow._grounded_comparison_summary([claim], sources) == claim['claim']
+
+
+def test_quotation_in_second_summary_sentence_keeps_one_attribution():
+    shared = {'claim': APPLE_ACKNOWLEDGMENT, 'sources': ['A', 'B']}
+    quote = {'claim': f'National Review writes: “{CORNELL_OPINION}”', 'sources': ['National Review']}
+    text = workflow._grounded_comparison_summary([shared, quote], ['A', 'B', 'National Review'])
+    assert text.startswith('2 of 3 retrieved outlets report:')
+    assert text.endswith(quote['claim'])
+    assert 'also reports: National Review writes' not in text
