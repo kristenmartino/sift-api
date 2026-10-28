@@ -44,7 +44,7 @@ def normalize_evidence_text(text: str) -> str:
 def verbatim_evidence(quote: str, body: str) -> bool:
     """Require word boundaries and reject a copied source's cut-off tail."""
     quote, body = normalize_evidence_text(quote), normalize_evidence_text(body)
-    if not quote:
+    if not quote or quote.endswith(('...', '…')):
         return False
     for match in re.finditer(r'(?<!\w)' + re.escape(quote) + r'(?!\w)', body):
         tail = body[match.end():].lstrip()

@@ -385,6 +385,8 @@ def test_verbatim_evidence_rejects_partial_words_and_cut_off_source_tails():
     body = quote + '...'
     assert not verbatim_evidence(quote, body)
     assert not verbatim_evidence(quote + '.', body)
+    assert not verbatim_evidence(quote + '...', body)
+    assert not verbatim_evidence(quote + '…', quote + '…')
     assert verbatim_evidence(intact, body)
     assert not verbatim_evidence(intact[:-1], body)
     assert not verbatim_evidence('The committee voted on June 2', 'The committee voted on June 20.')
