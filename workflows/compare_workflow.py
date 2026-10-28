@@ -541,6 +541,7 @@ async def extract_and_compare_node(state: CompareState) -> dict:
     response = await budgeted_message(client, EXTRACT_OPERATION,
         model=resolve(EXTRACT_OPERATION).model,
         max_tokens=4096,
+        temperature=0,
         messages=[{
             "role": "user",
             "content": f"""Analyze the following news coverage of "{_sanitize_text(state['topic'])}" from multiple sources.
@@ -557,7 +558,7 @@ Preserve attribution, uncertainty, timing and scope: an economist's estimate is 
 First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
 An article's headline may establish the topic of its excerpt, but cannot supply evidence for a claim. An editorial view about the underlying issue is a relevant contribution even when its excerpt does not repeat the event name. Retain it as that outlet's view without inferring a stance on specific policy details.
 For EVERY outlet attributed to a grouped claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not support that fact or attributed opinion, do not credit that outlet with it, even when other outlets confirm it.
-Use atomic claims. For a shared claim, EVERY credited outlet must support every named law, list member, number and substantive clause. If support differs, split the claims rather than combining one outlet’s details into a common statement.
+Use atomic claims. Do not blend different publishers’ descriptions using alternatives such as A or B. Each credited publisher must explicitly support BOTH alternatives; one observed symptom does not justify adding another. A crease is not a crack. For a shared claim, EVERY credited outlet must support every named law, list member, number and substantive clause. If support differs, split the claims rather than combining one outlet’s details into a common statement.
 Select the verbatim supporting passage first, then write only the claim it supports. Do not invent or paraphrase a quotation to fit a claim already written. Where the text supports it, include a factual claim or clearly attributed position from each available outlet; do not silently omit an outlet's supported perspective. An outlet with no supportable passage may be omitted.
 1. Extract up to 8 supportable claims. A short excerpt may support only one claim; that is valid. Do not pad to a minimum. Keep an opinion or interpretation explicitly attributed to its outlet instead of presenting it as an established fact. Return no claims only when none is supported by the supplied reporting.
 2. For each claim, determine the agreement level:
