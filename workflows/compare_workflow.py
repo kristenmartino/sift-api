@@ -18,7 +18,7 @@ from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts, verbatim_evidence
-from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts, supports_public_feed
+from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts, public_topic_candidates, supports_public_feed
 from services.compare_claim_support import verify_claim_support
 from services.compare_public_article import public_article_excerpt, public_article_candidates
 from services.compare_syndication import PARTNER_DOMAINS, reuters_partner_excerpts, reuters_archive_candidates
@@ -199,6 +199,8 @@ async def search_one_source(
     if reuters and not stored:
         archive_hints = await reuters_archive_candidates(topic, context=discovery_context) if discovery_context else await reuters_archive_candidates(topic)
     public_candidates = await public_article_candidates(topic, source) if not stored else []
+    if not public_candidates and not archive_hints:
+        public_candidates = await public_topic_candidates(topic, source)
     feed_hints = not stored and not public_candidates and not archive_hints and supports_public_feed(source)
     if feed_hints:
         discovered = (await publisher_article_hints(topic) if domains == ('nationalreview.com',)

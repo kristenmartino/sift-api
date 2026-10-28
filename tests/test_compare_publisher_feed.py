@@ -385,3 +385,94 @@ async def test_workflow_uses_own_ft_headline_for_free_feed_recovery(monkeypatch)
     monkeypatch.setattr(workflow, 'budgeted_message', paid)
     assert await workflow.search_one_source(Mock(), 'Iran memo', 'Financial Times') == ('Financial Times', original)
     reader.assert_awaited_once_with(FT_MEMO, 'Financial Times', topic='Intelligence memo warns Iran plotting against Americans')
+
+
+ARS_REPORT = 'https://arstechnica.com/tech-policy/2026/01/data-broker-hoarding-is-rampant-new-law-lets-consumers-fight-back/'
+ARS_PUBLIC = ('Californians are getting a new, supercharged way to stop data brokers from hoarding '
+              'and selling their personal information, as a recently enacted law that’s among the '
+              'strictest in the nation took effect at the beginning of the year. '
+              'According to the California Privacy Protection Agency, more than 500 companies actively '
+              'scour all sorts of sources for scraps of information about individuals, then package and '
+              'store it to sell to marketers, private investigators, and others.')
+
+
+def ars_topic_rss(**kwargs):
+    data = rss(url=ARS_REPORT, title='California data broker privacy law', description='Californians can now submit demands requiring 500 brokers to delete their data.', **kwargs)
+    return data.replace(CAPTION.encode(), f'<p>{ARS_PUBLIC}</p><p>Read full article</p>'.encode())
+
+
+@pytest.mark.asyncio
+async def test_sparse_topic_feed_recovers_old_public_paragraphs_but_preserves_exact_feed_recency(monkeypatch):
+    data = ars_topic_rss(stamp=datetime.now(timezone.utc) - timedelta(days=295))
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, headers={'content-type': 'application/rss+xml'}, content=data)
+    mock_http(monkeypatch, handler)
+    candidates = await feed.public_topic_candidates("Data brokers don't just collect facts. They guess about you", 'Ars Technica')
+    assert len(candidates) == 1
+    assert candidates[0]['url'] == ARS_REPORT
+    assert candidates[0]['excerpt'].endswith(ARS_PUBLIC)
+    assert 'Read full article' not in candidates[0]['excerpt']
+    assert 'Published:' in candidates[0]['excerpt']
+    assert calls == [feed.ARS_DATA_BROKERS_FEED]
+    assert feed._feed_article_excerpt(data, ARS_REPORT, datetime.now(timezone.utc)) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('age', [366, -1])
+async def test_topic_feed_does_not_make_ancient_or_future_reporting_current(monkeypatch, age):
+    mock_http(monkeypatch, lambda request: httpx.Response(200, headers={'content-type': 'application/rss+xml'},
+        content=ars_topic_rss(stamp=datetime.now(timezone.utc) - timedelta(days=age))))
+    assert await feed.public_topic_candidates('Data brokers', 'Ars Technica') == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('source', 'topic'), [('CNBC', 'Data brokers'), ('The Verge', 'Data brokers'),
+                                          ('Ars Technica', 'Interactive Brokers earnings')])
+async def test_topic_feed_routes_only_verified_publisher_and_subject(monkeypatch, source, topic):
+    mock_http(monkeypatch, lambda request: pytest.fail('Unmatched subject must not fetch a feed'))
+    assert await feed.public_topic_candidates(topic, source) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('url', ['https://evil.example/article/', 'http://arstechnica.com/report/',
+                                  'https://arstechnica.com/civis/threads/data-brokers/'])
+async def test_topic_feed_cannot_credit_external_or_reader_forum_content(monkeypatch, url):
+    data = ars_topic_rss(stamp=datetime.now(timezone.utc) - timedelta(days=1)).replace(ARS_REPORT.encode(), url.encode())
+    mock_http(monkeypatch, lambda request: httpx.Response(200, headers={'content-type': 'application/rss+xml'}, content=data))
+    assert await feed.public_topic_candidates('Data brokers https://evil.example/private', 'Ars Technica') == []
+
+
+@pytest.mark.asyncio
+async def test_topic_feed_rejects_redirects_and_oversized_responses(monkeypatch):
+    mock_http(monkeypatch, lambda request: httpx.Response(302, headers={'location': 'https://evil.example/private'}))
+    assert await feed.public_topic_candidates('Data brokers', 'Ars Technica') == []
+    monkeypatch.setattr(feed, 'MAX_FEED_BYTES', 20)
+    mock_http(monkeypatch, lambda request: httpx.Response(200, headers={'content-type': 'application/rss+xml'},
+        content=ars_topic_rss(stamp=datetime.now(timezone.utc) - timedelta(days=1))))
+    assert await feed.public_topic_candidates('Data brokers', 'Ars Technica') == []
+
+
+@pytest.mark.asyncio
+async def test_topic_candidate_requires_the_existing_relevance_selection_even_with_indexed_metadata(monkeypatch):
+    from types import SimpleNamespace
+    candidate = {'title': 'California privacy law', 'url': ARS_REPORT,
+                 'excerpt': 'Public publisher description (not full article text).\nPublished: 2026-01-05\nExcerpt:\n' + ARS_PUBLIC}
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value={**candidate, 'excerpt': None}))
+    monkeypatch.setattr(workflow, 'public_article_excerpt', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'public_feed_excerpt', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'public_topic_candidates', AsyncMock(return_value=[candidate]))
+    monkeypatch.setattr(workflow, 'public_feed_excerpts', AsyncMock(return_value={}))
+    paid = AsyncMock(return_value=SimpleNamespace(stop_reason='end_turn', content=[
+        SimpleNamespace(type='text', text='No relevant coverage found from Ars Technica.')]))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    result = await workflow.search_one_source(Mock(), "Data brokers don't just collect facts. They guess about you", 'Ars Technica')
+    assert result == ('Ars Technica', None)
+    paid.assert_awaited_once()
+    assert 'tools' not in paid.await_args.kwargs
+    prompt = paid.await_args.kwargs['messages'][0]['content']
+    assert ARS_PUBLIC in prompt
+    assert 'opting out of record collection alone is not' in prompt
+    assert 'SUPPORTING_PASSAGE=' in prompt

@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-28 public topic-feed audit: Ars’s documented public data-brokers feed retains a January original absent from its general feed. Discover up to three exact publisher originals under the existing two-second/two-megabyte bounds and one-year search window, preserving publication dates and complete public paragraphs. Reuse the existing paid relevance-selection stage; collection/deletion previews cannot establish inferred-profile claims. Keep ordinary exact RSS recovery at 14 days. Subscriber-only Verge bodies, unverified mirrors/commentary and old CNBC reporting remain excluded. No frontend, outlet-limit, cap, schema or extra paid-stage changes.
+
 2026-10-28 remaining publisher recovery: FT’s public Iran feed contains the exact memo absent from its ten-item homepage feed. Route matching article/topic words to that fixed public feed with homepage fallback under the existing shared two-second/two-megabyte bounds. Accept complete short FT standfirsts without adding punctuation; preserve exact URL identity, publisher text, dates and isolated claim review. No frontend, five-outlet maximum, daily-cap or paid-stage changes.
 
 2026-10-27 live truncated-quotation guard: reject supporting passages that end inside an original word or number, or immediately before the source excerpt’s truncation ellipsis. Do not turn an ellipsis dot into a completed sentence. Apply the same guard to candidate selections, attributions and literal fallbacks while retaining intact clauses before a cut-off tail. Also preserve interval anchors: hours of product use do not establish hours since launch; reject that observed scope reversal and repeat the requirement in isolated review. No extra paid stage, cap, outlet-limit or frontend change.
