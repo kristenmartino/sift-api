@@ -201,7 +201,10 @@ async def test_counterparts_use_scoped_query_and_only_own_publisher_passages(mon
     else:
         assert f'site:{domain}' in params['messages'][0]['content']
     assert 'do not require the selected publisher to use the same headline' in params['messages'][0]['content']
-    assert 'allowed_domains' not in params['tools'][0]
+    if name in {'The Hill', 'CNBC'}:
+        assert params['tools'][0]['allowed_domains'] == [domain]
+    else:
+        assert 'allowed_domains' not in params['tools'][0]
     assert params['tools'][0]['max_uses'] == 1
     assert publisher_search_domains(name) == (domain,)
     paid.assert_awaited_once()
@@ -270,3 +273,61 @@ async def test_low_headroom_reduces_actual_output_instead_of_under_reserving(mon
     assert params['max_tokens'] < 2048
     assert message_bound(params) <= 15 - 13.26727666 - 1.4545
     assert message_bound({**params, 'max_tokens': 2048}) > 15 - 13.26727666 - 1.4545
+
+
+def test_ft_syndication_parameter_preserves_exact_content_identity():
+    canonical = 'https://www.ft.com/content/e2e82393-c7ca-4bc1-b270-022b3702d9e7'
+    reply = response(url=canonical)
+    assert PASSAGE in publisher_search_excerpts(reply, ('ft.com',), canonical + '?syn-25a6b1a6=1')
+    assert publisher_search_excerpts(reply, ('ft.com',), canonical + '?article=other') is None
+    assert publisher_search_excerpts(reply, ('ft.com',), canonical.replace('e2e82393', 'aaaaaaaa')) is None
+    other = 'https://www.cnbc.com/article'
+    assert publisher_search_excerpts(response(url=other), ('cnbc.com',), other + '?syn-25a6=1') is None
+
+
+def test_ars_reader_forum_is_not_newsroom_evidence():
+    assert publisher_search_excerpts(response(url='https://arstechnica.com/civis/threads/a-discussion/'), ('arstechnica.com',)) is None
+    assert PASSAGE in publisher_search_excerpts(response(url='https://arstechnica.com/tech-policy/2026/01/a-report/'), ('arstechnica.com',))
+
+
+def test_known_old_index_excerpt_cannot_be_presented_as_recent_reporting():
+    url = 'https://www.cnbc.com/2024/10/11/a-report.html'
+    reply = response(url=url)
+    reply.content.append(Obj(type='web_search_tool_result', content=[Obj(url=url, page_age='746 days ago')]))
+    assert publisher_search_excerpts(reply, ('cnbc.com',)) is None
+    reply.content[-1].content[0].page_age = '73 days ago'
+    assert PASSAGE in publisher_search_excerpts(reply, ('cnbc.com',))
+
+
+@pytest.mark.asyncio
+async def test_explanatory_subject_query_does_not_require_another_outlets_headline(monkeypatch):
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    paid = AsyncMock(return_value=response(url='https://www.cnbc.com/a-report/'))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    topic = "Data brokers don't just collect facts. They guess about you"
+    _, evidence = await workflow.search_one_source(Mock(), topic, 'CNBC')
+    prompt = paid.await_args.kwargs['messages'][0]['content']
+    assert 'Use exactly one targeted search query: "Data brokers"' in prompt
+    assert topic in prompt
+    assert 'never substitute a related event for a specific event' in prompt
+    assert PASSAGE in evidence
+
+
+@pytest.mark.asyncio
+async def test_hill_filter_uses_own_exact_article_and_never_national_review_hints(monkeypatch):
+    url = 'https://thehill.com/policy/international/6169784-clayton-warns-rubio-iran-threats/'
+    title = 'DNI warned Rubio of advanced Iranian efforts to target US personnel, memo shows'
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value={'excerpt': None, 'title': title, 'url': url}))
+    hints = AsyncMock(side_effect=AssertionError('NR-only lookup'))
+    monkeypatch.setattr(workflow, 'publisher_article_hints', hints)
+    paid = AsyncMock(return_value=response(url=url))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    assert (await workflow.search_one_source(Mock(), 'Intelligence memo warns Iran plotting to kill US personnel', 'The Hill'))[1]
+    params = paid.await_args.kwargs
+    assert params['tools'][0]['allowed_domains'] == ['thehill.com']
+    assert 'Use exactly one targeted search query: ' + title in params['messages'][0]['content']
+    paid.return_value = response(url='https://thehill.com/policy/defense/6169634-different-story/')
+    assert (await workflow.search_one_source(Mock(), 'Intelligence memo', 'The Hill'))[1] is None
+    hints.assert_not_awaited()
