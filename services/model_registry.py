@@ -201,7 +201,8 @@ INCUMBENT_BY_OPERATION: dict[str, str] = {
     "story_confirmer.confirm": "haiku-4-5",
     "compare.search_sources": "haiku-4-5",
     "compare.extract_and_compare": "haiku-4-5",
-    # The only non-Haiku stage: an adjudicator has to be better than the thing
+    "compare.verify_claim_support": "sonnet-4-6",
+    # Review stages use a stronger model: an adjudicator has to be better than the thing
     # it judges, or it just re-votes for whichever answer Haiku preferred.
     "judge.batch": "sonnet-4-6",
 }
