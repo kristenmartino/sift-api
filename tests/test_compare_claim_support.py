@@ -181,6 +181,21 @@ def test_calendar_year_requires_publisher_evidence_not_url_or_requested_topic(he
     assert bool(result) is accepted
 
 
+def test_published_year_cannot_supply_an_event_subperiod_missing_from_that_outlet():
+    body = 'The cost of the war has gone up to $47 billion since last month.'
+    text = 'Stored publisher excerpt.\nPublished: 2026-10-28T06:00:00Z\nExcerpt:\n' + body
+    claim = {'claim': 'War costs reached at least $47 billion by mid-October 2026.',
+             'sources': ['Outlet'], 'evidence': {'Outlet': body}}
+    assert workflow._ground_claim_attributions([claim], {'Outlet': text}) == []
+    claim['claim'] = 'War costs reached at least $47 billion by mid-Oct 2026.'
+    with_period = text + ' These are the costs as of the middle of October.'
+    assert workflow._ground_claim_attributions([claim], {'Outlet': with_period})
+
+
+def test_explicit_fiscal_and_quarter_year_labels_are_valid_publisher_evidence():
+    assert workflow._publisher_years('', 'The report covers FY2026 and Q32025.') == {'2026', '2025'}
+
+
 def test_restoring_a_dependent_opening_cannot_create_an_unfinished_clause():
     body = 'No matter how often the candidate invokes Kennedy, the comparison misses the point.'
     assert support._restore_repair_context('the candidate invokes Kennedy', body) is None

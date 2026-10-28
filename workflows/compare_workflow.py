@@ -830,6 +830,7 @@ def _source_evidence_key(source):
 
 def _publisher_years(text: str, body: str) -> set[str]:
     years = set(re.findall(r'\b(?:19|20)\d{2}\b', body))
+    years.update(re.findall(r'\b(?:FY|Q[1-4])\s*((?:19|20)\d{2})\b', body, re.I))
     for first, last in re.findall(r'\b((?:19|20)\d{2})[-–](\d{2})\b', body):
         if (int(first) + 1) % 100 == int(last):
             years.add(str(int(first) + 1))
@@ -841,6 +842,19 @@ def _publisher_years(text: str, body: str) -> set[str]:
         if re.search(r'\bnext year\b', body, re.I):
             years.add(str(int(stamp[1]) + 1))
     return years
+
+
+def _named_periods(text: str) -> set[str]:
+    months = {'jan': 'january', 'feb': 'february', 'mar': 'march', 'apr': 'april',
+              'jun': 'june', 'jul': 'july', 'aug': 'august', 'sep': 'september',
+              'sept': 'september', 'oct': 'october', 'nov': 'november', 'dec': 'december'}
+    text = re.sub(r'\bmiddle of\s+', 'mid-', normalize_evidence_text(text))
+    periods = set()
+    for modifier, value in re.findall(r'\b(early|mid|late)[ -]+([a-z]+|(?:19|20)\d{2})\b', text):
+        value = months.get(value, value)
+        if value in {*months.values(), 'may'} or re.fullmatch(r'(?:19|20)\d{2}', value):
+            periods.add(modifier + '-' + value)
+    return periods
 
 
 def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, include_evidence: bool = False) -> list[dict]:
@@ -855,12 +869,14 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, inclu
 
     bodies = {}
     years = {}
+    periods = {}
     for source, text in reporting.items():
         original = text
         if text.startswith(("Stored publisher excerpt", "Retrieved publisher excerpts", PUBLIC_DESCRIPTION_PREFIX)):
             text = text.partition("\nExcerpt:\n")[2]
         bodies[_source_evidence_key(source)] = (source, normalize(text))
         years[_source_evidence_key(source)] = _publisher_years(original, text)
+        periods[_source_evidence_key(source)] = _named_periods(text)
     grounded = []
     for claim in claims:
         if not isinstance(claim, dict) or not isinstance(claim.get("claim"), str):
@@ -882,6 +898,7 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, inclu
                 quote = quotes.get(source_key)
                 if (source_key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
                         and set(re.findall(r'\b(?:19|20)\d{2}\b', claim['claim'])) <= years[source_key]
+                        and _named_periods(claim['claim']) <= periods[source_key]
                         and verbatim_evidence(quote, bodies[source_key][1])
                         and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[source_key][1])
                         and not _missing_named_law(claim['claim'], bodies[source_key][1])
