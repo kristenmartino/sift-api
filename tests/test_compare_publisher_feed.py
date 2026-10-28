@@ -288,3 +288,13 @@ def test_ft_unpunctuated_standfirst_is_verbatim_and_requires_claim_review():
     assert workflow._complete_short_excerpt(excerpt) is None
     assert workflow._retain_outlet_passages([], None, {'Financial Times': excerpt}) == []
     assert feed._feed_article_excerpt(rss(url=url, description=text + '...'), url, NOW, feed_url=feed._FEEDS['ft.com']) is None
+
+
+def test_public_feed_complete_summary_does_not_hide_fuller_public_paragraphs():
+    url = 'https://arstechnica.com/apple/2026/10/a-chip-launch/'
+    summary = 'The new networking chip supports faster wireless connections in both models.'
+    paragraph = 'Apple introduced the new processor in its desktop and laptop computers on Tuesday.'
+    data = rss(url=url, description=summary, title='A chip launch').replace(CAPTION.encode(), f'<p>{paragraph}</p>'.encode())
+    excerpt = feed._feed_article_excerpt(data, url, NOW, feed_url=feed._FEEDS['arstechnica.com'])
+    assert excerpt.endswith(paragraph)
+    assert CAPTION not in excerpt

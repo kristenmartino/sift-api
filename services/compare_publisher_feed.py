@@ -56,13 +56,14 @@ def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_
         summary = entry.get('summary', '')
         body = unescape(re.sub(r'<[^>]*>', ' ', summary))
         body = re.sub(r'\s+', ' ', body).strip()
-        if feed_url not in {PUBLIC_FEED, AXIOS_FEED} and not complete_description(body):
+        if feed_url not in {PUBLIC_FEED, AXIOS_FEED}:
             # Some public Atom/RSS feeds put a truncated teaser in summary
             # and complete paragraphs in content. Only the feed's own content
             # is eligible; the article page and any gated schema are untouched.
             public_content = next((item.get('value', '') for item in entry.get('content', [])
                                    if item.get('type', '') in {'text/html', 'application/xhtml+xml'}), '')
-            summary = public_content or summary
+            if re.search(r'<(?:p|li)\b', public_content, re.I):
+                summary = public_content
         if feed_url == AXIOS_FEED or (feed_url != PUBLIC_FEED and re.search(r'<(?:p|li)\b', summary, re.I)):
             # Keep whole public blocks, excluding trailing captions, teasers
             # and incomplete paragraphs. NR retains its summary-only rule.
@@ -73,7 +74,8 @@ def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_
                     if sum(map(len, paragraphs)) + len(text) > 12000:
                         break
                     paragraphs.append(text)
-            body = '\n\n'.join(paragraphs)
+            if paragraphs:
+                body = '\n\n'.join(paragraphs)
 
         if feed_url not in {PUBLIC_FEED, AXIOS_FEED} and body.rstrip().endswith(('...', '…')):
             # Plain RSS teasers can contain complete reporting followed by a
