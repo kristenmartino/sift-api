@@ -25,6 +25,9 @@ _FEEDS = {
     'theverge.com': 'https://www.theverge.com/rss/index.xml',
     'arstechnica.com': 'https://feeds.arstechnica.com/arstechnica/index',
 }
+# Public topic feed verified against FT's exact Iran memo. Choose it from
+# article/topic words only; callers cannot supply a URL.
+_FT_TOPIC_FEEDS = {r'\biran(?:ian)?\b': 'https://www.ft.com/iran?format=rss'}
 MAX_FEED_BYTES = 2_000_000
 FEED_TIMEOUT = 2
 PUBLIC_DESCRIPTION_PREFIX = 'Public publisher description (not full article text).'
@@ -96,7 +99,7 @@ def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_
         # FT's public RSS standfirsts omit terminal punctuation by style.
         # Preserve the verbatim text; it must go through model extraction and
         # isolated claim review, never the complete-short-quotation shortcut.
-        ft_standfirst = (feed_url == _FEEDS['ft.com'] and len(body.split()) >= 20
+        ft_standfirst = (feed_url in {_FEEDS['ft.com'], *_FT_TOPIC_FEEDS.values()} and len(body.split()) >= 6
                          and not re.search(r'(?:\.\s*){3}|…', body)
                          and not re.match(r'^(read|subscribe|sign in|click)\b', body, re.I))
         if not _has_publisher_reporting(body, title, minimum_words=6) or not (complete_description(body) or ft_standfirst):
@@ -107,12 +110,13 @@ def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_
     return None
 
 
-async def public_feed_excerpt(article_url: str, source: str) -> str | None:
-    return (await public_feed_excerpts([article_url], source)).get(article_url)
+async def public_feed_excerpt(article_url: str, source: str, *, topic: str = '') -> str | None:
+    kwargs = {'topic': topic} if topic else {}
+    return (await public_feed_excerpts([article_url], source, **kwargs)).get(article_url)
 
 
-async def public_feed_excerpts(article_urls: list[str], source: str) -> dict[str, str]:
-    """Read the fixed public feed once for up to three known publisher URLs.
+async def public_feed_excerpts(article_urls: list[str], source: str, *, topic: str = '') -> dict[str, str]:
+    """Read bounded public feeds for up to three exact publisher URLs.
 
     Discovery candidates still require the caller to verify topic relevance.
     No article-page requests, redirects, credentials or access-control workarounds.
@@ -122,7 +126,12 @@ async def public_feed_excerpts(article_urls: list[str], source: str) -> dict[str
     if len(domains) != 1 or domains[0] not in _FEEDS:
         return {}
     host = domains[0]
-    feed_url = _FEEDS[host]
+    feeds = [_FEEDS[host]]
+    if host == 'ft.com':
+        selected = next((url for pattern, url in _FT_TOPIC_FEEDS.items()
+                         if re.search(pattern, topic, re.I)), None)
+        if selected:
+            feeds.insert(0, selected)
     valid = []
     for article_url in dict.fromkeys(article_urls[:3]):
         identity = _article_identity(article_url)
@@ -131,21 +140,32 @@ async def public_feed_excerpts(article_urls: list[str], source: str) -> dict[str
             valid.append(article_url)
     if not valid:
         return {}
+    excerpts = {}
     try:
+        # Topic + home fallback share the existing deadline and byte budget.
         async with asyncio.timeout(FEED_TIMEOUT):
             async with httpx.AsyncClient(timeout=FEED_TIMEOUT, follow_redirects=False) as client:
-                async with client.stream('GET', feed_url) as response:
-                    content_type = response.headers.get('content-type', '').split(';')[0].strip().lower()
-                    if response.status_code != 200 or not content_type.endswith(('/xml', '+xml')):
-                        return {}
-                    data = bytearray()
-                    async for chunk in response.aiter_bytes():
-                        data.extend(chunk)
-                        if len(data) > MAX_FEED_BYTES:
-                            return {}
-            now = datetime.now(timezone.utc)
-            excerpts = {url: _feed_article_excerpt(bytes(data), url, now, feed_url=feed_url) for url in valid}
-            return {url: text for url, text in excerpts.items() if text}
+                remaining = MAX_FEED_BYTES
+                for feed_url in feeds:
+                    async with client.stream('GET', feed_url) as response:
+                        content_type = response.headers.get('content-type', '').split(';')[0].strip().lower()
+                        if response.status_code != 200 or not content_type.endswith(('/xml', '+xml')):
+                            continue
+                        data = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            remaining -= len(chunk)
+                            if remaining < 0:
+                                return excerpts
+                            data.extend(chunk)
+                    now = datetime.now(timezone.utc)
+                    for url in valid:
+                        if url not in excerpts:
+                            text = _feed_article_excerpt(bytes(data), url, now, feed_url=feed_url)
+                            if text:
+                                excerpts[url] = text
+                    if len(excerpts) == len(valid):
+                        break
+        return excerpts
     except Exception as exc:
-        logger.info('compare public publisher feed unavailable (%s); using search', type(exc).__name__)
-        return {}
+        logger.info('compare public publisher feed unavailable (%s); using available originals/search', type(exc).__name__)
+        return excerpts

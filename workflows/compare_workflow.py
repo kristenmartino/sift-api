@@ -172,7 +172,8 @@ async def search_one_source(
         return (source, stored["excerpt"])
     if stored:
         public_excerpt = (await public_article_excerpt(stored['url'], source)
-                          or await public_feed_excerpt(stored['url'], source))
+                          or await public_feed_excerpt(stored['url'], source,
+                                                       **({'topic': stored['title']} if publisher_search_domains(source) == ('ft.com',) else {})))
         if public_excerpt:
             logger.info('compare public publisher text: using exact original for %s', source)
             return source, public_excerpt
@@ -207,7 +208,8 @@ async def search_one_source(
     hints = public_candidates or archive_hints or discovered
     originals_only = bool(archive_hints or public_candidates)
     if hints and not archive_hints:
-        descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source)
+        descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source,
+                                                   **({'topic': topic} if search_domains == ('ft.com',) else {}))
         for hint in hints:
             if hint['url'] in descriptions:
                 hint['excerpt'] = descriptions[hint['url']]

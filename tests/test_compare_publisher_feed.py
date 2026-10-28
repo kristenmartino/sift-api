@@ -298,3 +298,90 @@ def test_public_feed_complete_summary_does_not_hide_fuller_public_paragraphs():
     excerpt = feed._feed_article_excerpt(data, url, NOW, feed_url=feed._FEEDS['arstechnica.com'])
     assert excerpt.endswith(paragraph)
     assert CAPTION not in excerpt
+
+
+FT_MEMO = 'https://www.ft.com/content/e2e82393-c7ca-4bc1-b270-022b3702d9e7?syn-25a6b1a6=1'
+FT_IRAN = 'https://www.ft.com/iran?format=rss'
+FT_DESCRIPTION = 'Plans against US citizens have reached ‘advanced stages’ as tensions rise in region, according to document'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('topic', ['Intelligence memo warns Iran plotting against Americans', 'Iranian plots against US personnel'])
+async def test_ft_topic_feed_recovers_short_exact_memo_standfirst(monkeypatch, topic):
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, headers={'content-type': 'text/xml'},
+            content=rss(url=FT_MEMO, title='Intelligence memo warns Iran is plotting to kill Americans',
+                        description=FT_DESCRIPTION, stamp=datetime.now(timezone.utc) - timedelta(days=4)))
+    mock_http(monkeypatch, handler)
+    excerpt = await feed.public_feed_excerpt(FT_MEMO, 'Financial Times', topic=topic)
+    assert excerpt.endswith(FT_DESCRIPTION)
+    assert FT_IRAN in excerpt and CAPTION not in excerpt
+    assert calls == [FT_IRAN]
+    assert workflow._complete_short_excerpt(excerpt) is None
+    assert workflow._retain_outlet_passages([], None, {'Financial Times': excerpt}) == []
+
+
+@pytest.mark.asyncio
+async def test_ft_home_feed_remains_fallback_when_topic_feed_lacks_exact_article(monkeypatch):
+    calls = []
+    def handler(request):
+        url = str(request.url)
+        calls.append(url)
+        article = FT_MEMO if url == feed._FEEDS['ft.com'] else FT_MEMO.replace('e2e82393', 'aaaaaaaa')
+        return httpx.Response(200, headers={'content-type': 'text/xml'},
+            content=rss(url=article, description=FT_DESCRIPTION, stamp=datetime.now(timezone.utc) - timedelta(days=1)))
+    mock_http(monkeypatch, handler)
+    assert (await feed.public_feed_excerpt(FT_MEMO, 'Financial Times', topic='Iran memo')).endswith(FT_DESCRIPTION)
+    assert calls == [FT_IRAN, feed._FEEDS['ft.com']]
+
+
+@pytest.mark.asyncio
+async def test_ft_topic_profile_never_fetches_a_caller_supplied_url(monkeypatch):
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(403)
+    mock_http(monkeypatch, handler)
+    assert await feed.public_feed_excerpt(FT_MEMO, 'Financial Times', topic='Iran https://evil.example/private') is None
+    assert calls == [FT_IRAN, feed._FEEDS['ft.com']]
+
+
+@pytest.mark.asyncio
+async def test_ft_keeps_first_verified_article_when_second_feed_fails(monkeypatch):
+    other = FT_MEMO.replace('e2e82393', 'aaaaaaaa')
+    def handler(request):
+        if str(request.url) != FT_IRAN:
+            raise httpx.ReadTimeout('Public feed unavailable', request=request)
+        return httpx.Response(200, headers={'content-type': 'text/xml'},
+            content=rss(url=FT_MEMO, description=FT_DESCRIPTION, stamp=datetime.now(timezone.utc) - timedelta(days=1)))
+    mock_http(monkeypatch, handler)
+    result = await feed.public_feed_excerpts([FT_MEMO, other], 'Financial Times', topic='Iran')
+    assert list(result) == [FT_MEMO]
+
+
+@pytest.mark.asyncio
+async def test_ft_topic_and_home_share_one_byte_budget(monkeypatch):
+    data = rss(url=FT_MEMO, description=FT_DESCRIPTION, stamp=datetime.now(timezone.utc) - timedelta(days=1))
+    monkeypatch.setattr(feed, 'MAX_FEED_BYTES', len(data) + 10)
+    def handler(request):
+        return httpx.Response(200, headers={'content-type': 'text/xml'},
+                              content=data if str(request.url) == FT_IRAN else b' ' * 20)
+    mock_http(monkeypatch, handler)
+    result = await feed.public_feed_excerpts([FT_MEMO, FT_MEMO.replace('e2e82393', 'aaaaaaaa')], 'Financial Times', topic='Iran')
+    assert list(result) == [FT_MEMO]
+
+
+@pytest.mark.asyncio
+async def test_workflow_uses_own_ft_headline_for_free_feed_recovery(monkeypatch):
+    original = 'Public publisher description (not full article text).\nExcerpt:\n' + FT_DESCRIPTION
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value={
+        'title': 'Intelligence memo warns Iran plotting against Americans', 'url': FT_MEMO, 'excerpt': None}))
+    monkeypatch.setattr(workflow, 'public_article_excerpt', AsyncMock(return_value=None))
+    reader = AsyncMock(return_value=original)
+    monkeypatch.setattr(workflow, 'public_feed_excerpt', reader)
+    paid = AsyncMock(side_effect=AssertionError('Exact public RSS should avoid a paid search'))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    assert await workflow.search_one_source(Mock(), 'Iran memo', 'Financial Times') == ('Financial Times', original)
+    reader.assert_awaited_once_with(FT_MEMO, 'Financial Times', topic='Intelligence memo warns Iran plotting against Americans')
