@@ -21,7 +21,7 @@ PASSAGE = 'The committee approved the measure by ten votes to two after a public
 
 
 def response(quote=PASSAGE, url='https://www.nationalreview.com/2026/10/a-vote/', title='A vote'):
-    return Obj(content=[Obj(type='text', text='The committee approved the measure.', citations=[
+    return Obj(content=[Obj(type='text', text='COVERAGE_MATCH=YES\nThe committee approved the measure.', citations=[
         Obj(type='web_search_result_location', cited_text=quote, url=url, title=title),
     ])])
 
@@ -398,3 +398,47 @@ def test_cut_off_literal_quote_cannot_reenter_as_a_fallback_claim():
     reporting = {'CNBC': 'Retrieved publisher excerpts (may be incomplete).\nExcerpt:\n' + quote + '...'}
     assert workflow._retain_outlet_passages([], {'CNBC': quote}, reporting) == []
     assert workflow._ground_claim_attributions([{'claim': 'CNBC writes: ' + quote, 'sources': ['CNBC'], 'evidence': {'CNBC': quote}}], reporting) == []
+
+
+@pytest.mark.parametrize(('quote', 'body', 'accepted'), [
+    ('roughly 60,000 employees, or about a quarter of its workforce.',
+     'roughly 60,000 employees , or about a quarter of its workforce.', True),
+    ('The company announced the offer.', 'The company announced the offer .', True),
+    ('The price was 2.5 dollars.', 'The price was 2 . 5 dollars.', False),
+    ('The total was 10,000 workers.', 'The total was 10 ,000 workers.', False),
+    ("The worker's records were sold.", 'The worker ’s records were sold.', False),
+    ('Microsoft announced the offer.', 'Micro soft announced the offer.', False),
+    ('The offer covers India and Canada.', 'The offer covers Canada and India.', False),
+])
+def test_imported_inline_html_spacing_cannot_change_words_numbers_or_clause_order(quote, body, accepted):
+    assert verbatim_evidence(quote, body) is accepted
+
+
+def test_multiple_explicit_candidate_passages_can_recover_a_valid_later_original():
+    first = 'The new desktop costs $1,499, and the […]'
+    second = 'Apple is refreshing the entry-level MacBook Pro with the M6 chip today.'
+    hints = [{'excerpt': 'Publisher\nExcerpt:\n' + first}, {'excerpt': 'Publisher\nExcerpt:\n' + second}]
+    reply = ('**SELECTED_STORED_CANDIDATE=0**\n**SELECTED_STORED_CANDIDATE=1**\n'
+             '**SUPPORTING_PASSAGE (Candidate 0):** "The new desktop costs $1,499."\n'
+             '**SUPPORTING_PASSAGE (Candidate 1):** "' + second + '"')
+    assert workflow._verified_candidate_excerpt(reply, hints, require_passage=True) == hints[1]['excerpt']
+    assert workflow._verified_candidate_excerpt(reply.replace('(Candidate 1)', '(Candidate 0)'), hints, require_passage=True) is None
+    assert workflow._verified_candidate_excerpt(reply.replace(' (Candidate 1):', '=').replace(' (Candidate 0):', '='), hints, require_passage=True) is None
+
+
+@pytest.mark.parametrize(('verdict', 'accepted'), [('COVERAGE_MATCH=YES', True),
+    ('**COVERAGE_MATCH=** YES', True), ('COVERAGE_MATCH=NO', False), ('', False),
+    ('COVERAGE_MATCH=YES\nCOVERAGE_MATCH=NO', False)])
+@pytest.mark.asyncio
+async def test_native_event_match_must_be_explicit_and_unambiguous(monkeypatch, verdict, accepted):
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    reply = response(url='https://www.cnbc.com/2026/10/27/a-product-announcement.html')
+    reply.content[0].text = verdict + '\nThe outlet covers the product.'
+    paid = AsyncMock(return_value=reply)
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    source, text = await workflow.search_one_source(Mock(), 'Apple announced M6 Macs', 'CNBC')
+    assert source == 'CNBC'
+    assert bool(text) is accepted
+    assert 'pre-event rumors' in paid.await_args.kwargs['messages'][0]['content']
+    paid.assert_awaited_once()

@@ -29,6 +29,11 @@ _FEEDS = {
 # Public topic feed verified against FT's exact Iran memo. Choose it from
 # article/topic words only; callers cannot supply a URL.
 _FT_TOPIC_FEEDS = {r'\biran(?:ian)?\b': 'https://www.ft.com/iran?format=rss'}
+_ARS_SECTION_FEEDS = {path: 'https://feeds.arstechnica.com/arstechnica/' + section
+                      for path, section in [('/gadgets/', 'gadgets'), ('/apple/', 'apple'),
+                                            ('/tech-policy/', 'tech-policy')]}
+_VERGE_TOPIC_FEEDS = {r'\bmicrosoft\b': 'https://www.theverge.com/rss/microsoft/index.xml',
+                      r'\b(?:apple|imac|macbook)\b': 'https://www.theverge.com/rss/apple/index.xml'}
 # Ars documents public /tag/<topic>/feed/ routes. This sparse topic feed
 # retains older reporting absent from its general feed; no subscriber token.
 ARS_DATA_BROKERS_FEED = 'https://arstechnica.com/tag/data-brokers/feed/'
@@ -195,6 +200,16 @@ async def public_feed_excerpts(article_urls: list[str], source: str, *, topic: s
                          if re.search(pattern, topic, re.I)), None)
         if selected:
             feeds.insert(0, selected)
+    elif host == 'arstechnica.com':
+        selected = next((feed for url in article_urls[:3] for path, feed in _ARS_SECTION_FEEDS.items()
+                         if urlparse(url).path.startswith(path)), None)
+        if selected:
+            feeds.insert(0, selected)
+    elif host == 'theverge.com':
+        selected = next((url for pattern, url in _VERGE_TOPIC_FEEDS.items()
+                         if re.search(pattern, topic, re.I)), None)
+        if selected:
+            feeds.insert(0, selected)
     valid = []
     for article_url in dict.fromkeys(article_urls[:3]):
         identity = _article_identity(article_url)
@@ -206,8 +221,9 @@ async def public_feed_excerpts(article_urls: list[str], source: str, *, topic: s
     excerpts = {}
     try:
         # Topic + home fallback share the existing deadline and byte budget.
-        async with asyncio.timeout(FEED_TIMEOUT):
-            async with httpx.AsyncClient(timeout=FEED_TIMEOUT, follow_redirects=False) as client:
+        timeout = TOPIC_FEED_TIMEOUT if len(feeds) > 1 and host != 'ft.com' else FEED_TIMEOUT
+        async with asyncio.timeout(timeout):
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
                 remaining = MAX_FEED_BYTES
                 for feed_url in feeds:
                     async with client.stream('GET', feed_url) as response:
@@ -230,5 +246,5 @@ async def public_feed_excerpts(article_urls: list[str], source: str, *, topic: s
                         break
         return excerpts
     except Exception as exc:
-        logger.info('compare public publisher feed unavailable (%s); using available originals/search', type(exc).__name__)
+        logger.info('compare public publisher feed unavailable: source=%s (%s); using available originals/search', source, type(exc).__name__)
         return excerpts
