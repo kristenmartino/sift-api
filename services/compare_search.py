@@ -41,6 +41,22 @@ def normalize_evidence_text(text: str) -> str:
     return ' '.join(text.casefold().split())
 
 
+def verbatim_evidence(quote: str, body: str) -> bool:
+    """Require word boundaries and reject a copied source's cut-off tail."""
+    quote, body = normalize_evidence_text(quote), normalize_evidence_text(body)
+    if not quote:
+        return False
+    for match in re.finditer(r'(?<!\w)' + re.escape(quote) + r'(?!\w)', body):
+        tail = body[match.end():].lstrip()
+        # Do not turn the first dot of an ellipsis into a sentence ending.
+        if quote.endswith('.') and tail.startswith('..'):
+            continue
+        if not quote.endswith(('.', '!', '?')) and tail.startswith(('...', '…')):
+            continue
+        return True
+    return False
+
+
 def publisher_domains(source: str) -> tuple[str, ...]:
     name = re.sub(r'^the[ -]+', '', source.strip().casefold())
     return _DOMAINS.get(re.sub(r'[^a-z0-9]', '', name), ())

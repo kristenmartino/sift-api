@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
+from services.compare_search import normalize_evidence_text, verbatim_evidence, publisher_domains, publisher_search_domains, publisher_search_excerpts
 from workflows import compare_workflow as workflow
 
 
@@ -377,3 +377,22 @@ def test_nested_quotation_style_is_cosmetic_but_possessives_and_words_are_preser
     assert normalize_evidence_text("companies' devices") != normalize_evidence_text("company's devices")
     assert normalize_evidence_text("don't recall the devices") != normalize_evidence_text('do recall the devices')
     assert normalize_evidence_text(quoted) != normalize_evidence_text(quoted.replace('appear to have', 'have'))
+
+
+def test_verbatim_evidence_rejects_partial_words_and_cut_off_source_tails():
+    intact = 'The inner screen of the phone can break'
+    quote = intact + ', showing horizontal bright lines emanating from th'
+    body = quote + '...'
+    assert not verbatim_evidence(quote, body)
+    assert not verbatim_evidence(quote + '.', body)
+    assert verbatim_evidence(intact, body)
+    assert not verbatim_evidence(intact[:-1], body)
+    assert not verbatim_evidence('The committee voted on June 2', 'The committee voted on June 20.')
+    assert verbatim_evidence('The committee approved the measure.', 'The committee approved the measure. More reporting...')
+
+
+def test_cut_off_literal_quote_cannot_reenter_as_a_fallback_claim():
+    quote = 'The inner screen of the phone can break, showing horizontal bright lines emanating from th'
+    reporting = {'CNBC': 'Retrieved publisher excerpts (may be incomplete).\nExcerpt:\n' + quote + '...'}
+    assert workflow._retain_outlet_passages([], {'CNBC': quote}, reporting) == []
+    assert workflow._ground_claim_attributions([{'claim': 'CNBC writes: ' + quote, 'sources': ['CNBC'], 'evidence': {'CNBC': quote}}], reporting) == []

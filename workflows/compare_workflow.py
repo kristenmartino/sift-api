@@ -17,7 +17,7 @@ from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scop
 from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
-from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
+from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts, verbatim_evidence
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts, supports_public_feed
 from services.compare_claim_support import verify_claim_support
 from services.compare_public_article import public_article_excerpt, public_article_candidates
@@ -418,7 +418,7 @@ async def search_one_source(
                     quote = passage[1].strip().strip('\"“”') if passage else ''
                     body = hints[index]['excerpt'].partition('\nExcerpt:\n')[2]
                     if (not 6 <= len(quote.split()) <= 300
-                            or normalize_evidence_text(quote) not in normalize_evidence_text(body)):
+                            or not verbatim_evidence(quote, body)):
                         logger.info('compare relevance selection: source=%s missing original support', source)
                         return source, None
                 logger.info('search_sources: verified original publisher candidate for %s (%s)', source, hints[index]['url'])
@@ -740,7 +740,7 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, inclu
                 source_key = _source_evidence_key(source)
                 quote = quotes.get(source_key)
                 if (source_key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
-                        and normalize(quote) in bodies[source_key][1]
+                        and verbatim_evidence(quote, bodies[source_key][1])
                         and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[source_key][1])
                         and not _missing_named_law(claim['claim'], bodies[source_key][1])
                         and not _adds_unsupported_speech_act(claim['claim'], bodies[source_key][1])):
