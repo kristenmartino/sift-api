@@ -93,7 +93,17 @@ LIMIT 3
 
 
 async def publisher_article_hints(topic: str, source: str = 'National Review') -> list[dict[str, str]]:
-    words = list(dict.fromkeys(re.findall(r"[^\W\d_][\w'-]{2,59}", topic[:500].casefold())))[:12]
+    # Calendar boilerplate and "new" otherwise rank a fresh Apple release
+    # above an older Meta fine. Keep distinctive amounts in headline form
+    # ("25 billion" -> "25b") without changing the existing indexed query.
+    generic = {'the', 'and', 'for', 'with', 'from', 'that', 'this', 'new', 'about', 'into',
+               'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+               'september', 'october', 'november', 'december'}
+    words = [word for word in re.findall(r"[^\W\d_][\w'-]{2,59}", topic[:500].casefold())
+             if word not in generic]
+    words += [number + unit[0] for number, unit in re.findall(
+        r'\b(\d+(?:\.\d+)?)\s+(billion|million|trillion)\b', topic[:500].casefold())]
+    words = list(dict.fromkeys(words))[:12]
     if not words:
         return []
     try:

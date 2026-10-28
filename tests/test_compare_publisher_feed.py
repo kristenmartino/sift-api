@@ -475,7 +475,7 @@ async def test_topic_candidate_requires_the_existing_relevance_selection_even_wi
     prompt = paid.await_args.kwargs['messages'][0]['content']
     assert ARS_PUBLIC in prompt
     assert 'opting out of record collection alone is not' in prompt
-    assert 'SUPPORTING_PASSAGE=' in prompt
+    assert 'SELECTED_ORIGINAL_PASSAGE=N:P' in prompt
 
 
 @pytest.mark.asyncio
@@ -509,6 +509,8 @@ async def test_topic_archive_has_its_own_bounded_deadline_and_retains_fallback(m
     ('Ars Technica', 'https://arstechnica.com/apple/2026/10/a-mac/', '', 'https://feeds.arstechnica.com/arstechnica/apple'),
     ('The Verge', 'https://www.theverge.com/tech/1018467/a-mac', 'Apple M6 iMac refresh', 'https://www.theverge.com/rss/apple/index.xml'),
     ('The Verge', 'https://www.theverge.com/tech/1018666/a-buyout', 'Microsoft buyout offer', 'https://www.theverge.com/rss/microsoft/index.xml'),
+    ('The Verge', 'https://www.theverge.com/ai/101/filing', 'Anthropic IPO filing', 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml'),
+    ('The Verge', 'https://www.theverge.com/policy/102/a-fine', 'Meta penalty', 'https://www.theverge.com/rss/facebook/index.xml'),
 ])
 async def test_section_feeds_recover_exact_originals_absent_from_homepage(monkeypatch, source, url, topic, section):
     calls = []
@@ -572,3 +574,19 @@ async def test_complete_public_paragraph_enriches_a_truncated_discovery_hint(mon
     monkeypatch.setattr(workflow, 'log_usage', Mock())
     assert await workflow.search_one_source(Mock(), 'Apple M6 Mac', 'The Verge') == ('The Verge', richer)
     reader.assert_awaited_once_with([url], 'The Verge', topic='Apple M6 Mac')
+
+
+@pytest.mark.asyncio
+async def test_first_unrelated_ars_section_cannot_hide_a_later_policy_candidate(monkeypatch):
+    apple = 'https://arstechnica.com/apple/2026/10/a-mac/'
+    policy = 'https://arstechnica.com/tech-policy/2026/10/a-penalty/'
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        url = apple if str(request.url).endswith('/apple') else policy
+        return httpx.Response(200, headers={'content-type': 'application/rss+xml'},
+            content=rss(url=url, stamp=datetime.now(timezone.utc)-timedelta(days=1)))
+    mock_http(monkeypatch, handler)
+    result = await feed.public_feed_excerpts([apple, policy], 'Ars Technica')
+    assert set(result) == {apple, policy}
+    assert calls == [feed._ARS_SECTION_FEEDS['/apple/'], feed._ARS_SECTION_FEEDS['/tech-policy/']]

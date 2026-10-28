@@ -33,7 +33,9 @@ _ARS_SECTION_FEEDS = {path: 'https://feeds.arstechnica.com/arstechnica/' + secti
                       for path, section in [('/gadgets/', 'gadgets'), ('/apple/', 'apple'),
                                             ('/tech-policy/', 'tech-policy')]}
 _VERGE_TOPIC_FEEDS = {r'\bmicrosoft\b': 'https://www.theverge.com/rss/microsoft/index.xml',
-                      r'\b(?:apple|imac|macbook)\b': 'https://www.theverge.com/rss/apple/index.xml'}
+                      r'\b(?:apple|imac|macbook)\b': 'https://www.theverge.com/rss/apple/index.xml',
+                      r'\b(?:anthropic|openai|artificial intelligence)\b': 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml',
+                      r'\b(?:meta|facebook|cambridge analytica)\b': 'https://www.theverge.com/rss/facebook/index.xml'}
 # Ars documents public /tag/<topic>/feed/ routes. This sparse topic feed
 # retains older reporting absent from its general feed; no subscriber token.
 ARS_DATA_BROKERS_FEED = 'https://arstechnica.com/tag/data-brokers/feed/'
@@ -201,10 +203,12 @@ async def public_feed_excerpts(article_urls: list[str], source: str, *, topic: s
         if selected:
             feeds.insert(0, selected)
     elif host == 'arstechnica.com':
-        selected = next((feed for url in article_urls[:3] for path, feed in _ARS_SECTION_FEEDS.items()
-                         if urlparse(url).path.startswith(path)), None)
-        if selected:
-            feeds.insert(0, selected)
+        # Loose discovery can put an unrelated Apple article before the
+        # matching policy report. Cover each candidate's fixed section;
+        # all requests still share one deadline and byte budget.
+        selected = dict.fromkeys(feed for url in article_urls[:3] for path, feed in _ARS_SECTION_FEEDS.items()
+                                 if urlparse(url).path.startswith(path))
+        feeds = [*selected, *feeds]
     elif host == 'theverge.com':
         selected = next((url for pattern, url in _VERGE_TOPIC_FEEDS.items()
                          if re.search(pattern, topic, re.I)), None)
