@@ -34,6 +34,10 @@ def normalize_evidence_text(text: str) -> str:
     text = unicodedata.normalize('NFKC', text).translate(str.maketrans({
         '’': "'", '‘': "'", '“': '"', '”': '"', '–': '-', '—': '-',
     }))
+    # Publishers and model quotes can use single/double marks around the
+    # same term. Normalize paired quotation marks only; preserve apostrophes
+    # inside contractions and possessives, words, numbers and clause order.
+    text = re.sub(r"(?<!\w)'([^'\n]+)'(?!\w)", r'"\1"', text)
     return ' '.join(text.casefold().split())
 
 

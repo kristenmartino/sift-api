@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from services.compare_search import publisher_domains, publisher_search_domains, publisher_search_excerpts
+from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
 from workflows import compare_workflow as workflow
 
 
@@ -337,7 +337,11 @@ async def test_hill_filter_uses_own_exact_article_and_never_national_review_hint
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(('reply', 'supported', 'accepted'), [
-    ('SELECTED_STORED_CANDIDATE=0', True, True),
+    ('SELECTED_STORED_CANDIDATE=0\nSUPPORTING_PASSAGE=' + PASSAGE, True, True),
+    ('**SELECTED_STORED_CANDIDATE=0**\n**SUPPORTING_PASSAGE=** \"' + PASSAGE + '\"', True, True),
+    ('**SELECTED_STORED_CANDIDATE=0**\n**SUPPORTING_PASSAGE=** \"The phone melted into liquid and all units were recalled.\"', True, False),
+    ('SELECTED_STORED_CANDIDATE=0', True, False),
+    ('SELECTED_STORED_CANDIDATE=0\nSUPPORTING_PASSAGE=The phone melted into liquid and all the units were recalled.', True, False),
     ('A related headline is available.', True, False),
     ('SELECTED_STORED_CANDIDATE=0', False, False),
     ('No relevant coverage found from Ars Technica.', True, False),
@@ -355,7 +359,21 @@ async def test_alternate_publisher_headline_needs_original_text_and_relevance_se
     monkeypatch.setattr(workflow, 'log_usage', Mock())
     assert (await workflow.search_one_source(Mock(), topic, 'Ars Technica'))[1] == (excerpt if accepted else None)
     discover.assert_awaited_once_with(topic, 'Ars Technica')
-    assert 'Topic cue: ' + topic in paid.await_args.kwargs['messages'][0]['content']
+    prompt = paid.await_args.kwargs['messages'][0]['content']
+    assert 'Topic cue: ' + topic in prompt
+    if supported:
+        assert 'SAME event/action and timing' in prompt
+    assert 'Current date (UTC): ' in prompt
+    assert paid.await_args.kwargs['temperature'] == 0
     assert paid.await_args.kwargs['tools'][0]['max_uses'] == 1
     if not supported:
         assert 'Some iPhone Duo screens' not in paid.await_args.kwargs['messages'][0]['content']
+
+
+def test_nested_quotation_style_is_cosmetic_but_possessives_and_words_are_preserved():
+    original = 'Despite the company’s talk about its “precision-engineered” hinge, some devices appear to have a flaw.'
+    quoted = "Despite the company's talk about its 'precision-engineered' hinge, some devices appear to have a flaw."
+    assert normalize_evidence_text(original) == normalize_evidence_text(quoted)
+    assert normalize_evidence_text("companies' devices") != normalize_evidence_text("company's devices")
+    assert normalize_evidence_text("don't recall the devices") != normalize_evidence_text('do recall the devices')
+    assert normalize_evidence_text(quoted) != normalize_evidence_text(quoted.replace('appear to have', 'have'))
