@@ -486,3 +486,18 @@ async def test_malformed_later_topic_entry_does_not_erase_verified_reporting(mon
     mock_http(monkeypatch, lambda request: httpx.Response(200, headers={'content-type': 'application/rss+xml'}, content=data))
     candidates = await feed.public_topic_candidates('Data brokers', 'Ars Technica')
     assert [c['url'] for c in candidates] == [ARS_REPORT]
+
+
+@pytest.mark.asyncio
+async def test_topic_archive_has_its_own_bounded_deadline_and_retains_fallback(monkeypatch):
+    import asyncio
+    monkeypatch.setattr(feed, 'FEED_TIMEOUT', 0.001)
+    monkeypatch.setattr(feed, 'TOPIC_FEED_TIMEOUT', 0.05)
+    async def delayed(request):
+        await asyncio.sleep(0.01)
+        return httpx.Response(200, headers={'content-type': 'application/rss+xml'},
+            content=ars_topic_rss(stamp=datetime.now(timezone.utc) - timedelta(days=30)))
+    mock_http(monkeypatch, delayed)
+    assert len(await feed.public_topic_candidates('Data brokers', 'Ars Technica')) == 1
+    monkeypatch.setattr(feed, 'TOPIC_FEED_TIMEOUT', 0.001)
+    assert await feed.public_topic_candidates('Data brokers', 'Ars Technica') == []

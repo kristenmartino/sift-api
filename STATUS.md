@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-28 production topic-feed timing: the Ars topic lookup hit the two-second deadline live. Give this sparse topic archive the same five-second bound as public archive discovery, keeping the ordinary two-second exact-feed path, shared 50-second comparison ceiling and byte limit. Log rejected HTTP responses separately from timeouts; preserve normal search fallback and all evidence/budget checks.
+
 2026-10-28 public topic-feed audit: Ars’s documented public data-brokers feed retains a January original absent from its general feed. Discover up to three exact publisher originals under the existing two-second/two-megabyte bounds and one-year search window, preserving publication dates and complete public paragraphs. Reuse the existing paid relevance-selection stage; collection/deletion previews cannot establish inferred-profile claims. Keep ordinary exact RSS recovery at 14 days. Subscriber-only Verge bodies, unverified mirrors/commentary and old CNBC reporting remain excluded. No frontend, outlet-limit, cap, schema or extra paid-stage changes.
 
 2026-10-28 remaining publisher recovery: FT’s public Iran feed contains the exact memo absent from its ten-item homepage feed. Route matching article/topic words to that fixed public feed with homepage fallback under the existing shared two-second/two-megabyte bounds. Accept complete short FT standfirsts without adding punctuation; preserve exact URL identity, publisher text, dates and isolated claim review. No frontend, five-outlet maximum, daily-cap or paid-stage changes.
