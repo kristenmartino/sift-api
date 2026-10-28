@@ -213,7 +213,8 @@ async def test_counterparts_use_scoped_query_and_only_own_publisher_passages(mon
 
 
 @pytest.mark.asyncio
-async def test_other_publisher_context_identifies_event_but_cannot_supply_counterpart_facts(monkeypatch):
+@pytest.mark.parametrize(('source', 'domain'), [('NPR', 'npr.org'), ('The Hill', 'thehill.com'), ('CNBC', 'cnbc.com')])
+async def test_other_publisher_context_identifies_event_but_cannot_supply_counterpart_facts(monkeypatch, source, domain):
     origin = {'title': 'An editorial on religious rights', 'url': 'https://www.nationalreview.com/an-editorial/',
               'excerpt': None}
     async def lookup(topic, source):
@@ -221,15 +222,15 @@ async def test_other_publisher_context_identifies_event_but_cannot_supply_counte
     monkeypatch.setattr(workflow, 'indexed_coverage', lookup)
     context = 'Public publisher description (not full article text).\nExcerpt:\nA Colorado case concerns religious schools and public funding.'
     monkeypatch.setattr(workflow, 'public_feed_excerpt', AsyncMock(return_value=context))
-    paid = AsyncMock(return_value=response(url='https://www.npr.org/news/a-vote/'))
+    paid = AsyncMock(return_value=response(url=f'https://www.{domain}/news/a-vote/'))
     monkeypatch.setattr(workflow, 'budgeted_message', paid)
     monkeypatch.setattr(workflow, 'log_usage', Mock())
-    _, evidence = await workflow.search_one_source(Mock(), 'An editorial on religious rights', 'NPR')
+    _, evidence = await workflow.search_one_source(Mock(), 'An editorial on religious rights', source)
     assert context in paid.await_args.kwargs['messages'][0]['content']
     assert 'NOT evidence from the selected outlet' in paid.await_args.kwargs['messages'][0]['content']
     assert PASSAGE in evidence and 'Colorado' not in evidence
     paid.return_value = Obj(content=[Obj(type='text', text='NPR reports the Colorado case.', citations=[])])
-    assert (await workflow.search_one_source(Mock(), 'An editorial on religious rights', 'NPR'))[1] is None
+    assert (await workflow.search_one_source(Mock(), 'An editorial on religious rights', source))[1] is None
 
 
 def test_counterpart_reporting_can_be_inside_an_overview_with_a_different_headline():

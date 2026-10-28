@@ -180,7 +180,7 @@ async def search_one_source(
     domains = publisher_domains(source)
     search_domains = publisher_search_domains(source)
     discovery_context = None
-    if search_domains and not domains and not stored:
+    if search_domains and domains != ('nationalreview.com',) and not stored:
         # An editorial headline may hide the actual event (e.g. Colorado
         # funding behind a generic religious-rights headline). Original NR
         # text locates the subject only; it cannot supply counterpart claims.
