@@ -1,10 +1,12 @@
 # sift-api — STATUS
 
-**Updated:** 2026-10-27
+**Updated:** 2026-10-28
 **Tier:** v1.5 (civic-literacy pivot backend) — **feature work active**; the D46 pause was lifted 2026-08-05 ([`sift/docs/DECISIONS.md` D46](https://github.com/kristenmartino/sift/blob/main/docs/DECISIONS.md), amended). Android stays paused and the week-one evidence test is still the next action — what was withdrawn is the blanket prohibition on building, not those.
 **Velocity:** Resumed 2026-07-30 after a six-week gap (last prior commit 2026-06-17; Jun 13 · Jul 0 until today). **2026-07-31: 8 PRs merged** (#116, #117, #120, #121, #123, #124, #126, #127) — a burst, not a new baseline. This line read "High (10+ PRs / week)" until 2026-07-30 and had been wrong for ~8 weeks — the same staleness `sift/STATUS.md` already corrected on its own copy 2026-07-27. Keep the two in step.
 
 ## Active focus
+
+2026-10-28 remaining publisher recovery: FT’s public Iran feed contains the exact memo absent from its ten-item homepage feed. Route matching article/topic words to that fixed public feed with homepage fallback under the existing shared two-second/two-megabyte bounds. Accept complete short FT standfirsts without adding punctuation; preserve exact URL identity, publisher text, dates and isolated claim review. No frontend, five-outlet maximum, daily-cap or paid-stage changes.
 
 2026-10-27 live truncated-quotation guard: reject supporting passages that end inside an original word or number, or immediately before the source excerpt’s truncation ellipsis. Do not turn an ellipsis dot into a completed sentence. Apply the same guard to candidate selections, attributions and literal fallbacks while retaining intact clauses before a cut-off tail. Also preserve interval anchors: hours of product use do not establish hours since launch; reject that observed scope reversal and repeat the requirement in isolated review. No extra paid stage, cap, outlet-limit or frontend change.
 
