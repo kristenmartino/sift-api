@@ -727,10 +727,11 @@ Return ONLY the JSON, no other text.""",
                                     include_evidence=True, include_represented=True, max_claims=None)
     backups = [c for c in claims if c.get('_quote_backup')]
     unreviewed_sources = set()
-    if claims:
+    if claims or model_reporting:
         try:
             claims, unreviewed_sources = await asyncio.wait_for(
-                verify_claim_support(client, claims, search_results, topic=_sanitize_text(state['topic'])), timeout=10)
+                verify_claim_support(client, claims, search_results, topic=_sanitize_text(state['topic']),
+                                     repair_missing=True), timeout=10)
         except BudgetUnavailable as exc:
             if exc.code != 'AI_BUDGET_EXCEEDED':
                 raise
@@ -741,6 +742,11 @@ Return ONLY the JSON, no other text.""",
             logger.warning('compare claim support review unavailable (%s); using original quotations', type(exc).__name__)
             claims = []
             unreviewed_sources = set(search_results)
+    # Repairs contain only the reviewer's exact original clause. Apply the
+    # same context, numeric-qualifier and truncation guards as every quote.
+    repairs = [c for c in claims if c.get('_quote_repair')]
+    claims = [c for c in claims if not c.get('_quote_repair')]
+    claims.extend(_ground_claim_attributions(repairs, search_results, include_evidence=True))
     # Only failed reviewers may fall back to unreviewed literal originals.
     # Successfully rejected passages cannot re-enter through this path.
     claims.extend(c for c in backups if set(c.get('sources', [])) & unreviewed_sources and c not in claims)
