@@ -17,7 +17,7 @@ from services.paid_calls import BudgetUnavailable, budgeted_message, budget_scop
 from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
-from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
+from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts, verbatim_evidence
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts, supports_public_feed
 from services.compare_claim_support import verify_claim_support
 from services.compare_public_article import public_article_excerpt, public_article_candidates
@@ -418,7 +418,7 @@ async def search_one_source(
                     quote = passage[1].strip().strip('\"“”') if passage else ''
                     body = hints[index]['excerpt'].partition('\nExcerpt:\n')[2]
                     if (not 6 <= len(quote.split()) <= 300
-                            or normalize_evidence_text(quote) not in normalize_evidence_text(body)):
+                            or not verbatim_evidence(quote, body)):
                         logger.info('compare relevance selection: source=%s missing original support', source)
                         return source, None
                 logger.info('search_sources: verified original publisher candidate for %s (%s)', source, hints[index]['url'])
@@ -553,7 +553,7 @@ Extract only claims directly relevant to the requested subject. A case study sho
 Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts or explicitly attributed opinions present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
-For a concrete case study, scope the claim to that named example rather than generalizing to an entire industry. Resolve relative publication times from the provided publication date; do not present an older launch as happening today.
+For a concrete case study, scope the claim to that named example rather than generalizing to an entire industry. Resolve relative publication times from the provided publication date; do not present an older launch as happening today. Preserve the starting event of a time interval: failing within hours of use does not establish failing within hours of launch.
 Preserve attribution, uncertainty, timing and scope: an economist's estimate is not an official result; a forecast is not a released measurement; an allegation is not an established act. Retain words such as estimated, forecast, expected, could, only, remaining and up to when they qualify the proposition. Include the qualifier in both the supporting quotation and the claim; never trim it away to make a stronger statement.
 First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
 An article's headline may establish the topic of its excerpt, but cannot supply evidence for a claim. An editorial view about the underlying issue is a relevant contribution even when its excerpt does not repeat the event name. Retain it as that outlet's view without inferring a stance on specific policy details.
@@ -690,6 +690,15 @@ def _adds_unsupported_speech_act(claim: str, body: str) -> bool:
     return False
 
 
+def _reanchors_usage_interval(claim: str, body: str) -> bool:
+    """Hours of using a product do not establish hours since its launch."""
+    window = r"\b(?:within|after)\b[^.!?]{0,50}\b(?:hours?|minutes?)\b[^.!?]{0,40}\b"
+    launch = window + r"(?:launch(?:ed|ing)?|release(?:d)?|debut)\b"
+    usage = window + r"(?:use|usage|using)\b"
+    return bool(re.search(launch, claim, re.I) and re.search(usage, body, re.I)
+                and not re.search(launch, body, re.I))
+
+
 def _missing_named_law(claim: str, body: str) -> bool:
     aliases = (
         r'\b(?:hipaa|health insurance portability and accountability act)\b',
@@ -740,9 +749,10 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, inclu
                 source_key = _source_evidence_key(source)
                 quote = quotes.get(source_key)
                 if (source_key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
-                        and normalize(quote) in bodies[source_key][1]
+                        and verbatim_evidence(quote, bodies[source_key][1])
                         and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[source_key][1])
                         and not _missing_named_law(claim['claim'], bodies[source_key][1])
+                        and not _reanchors_usage_interval(claim['claim'], bodies[source_key][1])
                         and not _adds_unsupported_speech_act(claim['claim'], bodies[source_key][1])):
                     name = bodies[source_key][0]
                     if name not in cleaned[field]:

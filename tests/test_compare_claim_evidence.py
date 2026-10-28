@@ -219,3 +219,18 @@ def test_complete_native_publisher_passage_is_quoted_without_inferred_padding(bo
     if retained:
         assert result[0]['claim'] == f'CNBC writes: “{body}”'
         assert result[0]['sources'] == ['CNBC']
+
+
+def test_product_use_interval_cannot_be_reanchored_to_launch():
+    from workflows.compare_workflow import _ground_claim_attributions
+    body = "The device launched last week. Some units appear to fail within hours or minutes of use."
+    quote = 'Some units appear to fail within hours or minutes of use.'
+    def candidate(claim):
+        return {'claim': claim, 'sources': ['Ars Technica'], 'evidence': {'Ars Technica': quote}}
+    reporting = {'Ars Technica': 'Stored publisher excerpt.\nExcerpt:\n' + body}
+    assert not _ground_claim_attributions([candidate('Units failed within hours of the device launching.')], reporting)
+    assert _ground_claim_attributions([candidate('Some units appear to fail within hours of use.')], reporting)
+    reporting['Ars Technica'] += ' The publisher also received reports within hours of launch.'
+    supported = candidate('Reports were received within hours of launch.')
+    supported['evidence']['Ars Technica'] = 'The publisher also received reports within hours of launch.'
+    assert _ground_claim_attributions([supported], reporting)

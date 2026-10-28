@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 live truncated-quotation guard: reject supporting passages that end inside an original word or number, or immediately before the source excerpt’s truncation ellipsis. Do not turn an ellipsis dot into a completed sentence. Apply the same guard to candidate selections, attributions and literal fallbacks while retaining intact clauses before a cut-off tail. Also preserve interval anchors: hours of product use do not establish hours since launch; reject that observed scope reversal and repeat the requirement in isolated review. No extra paid stage, cap, outlet-limit or frontend change.
+
 2026-10-27 live alternative-claim audit: a comparison credited Ars with bright lines or cracks when its original described lines and a crease. Require support for every alternative in an A-or-B claim, distinguish a crease from a crack, and use zero-temperature extraction. Keep the existing isolated reviewer, source/quotation checks, paid-call count, cap, outlet limit and frontend unchanged.
 
 2026-10-27 live event-angle follow-up: an available Ars screen-failure report was intermittently rejected for not answering another outlet’s why/hinge angle. Assess already verified originals before interpreting a web miss; accept observations of the same event/action and timing without inventing a causal explanation. Require an exact contiguous original supporting passage for alternate-headline feed candidates, accept Markdown emphasis around selection markers without changing their values, and normalize paired single/double quotation marks while preserving words, contractions and possessives, use zero-temperature retrieval, and supply the current UTC date for the existing recency window. No extra paid call, cap, outlet-limit or frontend changes.
