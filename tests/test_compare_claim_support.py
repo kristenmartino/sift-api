@@ -150,10 +150,9 @@ async def test_relative_day_quote_survives_as_separately_reviewed_backup_when_ca
     async def review(*args, **kwargs):
         prompt = kwargs['messages'][0]['content']
         pairs = json.loads(prompt.split('Pairs:\n')[1])
-        assert len(pairs) == 2
-        assert 'October 2026' in pairs[0]['claim']
-        assert pairs[1]['claim'] == f'CNBC writes: “{quote}”'
-        return reply({'supported': [pairs[1]['id']]})
+        assert len(pairs) == 1
+        assert pairs[0]['claim'] == f'CNBC writes: “{quote}”'
+        return reply({'supported': [pairs[0]['id']]})
     monkeypatch.setattr(support, 'budgeted_message', AsyncMock(side_effect=review))
     monkeypatch.setattr(workflow, 'log_usage', Mock())
     monkeypatch.setattr(support, 'log_usage', Mock())
@@ -161,6 +160,25 @@ async def test_relative_day_quote_survives_as_separately_reviewed_backup_when_ca
         'sources': ['CNBC'], 'search_results': {'CNBC': original}})
     assert [c['claim'] for c in result['claims']] == [f'CNBC writes: “{quote}”']
     assert 'October 2026' not in result['claims'][0]['claim']
+
+
+@pytest.mark.parametrize(('header', 'body', 'claim', 'accepted'), [
+    ('Original: https://www.cbsnews.com/2026/a-report/\n',
+     'The war has cost the military at least $47.1 billion as of mid-October.',
+     'The war cost at least $47.1 billion by mid-October 2026.', False),
+    ('Published: 2026-10-28T06:00:00+00:00\n',
+     'The war has cost the military at least $47.1 billion as of mid-October.',
+     'The war cost at least $47.1 billion by mid-October 2026.', True),
+    ('', 'The company reported lower sales in October 2026.',
+     'The company reported lower sales in October 2026.', True),
+    ('Published: 2026-10-28T06:00:00+00:00\n', 'The company reported lower sales last year.',
+     'The company reported lower sales in 2025.', True),
+])
+def test_calendar_year_requires_publisher_evidence_not_url_or_requested_topic(header, body, claim, accepted):
+    reporting = {'Outlet': 'Retrieved publisher excerpts.\n' + header + 'Excerpt:\n' + body}
+    result = workflow._ground_claim_attributions([{'claim': claim, 'sources': ['Outlet'],
+        'evidence': {'Outlet': body}}], reporting)
+    assert bool(result) is accepted
 
 
 def test_restoring_a_dependent_opening_cannot_create_an_unfinished_clause():
