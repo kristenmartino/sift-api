@@ -13,6 +13,8 @@ from services.compare_search import normalize_evidence_text, verbatim_evidence
 
 OPERATION = 'compare.verify_claim_support'
 logger = logging.getLogger('sift-api.compare')
+REPAIR_MAX_WORDS = 60
+_ABBREVIATION = r'\b(?:[a-z]\.)+$|\b(?:mr|mrs|ms|dr|prof|st|sen|rep|gov|pres|corp|inc|ltd|co|jr|sr)\.$'
 
 
 def _repair_clause_from_original(quote: str, body: str) -> bool:
@@ -23,10 +25,37 @@ def _repair_clause_from_original(quote: str, body: str) -> bool:
         before = body[:match.start()].rstrip().rstrip('"')
         # Keep the original subject instead of starting halfway through a
         # sentence at "announced ...". Abbreviation dots are not boundaries.
-        if not before or (before.endswith(('.', '!', '?')) and not re.search(
-                r'\b(?:[a-z]\.)+$|\b(?:mr|mrs|ms|dr|prof|st)\.$', before)):
+        if not before or (before.endswith(('.', '!', '?')) and not re.search(_ABBREVIATION, before)):
             return True
     return False
+
+
+def _restore_repair_context(quote: str, body: str) -> str | None:
+    """Restore a dropped opening only by copying more of the same original.
+
+    Never infer a subject, complete a tail, stitch passages or change words.
+    Keep conditional/attribution framing before the selected clause, too.
+    """
+    if not verbatim_evidence(quote, body):
+        return None
+    for match in re.finditer(re.escape(quote), body):
+        start = 0
+        for boundary in re.finditer(r'[.!?]["”]?\s+', body[:match.start()]):
+            before = normalize_evidence_text(body[:boundary.end()]).rstrip('"')
+            if not before.endswith(('...', '…')) and not re.search(_ABBREVIATION, before):
+                start = boundary.end()
+        restored = body[start:match.end()].strip()
+        if re.match(r'^(?:if|unless|when|although|because|no matter)\b', restored, re.I) and ',' not in restored:
+            # Restoring "No matter how often ..." alone would turn an
+            # independent subclause into an unfinished dependent opening.
+            continue
+        if 6 <= len(restored.split()) <= REPAIR_MAX_WORDS and _repair_clause_from_original(restored, body):
+            return restored
+    # Harmless typography may differ; retain only an already complete start.
+    dependent = re.match(r'^(?:if|unless|when|although|because|no matter)\b', quote, re.I) and ',' not in quote
+    if not dependent and 6 <= len(quote.split()) <= REPAIR_MAX_WORDS and _repair_clause_from_original(quote, body):
+        return quote
+    return None
 
 
 async def _review_outlet(client, source: str, text: str, pairs: list[dict], topic: str) -> tuple[set[int], str | None]:
@@ -40,9 +69,12 @@ async def _review_outlet(client, source: str, text: str, pairs: list[dict], topi
             'The first extraction found no usable pair for this outlet. Independently assess whether '
             'its supplied body contains a relevant complete proposition. A truncated later detail does '
             'not erase an intact earlier clause. You may preserve ONE contiguous verbatim clause of '
-            '6-30 words as outlet_passage, or null when none qualifies. '
+            '6-60 words as outlet_passage, or null when none qualifies. '
             'Include the original sentence subject and finite verb; do not start at a verb after '
             'dropping its subject. Begin at the start of an original sentence. '
+            'Prefer a whole original sentence when possible. Keep any leading introduction, condition '
+            'or attribution instead of starting after a comma or preposition. Prefer concrete reporting '
+            'about the requested event over a rhetorical allusion. '
             'Preserve scope and eligibility qualifiers such as certain workers; never widen them to '
             'all workers or borrow a number '
             'from the topic, headline or another outlet. Do not finish the cut-off detail, invent '
@@ -94,10 +126,14 @@ async def _review_outlet(client, source: str, text: str, pairs: list[dict], topi
     if not isinstance(supported, list) or any(type(i) is not int or i not in allowed_ids for i in supported):
         raise ValueError('Invalid claim support review ids')
     passage = data.get('outlet_passage') if not pairs else None
-    if passage is not None and (not isinstance(passage, str) or not 6 <= len(passage.split()) <= 30
-                                or not _repair_clause_from_original(passage, publisher_body)):
-        raise ValueError('Invalid original repair passage')
-    logger.info('compare claim support review: source=%s accepted=%d pairs=%d', source, len(set(supported)), len(pairs))
+    if passage is not None:
+        if not isinstance(passage, str) or not 6 <= len(passage.split()) <= REPAIR_MAX_WORDS:
+            raise ValueError('Invalid original repair passage')
+        passage = _restore_repair_context(passage, publisher_body)
+        if passage is None:
+            raise ValueError('Invalid original repair passage')
+    logger.info('compare claim support review: source=%s accepted=%d pairs=%d repair=%s',
+                source, len(set(supported)), len(pairs), bool(passage))
     return set(supported), passage
 
 

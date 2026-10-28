@@ -74,6 +74,37 @@ def test_model_text_without_provider_citations_is_not_publisher_reporting():
     assert publisher_search_excerpts(uncited, ('nationalreview.com',)) is None
 
 
+def test_npr_search_headline_and_markdown_sections_cannot_become_claim_evidence():
+    headline = "Trump says he's ending restrictions on climate-warming methane from oil drilling"
+    body = 'President Donald Trump said that his administration is "terminating" ...'
+    result = publisher_search_excerpts(response(quote=headline + ' ' + body,
+        url='https://www.npr.org/2026/10/28/g-s1-150299/trump-methane-restrictions',
+        title=headline + ' : NPR'), ('npr.org',))
+    assert result.partition('Excerpt:\n')[2] == body
+    assert headline not in result
+    assert publisher_search_excerpts(response(quote=headline,
+        url='https://www.npr.org/a-report', title=headline + ' : NPR'), ('npr.org',)) is None
+    heading = '### A different climate report warns of a dangerous threshold\n### Climate\n'
+    result = publisher_search_excerpts(response(quote=heading + PASSAGE,
+        url='https://www.npr.org/a-report', title='A report : NPR'), ('npr.org',))
+    assert result.partition('Excerpt:\n')[2] == PASSAGE
+
+
+def test_headline_filter_preserves_reporting_that_extends_headline_with_a_qualifier():
+    headline = 'The committee approved the measure'
+    body = headline + ' after a second vote was scheduled for next month.'
+    result = publisher_search_excerpts(response(quote=body, url='https://www.npr.org/a-report',
+        title=headline + ' : NPR'), ('npr.org',))
+    assert result.partition('Excerpt:\n')[2] == body
+
+
+def test_dated_byline_filter_preserves_a_real_sentence_beginning_with_by():
+    body = 'By extending the deadline, the committee moved the final vote to 10/28/26.'
+    result = publisher_search_excerpts(response(quote='by Rachel Frazin - 10/27/26 8:35 PM ET\n' + body),
+                                     ('nationalreview.com',))
+    assert result.partition('Excerpt:\n')[2] == body
+
+
 def test_known_article_does_not_substitute_neighboring_publisher_search_results():
     assert publisher_search_excerpts(response(), ('nationalreview.com',),
                                      'https://www.nationalreview.com/2026/10/different-event/') is None

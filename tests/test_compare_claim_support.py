@@ -58,7 +58,6 @@ async def test_missing_outlet_can_recover_only_its_own_intact_clause(monkeypatch
 @pytest.mark.parametrize('passage', [
     CNBC_CLAUSE + '.', CNBC_CLAUSE.replace('certain workers', '60,000 workers'),
     CNBC_CLAUSE + ' at its experience level', CNBC_CLAUSE + ' at its experience level ...',
-    CNBC_CLAUSE.removeprefix('The software maker '),
     'Microsoft offers voluntary buyouts to 60,000 employees.', True,
 ])
 async def test_repair_rejects_completed_fragments_changed_words_and_borrowed_claims(monkeypatch, passage):
@@ -111,6 +110,77 @@ def test_repair_cannot_treat_abbreviation_as_sentence_boundary():
     assert not support._repair_clause_from_original(quote, 'The company in the U.S. ' + quote + '.')
     assert support._repair_clause_from_original('The company ' + quote,
         'An earlier report was unrelated. The company ' + quote + ' at level ...')
+
+
+@pytest.mark.parametrize(('body', 'selected', 'restored'), [
+    (CNBC_CLAUSE + ' at its experience level ...', CNBC_CLAUSE.removeprefix('The software maker '), CNBC_CLAUSE),
+    ('In its latest gift to oil and gas companies, the Trump administration is expected to announce plans today to weaken rules that guard against methane leaks.',
+     'the Trump administration is expected to announce plans today to weaken rules that guard against methane leaks',
+     'In its latest gift to oil and gas companies, the Trump administration is expected to announce plans today to weaken rules that guard against methane leaks'),
+    ('But a ruling last week by a New Mexico judge blew that number out of the water.',
+     'a New Mexico judge blew that number out of the water',
+     'But a ruling last week by a New Mexico judge blew that number out of the water'),
+    ('If approved, the company could offer voluntary exits to certain workers at level ...',
+     'the company could offer voluntary exits to certain workers',
+     'If approved, the company could offer voluntary exits to certain workers'),
+    ('An earlier result was final. The agency said the company may offer voluntary exits next month.',
+     'the company may offer voluntary exits next month',
+     'The agency said the company may offer voluntary exits next month'),
+    ('Microsoft Corp. announced voluntary exits for certain workers at level ...',
+     'announced voluntary exits for certain workers',
+     'Microsoft Corp. announced voluntary exits for certain workers'),
+])
+def test_dropped_opening_is_restored_only_from_contiguous_original(body, selected, restored):
+    assert support._restore_repair_context(selected, body) == restored
+
+
+def test_restoration_never_fills_missing_words_or_changes_numbers():
+    assert support._restore_repair_context(CNBC_CLAUSE + '.', CNBC_PREVIEW.partition('Excerpt:\n')[2]) is None
+    assert support._restore_repair_context(CNBC_CLAUSE.replace('certain', '60000'), CNBC_PREVIEW) is None
+
+
+@pytest.mark.asyncio
+async def test_relative_day_quote_survives_as_separately_reviewed_backup_when_calendar_claim_fails(monkeypatch):
+    quote = "Jio Platforms' shares rose 21.4% on their trading debut Wednesday"
+    original = 'Retrieved publisher excerpts.\nExcerpt:\n' + quote + ' after a record IPO that was lapped up by retail as well as insti...'
+    monkeypatch.setattr(workflow, 'budgeted_message', AsyncMock(return_value=reply({
+        'outlet_passages': {'CNBC': original.partition('Excerpt:\n')[2]},
+        'claims': [{'claim': "Jio Platforms' shares rose 21.4% on their trading debut in October 2026.",
+                    'sources': ['CNBC'], 'evidence': {'CNBC': quote}}]})))
+    async def review(*args, **kwargs):
+        prompt = kwargs['messages'][0]['content']
+        pairs = json.loads(prompt.split('Pairs:\n')[1])
+        assert len(pairs) == 2
+        assert 'October 2026' in pairs[0]['claim']
+        assert pairs[1]['claim'] == f'CNBC writes: “{quote}”'
+        return reply({'supported': [pairs[1]['id']]})
+    monkeypatch.setattr(support, 'budgeted_message', AsyncMock(side_effect=review))
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    monkeypatch.setattr(support, 'log_usage', Mock())
+    result = await workflow.extract_and_compare_node({'topic': 'Jio IPO in October 2026',
+        'sources': ['CNBC'], 'search_results': {'CNBC': original}})
+    assert [c['claim'] for c in result['claims']] == [f'CNBC writes: “{quote}”']
+    assert 'October 2026' not in result['claims'][0]['claim']
+
+
+def test_restoring_a_dependent_opening_cannot_create_an_unfinished_clause():
+    body = 'No matter how often the candidate invokes Kennedy, the comparison misses the point.'
+    assert support._restore_repair_context('the candidate invokes Kennedy', body) is None
+
+
+@pytest.mark.asyncio
+async def test_longer_original_sentence_can_preserve_full_legal_context(monkeypatch):
+    original = ("A federal grand jury in Washington, D.C., on Tuesday rejected the Justice Department's "
+                "attempt to indict former White House aide Cassidy Hutchinson over her testimony to "
+                "lawmakers about President Trump's actions during the Jan. 6, 2021, attack on the Capitol.")
+    assert len(original.split()) > 30
+    monkeypatch.setattr(support, 'budgeted_message', AsyncMock(return_value=reply({
+        'supported': [], 'outlet_passage': original})))
+    monkeypatch.setattr(support, 'log_usage', Mock())
+    result, limited = await support.verify_claim_support(Mock(), [], {'The Hill': original},
+        topic='Cassidy Hutchinson indictment rejected', repair_missing=True)
+    assert not limited
+    assert result[0]['evidence']['The Hill'] == original
 
 
 @pytest.mark.asyncio
