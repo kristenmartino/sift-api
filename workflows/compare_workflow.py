@@ -17,7 +17,7 @@ from services.model_registry import resolve
 from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
-from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts
+from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts, supports_public_feed
 from services.compare_claim_support import verify_claim_support
 from services.compare_public_article import public_article_excerpt, public_article_candidates
 from services.compare_syndication import PARTNER_DOMAINS, reuters_partner_excerpts, reuters_archive_candidates
@@ -197,13 +197,23 @@ async def search_one_source(
     if reuters and not stored:
         archive_hints = await reuters_archive_candidates(topic, context=discovery_context) if discovery_context else await reuters_archive_candidates(topic)
     public_candidates = await public_article_candidates(topic, source) if not stored else []
-    hints = public_candidates or archive_hints or (await publisher_article_hints(topic) if not stored and domains == ('nationalreview.com',) else [])
+    feed_hints = not stored and not public_candidates and not archive_hints and supports_public_feed(source)
+    if feed_hints:
+        discovered = (await publisher_article_hints(topic) if domains == ('nationalreview.com',)
+                      else await publisher_article_hints(topic, source))
+    else:
+        discovered = []
+    hints = public_candidates or archive_hints or discovered
     originals_only = bool(archive_hints or public_candidates)
     if hints and not archive_hints:
         descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source)
         for hint in hints:
             if hint['url'] in descriptions:
                 hint['excerpt'] = descriptions[hint['url']]
+    if feed_hints and domains != ('nationalreview.com',):
+        # A loose title match is only discovery. Do not redirect a compatible
+        # publisher search to unrelated or inaccessible metadata-only articles.
+        hints = [hint for hint in hints if hint.get('excerpt')]
     verified = [h for h in hints if h.get('excerpt')]
     if verified and not originals_only and settings.ai_cost_guard_enabled:
         try:
@@ -234,7 +244,11 @@ async def search_one_source(
     search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
     if domains:
         search_tool['allowed_domains'] = list(domains)
-    target = stored['title'] if stored else hints[0]['title'] if hints else topic
+    target = topic
+    if stored:
+        target = stored['title']
+    elif hints and (not feed_hints or domains == ('nationalreview.com',)):
+        target = hints[0]['title']
     # Strip only a recognizable explanatory headline's rhetorical tail. The
     # full request below still governs subject, event and timing relevance.
     broad_subject = re.match(r"^([\w -]{3,60}?)\s+(?:don['’]t|doesn['’]t|do not|does not)\s+just\s+", topic, re.I) if not stored else None

@@ -80,7 +80,7 @@ SELECT title, source_url, published_date, generation_status,
        ts_rank_cd(to_tsvector('english', COALESCE(title, '')),
                   websearch_to_tsquery('english', $1)) AS title_rank
 FROM articles
-WHERE LOWER(source_name) = 'national review'
+WHERE LOWER(source_name) = LOWER($2)
   AND published_date >= NOW() - INTERVAL '14 days' AND published_date <= NOW()
   AND NOT from_search AND NOT is_roundup AND source_url ~ '^https://'
   AND to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(summary, ''))
@@ -92,14 +92,14 @@ LIMIT 3
 """
 
 
-async def publisher_article_hints(topic: str) -> list[dict[str, str]]:
+async def publisher_article_hints(topic: str, source: str = 'National Review') -> list[dict[str, str]]:
     words = list(dict.fromkeys(re.findall(r"[^\W\d_][\w'-]{2,59}", topic[:500].casefold())))[:12]
     if not words:
         return []
     try:
         async with asyncio.timeout(INDEXED_LOOKUP_TIMEOUT):
             pool = await get_pool()
-            rows = await pool.fetch(PUBLISHER_HINTS_SQL, ' OR '.join(words), timeout=INDEXED_LOOKUP_TIMEOUT)
+            rows = await pool.fetch(PUBLISHER_HINTS_SQL, ' OR '.join(words), source.strip(), timeout=INDEXED_LOOKUP_TIMEOUT)
         best = float(rows[0]['title_rank']) if rows else 0
         hints = []
         for row in rows:

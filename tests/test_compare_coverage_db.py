@@ -155,3 +155,16 @@ async def test_publisher_discovery_returns_only_recent_original_title_hints(cove
     hints = await compare_coverage.publisher_article_hints('Cornell University fraternity party ban')
     assert body in hints[0]['excerpt']
     assert 'Reviewed' not in hints[0]['excerpt']
+
+
+@pytest.mark.asyncio
+async def test_alternate_headline_discovery_stays_scoped_to_selected_publisher(coverage_db, monkeypatch):
+    await coverage_db.execute("""INSERT INTO articles(title,source_name,source_url,published_date) VALUES
+      ('Some iPhone Duo screens are already failing','Ars Technica','https://arstechnica.com/failing',NOW()),
+      ('Why the iPhone Duo hinge cracks','The Verge','https://www.theverge.com/cracks',NOW()),
+      ('iPhone Duo old review','Ars Technica','https://arstechnica.com/old',NOW()-INTERVAL '20 days')""")
+    async def get_connection():
+        return coverage_db
+    monkeypatch.setattr(compare_coverage, 'get_pool', get_connection)
+    hints = await compare_coverage.publisher_article_hints('Why the iPhone Duo hinge cracks', 'Ars Technica')
+    assert hints == [{'title': 'Some iPhone Duo screens are already failing', 'url': 'https://arstechnica.com/failing'}]

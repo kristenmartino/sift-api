@@ -30,6 +30,11 @@ FEED_TIMEOUT = 2
 PUBLIC_DESCRIPTION_PREFIX = 'Public publisher description (not full article text).'
 
 
+def supports_public_feed(source: str) -> bool:
+    domains = publisher_search_domains(source)
+    return len(domains) == 1 and domains[0] in _FEEDS
+
+
 def complete_description(body: str) -> bool:
     """Require a finished statement rather than a cut-off preview or CTA."""
     return (body.rstrip(" \"'”’").endswith(('.', '!', '?'))

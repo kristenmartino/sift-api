@@ -11,6 +11,7 @@ from workflows import compare_workflow as workflow
 def public_feed_miss(monkeypatch):
     monkeypatch.setattr(workflow, 'public_article_excerpt', AsyncMock(return_value=None))
     monkeypatch.setattr(workflow, 'public_article_candidates', AsyncMock(return_value=[]))
+    monkeypatch.setattr(workflow, 'publisher_article_hints', AsyncMock(return_value=[]))
     monkeypatch.setattr(workflow, 'public_feed_excerpt', AsyncMock(return_value=None))
     monkeypatch.setattr(workflow, 'public_feed_excerpts', AsyncMock(return_value={}))
     monkeypatch.setattr(workflow, 'reuters_archive_candidates', AsyncMock(return_value=[]))
@@ -332,3 +333,29 @@ async def test_hill_filter_uses_own_exact_article_and_never_national_review_hint
     paid.return_value = response(url='https://thehill.com/policy/defense/6169634-different-story/')
     assert (await workflow.search_one_source(Mock(), 'Intelligence memo', 'The Hill'))[1] is None
     hints.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('reply', 'supported', 'accepted'), [
+    ('SELECTED_STORED_CANDIDATE=0', True, True),
+    ('A related headline is available.', True, False),
+    ('SELECTED_STORED_CANDIDATE=0', False, False),
+    ('No relevant coverage found from Ars Technica.', True, False),
+])
+async def test_alternate_publisher_headline_needs_original_text_and_relevance_selection(monkeypatch, reply, supported, accepted):
+    url = 'https://arstechnica.com/gadgets/2026/10/some-iphone-duo-screens-are-already-failing/'
+    topic = 'Why the iPhone Duo hinge could be cracking the screen'
+    excerpt = 'Public publisher description (not full article text).\nExcerpt:\n' + PASSAGE
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    discover = AsyncMock(return_value=[{'title': 'Some iPhone Duo screens are already failing', 'url': url}])
+    monkeypatch.setattr(workflow, 'publisher_article_hints', discover)
+    monkeypatch.setattr(workflow, 'public_feed_excerpts', AsyncMock(return_value={url: excerpt} if supported else {}))
+    paid = AsyncMock(return_value=Obj(content=[Obj(type='text', text=reply)]))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    assert (await workflow.search_one_source(Mock(), topic, 'Ars Technica'))[1] == (excerpt if accepted else None)
+    discover.assert_awaited_once_with(topic, 'Ars Technica')
+    assert 'Topic cue: ' + topic in paid.await_args.kwargs['messages'][0]['content']
+    assert paid.await_args.kwargs['tools'][0]['max_uses'] == 1
+    if not supported:
+        assert 'Some iPhone Duo screens' not in paid.await_args.kwargs['messages'][0]['content']
