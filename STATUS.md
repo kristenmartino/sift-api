@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 live claim-attribution repair: real quotations were credited to claims about laws and health data absent from that outlet. Review every claim/outlet pair after verbatim checks, physically isolating each outlet’s text in parallel stronger text-only reviews that can remove attributions but cannot create/rewrite claims. Preserve literal publisher quotations if review cannot finish within capacity/deadline; fail closed on unverifiable accounting. Keep the $15 cap, five-outlet limit, source availability and frontend unchanged.
+
 2026-10-27 live WIRED discovery: generic search omitted relevant profiling coverage while returning unrelated opt-out stories. Use the publisher-advertised data-broker archive within the same two-article/five-second fetch bounds, then require unchanged topic/event relevance selection. Accept explicit case studies for broad mechanisms without requiring an industry overview, but require an exact contiguous original supporting passage. Allow 1,024 actual output tokens for that existing selection stage and reject/log unfinished selections. Scope extracted claims to the example and its publication date. No weaker relevance, added paid stage, cap, outlet-limit or frontend change.
 
 2026-10-27 Axios RSS recovery: use the fixed public Axios feed for exact indexed articles; retain complete published paragraphs and exclude trailing image/document captions. Keep exact article identity, recent publication, body/headline checks and bounded retrieval; no additional paid stage, budget-policy or frontend changes.

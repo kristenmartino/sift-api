@@ -127,6 +127,7 @@ async def test_short_description_cannot_be_grouped_into_inferred_facts_or_false_
     invented = {'claim': 'NR and NPR disagree about whether the candidate signed a letter.',
                 'agreement': 'disputed', 'sources_for': ['National Review'], 'sources_against': ['NPR'],
                 'evidence': {'National Review': DESCRIPTION, 'NPR': other}}
+    monkeypatch.setattr(workflow, 'verify_claim_support', AsyncMock(side_effect=lambda _client, claims, _reporting, **_kwargs: (claims, set())))
     payload = {'claims': [invented, {'claim': 'Trump called the candidate a security threat.',
                 'sources': ['NPR'], 'evidence': {'NPR': other}}]}
     paid = AsyncMock(return_value=SimpleNamespace(content=[SimpleNamespace(type='text', text=json.dumps(payload))]))

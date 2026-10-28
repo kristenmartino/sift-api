@@ -18,6 +18,7 @@ from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts
+from services.compare_claim_support import verify_claim_support
 from services.compare_public_article import public_article_excerpt, public_article_candidates
 from services.compare_syndication import PARTNER_DOMAINS, reuters_partner_excerpts, reuters_archive_candidates
 
@@ -504,6 +505,7 @@ async def extract_and_compare_node(state: CompareState) -> dict:
 {source_texts}
 
 Your task:
+Extract only claims directly relevant to the requested subject. A case study should contribute its evidence about that subject, not tangential facts or statistics from the rest of the article. For each outlet, prefer its own narrow, named example over an unsupported industry-wide paraphrase.
 Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts or explicitly attributed opinions present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
@@ -512,6 +514,7 @@ Preserve attribution, uncertainty, timing and scope: an economist's estimate is 
 First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
 An article's headline may establish the topic of its excerpt, but cannot supply evidence for a claim. An editorial view about the underlying issue is a relevant contribution even when its excerpt does not repeat the event name. Retain it as that outlet's view without inferring a stance on specific policy details.
 For EVERY outlet attributed to a grouped claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not support that fact or attributed opinion, do not credit that outlet with it, even when other outlets confirm it.
+Use atomic claims. For a shared claim, EVERY credited outlet must support every named law, list member, number and substantive clause. If support differs, split the claims rather than combining one outlet’s details into a common statement.
 Select the verbatim supporting passage first, then write only the claim it supports. Do not invent or paraphrase a quotation to fit a claim already written. Where the text supports it, include a factual claim or clearly attributed position from each available outlet; do not silently omit an outlet's supported perspective. An outlet with no supportable passage may be omitted.
 1. Extract up to 8 supportable claims. A short excerpt may support only one claim; that is valid. Do not pad to a minimum. Keep an opinion or interpretation explicitly attributed to its outlet instead of presenting it as an established fact. Return no claims only when none is supported by the supplied reporting.
 2. For each claim, determine the agreement level:
@@ -571,14 +574,42 @@ Return ONLY the JSON, no other text.""",
         return {"comparison": "", "claims": [], "analyzed_sources": []}
 
     original_count = len(claims)
-    claims = _ground_claim_attributions(claims, model_reporting)
-    claims = _retain_outlet_passages(claims, parsed.get("outlet_passages"), search_results)
+    claims = _ground_claim_attributions(claims, model_reporting, include_evidence=True)
+    claims = _retain_outlet_passages(claims, parsed.get("outlet_passages"), search_results,
+                                    include_evidence=True, include_represented=True, max_claims=None)
+    backups = [c for c in claims if c.get('_quote_backup')]
+    unreviewed_sources = set()
+    if claims:
+        try:
+            claims, unreviewed_sources = await asyncio.wait_for(
+                verify_claim_support(client, claims, search_results, topic=_sanitize_text(state['topic'])), timeout=10)
+        except BudgetUnavailable as exc:
+            if exc.code != 'AI_BUDGET_EXCEEDED':
+                raise
+            logger.info('compare claim support review: capacity unavailable; using original quotations')
+            claims = []
+            unreviewed_sources = set(search_results)
+        except Exception as exc:
+            logger.warning('compare claim support review unavailable (%s); using original quotations', type(exc).__name__)
+            claims = []
+            unreviewed_sources = set(search_results)
+    # Only failed reviewers may fall back to unreviewed literal originals.
+    # Successfully rejected passages cannot re-enter through this path.
+    claims.extend(c for c in backups if set(c.get('sources', [])) & unreviewed_sources and c not in claims)
+    represented = set().union(*(set(c.get('sources', []) + c.get('sources_for', []) + c.get('sources_against', []))
+                                for c in claims if not c.get('_quote_backup')))
+    claims = [c for c in claims if not c.get('_quote_backup') or not set(c.get('sources', [])) <= represented]
+    for claim in claims:
+        claim.pop('_quote_backup', None)
+    claims = _retain_outlet_passages(claims, None, {})
+    review_limited = bool(unreviewed_sources)
     comparison = _grounded_comparison_summary(claims, list(search_results))
     for source in search_results:
         count = sum(source in c.get('sources', []) + c.get('sources_for', []) + c.get('sources_against', []) for c in claims)
         logger.info('compare grounded contributions: source=%s claims=%d', source, count)
     logger.info("extract_and_compare: %d grouped candidates, %d retained contributions", original_count, len(claims))
-    return {"comparison": comparison, "claims": claims, "analyzed_sources": list(search_results)}
+    return {"comparison": comparison, "claims": claims, "analyzed_sources": list(search_results),
+            "capacity_limited": state.get("capacity_limited", False) or review_limited}
 
 
 def _drops_numeric_estimate(claim: str, quote: str, body: str) -> bool:
@@ -603,12 +634,22 @@ def _drops_numeric_estimate(claim: str, quote: str, body: str) -> bool:
     return False
 
 
+def _missing_named_law(claim: str, body: str) -> bool:
+    aliases = (
+        r'\b(?:hipaa|health insurance portability and accountability act)\b',
+        r'\b(?:fcra|fair credit reporting act)\b',
+        r'\b(?:ccpa|california consumer privacy act)\b',
+        r'\b(?:gdpr|general data protection regulation)\b',
+    )
+    return any(re.search(law, claim, re.I) and not re.search(law, body, re.I) for law in aliases)
+
+
 def _source_evidence_key(source):
     value = re.sub(r'[^a-z0-9]', '', re.sub(r'^the\s+', '', source.strip().casefold()))
     return {'ft': 'financialtimes', 'cbs': 'cbsnews', 'fox': 'foxnews'}.get(value, value)
 
 
-def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[dict]:
+def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, include_evidence: bool = False) -> list[dict]:
     """Reject borrowed/invented quotes before counting an outlet for a claim.
 
     This checks provenance, not factual truth or semantic entailment. The model
@@ -632,6 +673,8 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
             continue
         quotes = {_source_evidence_key(s): q for s, q in evidence.items() if isinstance(s, str)}
         cleaned = {"claim": claim["claim"], "agreement": claim.get("agreement", "unique")}
+        if include_evidence:
+            cleaned["evidence"] = {}
         for field in ("sources", "sources_for", "sources_against"):
             credited = claim.get(field, [])
             cleaned[field] = []
@@ -642,10 +685,13 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str]) -> list[
                 quote = quotes.get(source_key)
                 if (source_key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
                         and normalize(quote) in bodies[source_key][1]
-                        and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[source_key][1])):
+                        and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[source_key][1])
+                        and not _missing_named_law(claim['claim'], bodies[source_key][1])):
                     name = bodies[source_key][0]
                     if name not in cleaned[field]:
                         cleaned[field].append(name)
+                        if include_evidence:
+                            cleaned["evidence"][name] = quote
         if cleaned["agreement"] == "disputed":
             if not cleaned["sources_for"] or not cleaned["sources_against"]:
                 continue
@@ -662,7 +708,9 @@ def _complete_short_excerpt(text: str) -> str | None:
     return None
 
 
-def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, str]) -> list[dict]:
+def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, str], *,
+                            include_evidence: bool = False, include_represented: bool = False,
+                            max_claims: int | None = 8) -> list[dict]:
     """Retain a checked quotation when grouping omitted an outlet entirely.
 
     Quote the passage itself, rather than inventing a fallback paraphrase or
@@ -675,35 +723,41 @@ def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, s
     def credited(claim):
         return set(claim.get("sources", []) + claim.get("sources_for", []) + claim.get("sources_against", []))
 
-    represented = set().union(*(credited(c) for c in candidates))
+    represented = set() if include_represented else set().union(*(credited(c) for c in candidates))
     passages = ({_source_evidence_key(s): q for s, q in passages.items() if isinstance(s, str)}
                 if isinstance(passages, dict) else {})
     for source, text in reporting.items():
         quote = passages.get(_source_evidence_key(source))
         # Original excerpts already passed event-relevance retrieval.
         # Preserve a whole short sentence even if the model overlooks opinion.
-        if text.startswith(("Stored publisher excerpt", PUBLIC_DESCRIPTION_PREFIX)):
+        if text.startswith(("Stored publisher excerpt", "Retrieved publisher excerpts", PUBLIC_DESCRIPTION_PREFIX)):
             quote = _complete_short_excerpt(text) or quote
         if (source in represented or not isinstance(quote, str)
                 or not 6 <= len(quote.split()) <= 30 or quote.rstrip().endswith(("...", "…"))):
             continue
         fallback = {"claim": f'{source} writes: “{quote}”', "agreement": "unique",
                     "sources": [source], "evidence": {source: quote}}
-        candidates.extend(_ground_claim_attributions([fallback], reporting))
+        additions = _ground_claim_attributions([fallback], reporting, include_evidence=include_evidence)
+        if include_represented:
+            for addition in additions:
+                addition['_quote_backup'] = True
+        candidates.extend(additions)
 
+    if max_claims is None:
+        return candidates
     selected = set()
     covered = set()
     # Keep at least one supported contribution per outlet, then disputes.
     for i, claim in enumerate(candidates):
         sources = credited(claim)
-        if len(selected) < 8 and sources - covered:
+        if len(selected) < max_claims and sources - covered:
             selected.add(i)
             covered.update(sources)
     for i, claim in enumerate(candidates):
-        if len(selected) < 8 and claim.get("agreement") == "disputed":
+        if len(selected) < max_claims and claim.get("agreement") == "disputed":
             selected.add(i)
     for i in range(len(candidates)):
-        if len(selected) >= 8:
+        if len(selected) >= max_claims:
             break
         selected.add(i)
     return [c for i, c in enumerate(candidates) if i in selected]

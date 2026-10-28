@@ -125,14 +125,14 @@ class TestDefaultsReproducePriorBehaviour:
             for operation, expected in PRE_REGISTRY_MODEL.items():
                 assert resolve(operation).model == expected, operation
 
-    def test_judge_is_the_only_non_haiku_stage(self):
+    def test_only_independent_review_stages_use_sonnet(self):
         """An adjudicator has to be better than the thing it judges. If this
         ever fails because another stage moved to Sonnet, that is a 3x cost
         change and should be a deliberate one."""
         sonnet = {
             op for op in OPERATIONS if resolve(op).model.startswith("claude-sonnet")
         }
-        assert sonnet == {"judge.batch"}
+        assert sonnet == {"judge.batch", "compare.verify_claim_support"}
 
     def test_non_default_assignments_is_empty_by_default(self):
         with pytest.MonkeyPatch.context() as mp:

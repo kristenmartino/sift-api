@@ -7,6 +7,13 @@ import pytest
 from workflows import compare_workflow as workflow
 
 
+@pytest.fixture(autouse=True)
+def isolated_provenance_review(monkeypatch):
+    # These tests isolate quotation provenance and fallback selection. The
+    # independent semantic reviewer has its own integration/regression suite.
+    monkeypatch.setattr(workflow, 'verify_claim_support', AsyncMock(side_effect=lambda _client, claims, _reporting, **_kwargs: (claims, set())))
+
+
 WIRED_TEXT = ('The repair company iFixit released its repairability rating for Apple’s very first '
               'foldable iPhone. It comes as users report a wave of cracked-screen issues.')
 APPLE_ACKNOWLEDGMENT = ('Apple acknowledged the display issue and confirmed it affected a small '
@@ -198,3 +205,17 @@ def test_explicit_outlet_aliases_retain_only_their_own_verbatim_evidence():
     retained = workflow._retain_outlet_passages(grounded,
         {'CBS': 'A separate meeting was postponed until the following week.'}, reporting)
     assert retained[-1]['sources'] == ['cbs news']
+
+
+@pytest.mark.parametrize(('body', 'retained'), [
+    ('The committee approved the measure after a public hearing on Monday.', True),
+    ('The committee approved the measure after a public hearing on Mond...', False),
+    ('Watch the committee debate on our video streaming service.', False),
+])
+def test_complete_native_publisher_passage_is_quoted_without_inferred_padding(body, retained):
+    reporting = {'CNBC': 'Retrieved publisher excerpts (may be incomplete).\nOriginal: https://www.cnbc.com/a-vote/\nExcerpt:\n' + body}
+    result = workflow._retain_outlet_passages([], None, reporting)
+    assert bool(result) is retained
+    if retained:
+        assert result[0]['claim'] == f'CNBC writes: “{body}”'
+        assert result[0]['sources'] == ['CNBC']
