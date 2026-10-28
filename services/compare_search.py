@@ -10,6 +10,8 @@ from urllib.parse import parse_qsl, urlparse
 # Extend only after exercising the publisher with the live provider.
 _DOMAINS = {
     'nationalreview': ('nationalreview.com',),
+    'hill': ('thehill.com',),
+    'cnbc': ('cnbc.com',),
 }
 _SEARCH_DOMAINS = {
     **_DOMAINS,
@@ -51,7 +53,9 @@ def _article_identity(url: str) -> tuple | None:
         parsed = urlparse(url)
         host = (parsed.hostname or '').removeprefix('www.')
         path = parsed.path.rstrip('/').removesuffix('/amp')
+        ft_content = host == 'ft.com' and re.fullmatch(r'/content/[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', path)
         query = tuple(sorted((k, v) for k, v in parse_qsl(parsed.query)
+                             if not (ft_content and k.casefold().startswith('syn-'))
                              if not k.casefold().startswith('utm_')
                              and k.casefold() not in {'amp', 'output', 'mod', 'ref', 'source', 'smid'}))
         return host, path, query
@@ -66,6 +70,16 @@ def publisher_search_excerpts(response, domains: tuple[str, ...], preferred_url:
     error are not publisher reporting. Public search-index excerpts can be
     usable even when the article page rejects a direct server request.
     """
+    # Search ages are provider metadata, never fabricated publication dates.
+    # Enforce the same one-year window as discovery when an age is supplied.
+    older_results = set()
+    for block in response.content:
+        if block.type != 'web_search_tool_result' or not isinstance(block.content, list):
+            continue
+        for result in block.content:
+            age = re.fullmatch(r'(\d+) days? ago', getattr(result, 'page_age', '') or '')
+            if age and int(age[1]) > 365:
+                older_results.add(_article_identity(getattr(result, 'url', '')))
     passages = []
     urls = []
     for block in response.content:
@@ -81,6 +95,11 @@ def publisher_search_excerpts(response, domains: tuple[str, ...], preferred_url:
             except (TypeError, ValueError):
                 continue
             if parsed.scheme != 'https' or not any(host == d or host.endswith('.' + d) for d in domains):
+                continue
+            # Forum posts are reader contributions, not Ars newsroom reporting.
+            if host.removeprefix('www.') == 'arstechnica.com' and parsed.path.startswith('/civis/'):
+                continue
+            if _article_identity(url) in older_results:
                 continue
             if preferred_url and _article_identity(url) != _article_identity(preferred_url):
                 continue

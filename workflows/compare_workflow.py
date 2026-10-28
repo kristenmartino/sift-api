@@ -197,7 +197,7 @@ async def search_one_source(
     if reuters and not stored:
         archive_hints = await reuters_archive_candidates(topic, context=discovery_context) if discovery_context else await reuters_archive_candidates(topic)
     public_candidates = await public_article_candidates(topic, source) if not stored else []
-    hints = public_candidates or archive_hints or (await publisher_article_hints(topic) if not stored and domains else [])
+    hints = public_candidates or archive_hints or (await publisher_article_hints(topic) if not stored and domains == ('nationalreview.com',) else [])
     originals_only = bool(archive_hints or public_candidates)
     if hints and not archive_hints:
         descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source)
@@ -235,15 +235,29 @@ async def search_one_source(
     if domains:
         search_tool['allowed_domains'] = list(domains)
     target = stored['title'] if stored else hints[0]['title'] if hints else topic
+    # Strip only a recognizable explanatory headline's rhetorical tail. The
+    # full request below still governs subject, event and timing relevance.
+    broad_subject = re.match(r"^([\w -]{3,60}?)\s+(?:don['’]t|doesn['’]t|do not|does not)\s+just\s+", topic, re.I) if not stored else None
+    if broad_subject and 2 <= len(broad_subject[1].split()) <= 6:
+        target = '"' + broad_subject[1].strip() + '"'
     query = f'site:{search_domains[0]} {target}' if search_domains else f'{source} {target}'
     query_instruction = f"Use one targeted search query: {query}\n"
-    if search_domains and not domains:
+    if search_domains and domains != ('nationalreview.com',):
         query_instruction = (f"Use one query restricted to site:{search_domains[0]}. Topic cue: {target}\n"
                              "Choose concise neutral subject/event terms, omitting rhetorical headline wording. "
                              "Preserve the distinguishing event/action from context, such as a court ruling "
                              "rather than an older policy announcement. "
                              "The requested topic may be another outlet's headline: do not require the selected "
                              "publisher to use the same headline or viewpoint.\n")
+        if domains:
+            query_instruction = (f'Use exactly one targeted search query: {target}\n'
+                                 f'The search tool already restricts results to site:{search_domains[0]}. '
+                                 "The requested topic may be another outlet's headline: do not require the selected "
+                                 'publisher to use the same headline or viewpoint. Preserve the distinguishing '
+                                 'event/action and timing from the full request.\n')
+        if broad_subject:
+            query_instruction += ('This is an explanatory topic about the named practice, not a request for an '
+                                  'identically titled article. Match actual reporting about that practice.\n')
     if reuters and not stored:
         # Broad requests often put several competing options after a colon.
         # AND-ing all of them excludes reporting that uses different terms.
