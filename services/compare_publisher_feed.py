@@ -34,6 +34,9 @@ _FT_TOPIC_FEEDS = {r'\biran(?:ian)?\b': 'https://www.ft.com/iran?format=rss'}
 ARS_DATA_BROKERS_FEED = 'https://arstechnica.com/tag/data-brokers/feed/'
 MAX_FEED_BYTES = 2_000_000
 FEED_TIMEOUT = 2
+# Sparse topic archives can be slower than the small homepage feed. Match
+# public-archive discovery's bound; the overall comparison still has 50s.
+TOPIC_FEED_TIMEOUT = 5
 PUBLIC_DESCRIPTION_PREFIX = 'Public publisher description (not full article text).'
 
 
@@ -127,11 +130,12 @@ async def public_topic_candidates(topic: str, source: str) -> list[dict]:
             or not re.search(r'\bdata[ -]brokers?\b', topic, re.I)):
         return []
     try:
-        async with asyncio.timeout(FEED_TIMEOUT):
-            async with httpx.AsyncClient(timeout=FEED_TIMEOUT, follow_redirects=False) as client:
+        async with asyncio.timeout(TOPIC_FEED_TIMEOUT):
+            async with httpx.AsyncClient(timeout=TOPIC_FEED_TIMEOUT, follow_redirects=False) as client:
                 async with client.stream('GET', ARS_DATA_BROKERS_FEED) as response:
                     kind = response.headers.get('content-type', '').split(';')[0].strip().lower()
                     if response.status_code != 200 or not kind.endswith(('/xml', '+xml')):
+                        logger.info('compare public topic feed rejected: status=%d type=%s', response.status_code, kind)
                         return []
                     data = bytearray()
                     async for chunk in response.aiter_bytes():
