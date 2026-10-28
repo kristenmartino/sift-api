@@ -131,6 +131,19 @@ def publisher_search_excerpts(response, domains: tuple[str, ...], preferred_url:
             if not isinstance(quote, str):
                 continue
             quote = quote.strip()
+            # Search-index passages can concatenate a headline with a body
+            # preview. NPR appends its brand to citation titles; remove only
+            # that exact leading headline, preserving the actual body words.
+            if host.removeprefix('www.') == 'npr.org':
+                headline = re.sub(r'\s+:\s*NPR\s*$', '', getattr(citation, 'title', '') or '', flags=re.I)
+                if headline:
+                    leading = re.match(re.escape(headline) + r'(?:\s+|$)', quote, re.I)
+                    if leading and (not quote[leading.end():] or quote[leading.end():][:1].isupper()):
+                        quote = quote[leading.end():].lstrip()
+            # Headings and dated bylines are metadata, never reporting.
+            quote = '\n'.join(line for line in quote.splitlines()
+                              if not re.match(r'^\s*#{1,6}\s', line)
+                              and not re.match(r'^\s*by\s+.+\b\d{1,2}/\d{1,2}/\d{2,4}\b', line, re.I)).strip()
             if len(quote.split()) < 8:
                 continue
             normalized = ' '.join(re.findall(r'\w+', quote.casefold()))

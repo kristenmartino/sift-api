@@ -25,6 +25,7 @@ _FEEDS = {
     'thehill.com': 'https://thehill.com/news/feed/',
     'theverge.com': 'https://www.theverge.com/rss/index.xml',
     'arstechnica.com': 'https://feeds.arstechnica.com/arstechnica/index',
+    'npr.org': 'https://feeds.npr.org/1001/rss.xml',
 }
 # Public topic feed verified against FT's exact Iran memo. Choose it from
 # article/topic words only; callers cannot supply a URL.

@@ -19,7 +19,7 @@ from services.usage_tracker import count_web_searches, log_usage, prices_for
 from services.compare_coverage import indexed_coverage, publisher_article_hints
 from services.compare_search import normalize_evidence_text, publisher_domains, publisher_search_domains, publisher_search_excerpts, verbatim_evidence
 from services.compare_publisher_feed import PUBLIC_DESCRIPTION_PREFIX, complete_description, public_feed_excerpt, public_feed_excerpts, public_topic_candidates, supports_public_feed
-from services.compare_claim_support import verify_claim_support
+from services.compare_claim_support import _restore_repair_context, verify_claim_support
 from services.compare_public_article import public_article_excerpt, public_article_candidates
 from services.compare_syndication import PARTNER_DOMAINS, reuters_partner_excerpts, reuters_archive_candidates
 
@@ -285,7 +285,8 @@ async def search_one_source(
         # publisher search to unrelated or inaccessible metadata-only articles.
         hints = [hint for hint in hints if hint.get('excerpt')]
     verified = [h for h in hints if h.get('excerpt')]
-    numbered_originals = (publisher_search_domains(source) in {('arstechnica.com',), ('theverge.com',)}
+    numbered_originals = (publisher_search_domains(source) in {('arstechnica.com',), ('theverge.com',),
+                                                             ('thehill.com',), ('npr.org',)}
                           and bool(verified))
     if verified and not originals_only and settings.ai_cost_guard_enabled:
         try:
@@ -654,10 +655,12 @@ async def extract_and_compare_node(state: CompareState) -> dict:
 
 Your task:
 Extract only claims directly relevant to the requested subject. A case study should contribute its evidence about that subject, not tangential facts or statistics from the rest of the article. For each outlet, prefer its own narrow, named example over an unsupported industry-wide paraphrase.
+Prioritize the requested event's central fact over secondary components or background. A total estimate and a cost component are different claims; preserve their units, lower bounds and attribution.
 Only compare the {len(sources_list)} successfully retrieved sources in Available sources below.
 Do not mention or count any other outlet. If only one source is available, there is no multi-source agreement.
 Stored publisher excerpts may be incomplete. Use only facts or explicitly attributed opinions present in the supplied reporting. Missing details in an excerpt do not prove an outlet omitted them from its full article.
 For a concrete case study, scope the claim to that named example rather than generalizing to an entire industry. Resolve relative publication times from the provided publication date; do not present an older launch as happening today. Preserve the starting event of a time interval: failing within hours of use does not establish failing within hours of launch.
+If no Published timestamp or calendar date is supplied in the publisher body, do not infer one from the requested topic or the article URL. Keep a reported relative date such as Wednesday unchanged in a literal quotation, or omit the unsupported calendar date from the paraphrase. A requested date filters discovery; it is not publisher evidence.
 Preserve attribution, uncertainty, timing and scope: an economist's estimate is not an official result; a forecast is not a released measurement; an allegation is not an established act. Retain words such as estimated, forecast, expected, could, only, remaining and up to when they qualify the proposition. Include the qualifier in both the supporting quotation and the claim; never trim it away to make a stronger statement.
 First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
 An article's headline may establish the topic of its excerpt, but cannot supply evidence for a claim. An editorial view about the underlying issue is a relevant contribution even when its excerpt does not repeat the event name. Retain it as that outlet's view without inferring a stance on specific policy details.
@@ -909,8 +912,19 @@ def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, s
         # Preserve a whole short sentence even if the model overlooks opinion.
         if text.startswith(("Stored publisher excerpt", "Retrieved publisher excerpts", PUBLIC_DESCRIPTION_PREFIX)):
             quote = _complete_short_excerpt(text) or quote
+        if include_represented:
+            # A rejected paraphrase need not erase its valid original clause.
+            # Queue one literal backup BEFORE review, never restore it after
+            # rejection. The isolated reviewer assesses this separate pair.
+            body = (text.partition('\nExcerpt:\n')[2] if text.startswith((
+                'Stored publisher excerpt', 'Retrieved publisher excerpts', PUBLIC_DESCRIPTION_PREFIX)) else text)
+            if not (isinstance(quote, str) and 6 <= len(quote.split()) <= 60 and verbatim_evidence(quote, body)):
+                alternatives = [c.get('evidence', {}).get(source) for c in claims]
+                quote = next((restored for value in alternatives if isinstance(value, str)
+                              if (restored := _restore_repair_context(value, body))), None)
         if (source in represented or not isinstance(quote, str)
-                or not 6 <= len(quote.split()) <= 30 or quote.rstrip().endswith(("...", "…"))):
+                or not 6 <= len(quote.split()) <= (60 if include_represented else 30)
+                or quote.rstrip().endswith(("...", "…"))):
             continue
         fallback = {"claim": f'{source} writes: “{quote}”', "agreement": "unique",
                     "sources": [source], "evidence": {source: quote}}
