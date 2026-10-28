@@ -28,7 +28,7 @@ def html(*, author='Reuters', body=QUOTE, visible=QUOTE, url=URL, stamp='2026-06
 
 
 def response(url=URL, quote=QUOTE, text='Reuters reports on the funding shortfall.'):
-    return Obj(content=[Obj(type='text', text=text, citations=[Obj(type='web_search_result_location',
+    return Obj(content=[Obj(type='text', text='COVERAGE_MATCH=YES\n' + text, citations=[Obj(type='web_search_result_location',
         url=url, cited_text=quote, title='A funding report')])])
 
 

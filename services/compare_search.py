@@ -38,6 +38,10 @@ def normalize_evidence_text(text: str) -> str:
     # same term. Normalize paired quotation marks only; preserve apostrophes
     # inside contractions and possessives, words, numbers and clause order.
     text = re.sub(r"(?<!\w)'([^'\n]+)'(?!\w)", r'"\1"', text)
+    # Inline HTML links can leave "employees ," in imported originals.
+    # Remove only this letter-to-punctuation spacing, never digit spacing
+    # ("2 . 5" must not become "2.5") or apostrophes/word boundaries.
+    text = re.sub(r'(?<=[^\W\d_])\s+(?=[,.;:!?])', '', text)
     return ' '.join(text.casefold().split())
 
 

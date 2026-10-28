@@ -234,7 +234,7 @@ def test_axios_keeps_complete_reporting_but_not_a_trailing_document_caption():
     ('Financial Times', 'https://www.ft.com/content/e2e82393-c7ca-4bc1-b270-022b3702d9e7?syn-25a6b1a6=1', 'https://www.ft.com/rss/home/international'),
     ('The Hill', 'https://thehill.com/policy/international/a-memo/', 'https://thehill.com/news/feed/'),
     ('The Verge', 'https://www.theverge.com/tech/123/a-report', 'https://www.theverge.com/rss/index.xml'),
-    ('Ars Technica', 'https://arstechnica.com/tech-policy/2026/10/a-report/', 'https://feeds.arstechnica.com/arstechnica/index'),
+    ('Ars Technica', 'https://arstechnica.com/tech-policy/2026/10/a-report/', 'https://feeds.arstechnica.com/arstechnica/tech-policy'),
 ])
 async def test_verified_publisher_feeds_recover_only_the_exact_article(monkeypatch, source, url, feed_url):
     calls = []
@@ -501,3 +501,74 @@ async def test_topic_archive_has_its_own_bounded_deadline_and_retains_fallback(m
     assert len(await feed.public_topic_candidates('Data brokers', 'Ars Technica')) == 1
     monkeypatch.setattr(feed, 'TOPIC_FEED_TIMEOUT', 0.001)
     assert await feed.public_topic_candidates('Data brokers', 'Ars Technica') == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('source', 'url', 'topic', 'section'), [
+    ('Ars Technica', 'https://arstechnica.com/gadgets/2026/10/microsoft-offers-voluntary-buyouts-to-60000-employees/', '', 'https://feeds.arstechnica.com/arstechnica/gadgets'),
+    ('Ars Technica', 'https://arstechnica.com/apple/2026/10/a-mac/', '', 'https://feeds.arstechnica.com/arstechnica/apple'),
+    ('The Verge', 'https://www.theverge.com/tech/1018467/a-mac', 'Apple M6 iMac refresh', 'https://www.theverge.com/rss/apple/index.xml'),
+    ('The Verge', 'https://www.theverge.com/tech/1018666/a-buyout', 'Microsoft buyout offer', 'https://www.theverge.com/rss/microsoft/index.xml'),
+])
+async def test_section_feeds_recover_exact_originals_absent_from_homepage(monkeypatch, source, url, topic, section):
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        assert str(request.url) == section
+        return httpx.Response(200, headers={'content-type': 'application/rss+xml'},
+            content=rss(url=url, stamp=datetime.now(timezone.utc)-timedelta(days=2)))
+    mock_http(monkeypatch, handler)
+    result = await feed.public_feed_excerpt(url, source, **({'topic': topic} if topic else {}))
+    assert result.endswith(DESCRIPTION)
+    assert calls == [section]
+
+
+@pytest.mark.asyncio
+async def test_truncated_exact_original_is_enriched_without_losing_original_on_feed_failure(monkeypatch):
+    url = 'https://www.theverge.com/tech/123/a-mac'
+    preview = 'Stored publisher excerpt.\nExcerpt:\nApple announced a new Mac, and the […]'
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value={'title': 'Apple M6 Mac', 'url': url, 'excerpt': preview}))
+    monkeypatch.setattr(workflow, 'public_article_excerpt', AsyncMock(return_value=None))
+    richer = 'Public publisher description (not full article text).\nExcerpt:\nApple announced the entry-level MacBook Pro with the M6 chip.'
+    reader = AsyncMock(return_value=richer)
+    monkeypatch.setattr(workflow, 'public_feed_excerpt', reader)
+    assert await workflow.search_one_source(Mock(), 'Apple M6 Mac', 'The Verge') == ('The Verge', richer)
+    reader.assert_awaited_once_with(url, 'The Verge', topic='Apple M6 Mac')
+    reader.return_value = None
+    assert await workflow.search_one_source(Mock(), 'Apple M6 Mac', 'The Verge') == ('The Verge', preview)
+
+
+@pytest.mark.asyncio
+async def test_section_and_homepage_share_byte_budget_and_preserve_fallback(monkeypatch):
+    url = 'https://arstechnica.com/gadgets/2026/10/a-buyout/'
+    section = feed._ARS_SECTION_FEEDS['/gadgets/']
+    home = feed._FEEDS['arstechnica.com']
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, headers={'content-type': 'text/xml'},
+            content=b'<rss><channel></channel></rss>' if str(request.url) == section else rss(url=url, stamp=datetime.now(timezone.utc)-timedelta(days=1)))
+    mock_http(monkeypatch, handler)
+    assert await feed.public_feed_excerpt(url, 'Ars Technica')
+    assert calls == [section, home]
+    monkeypatch.setattr(feed, 'MAX_FEED_BYTES', len(rss(url=url, stamp=datetime.now(timezone.utc)-timedelta(days=1))))
+    assert await feed.public_feed_excerpt(url, 'Ars Technica') is None
+
+
+@pytest.mark.asyncio
+async def test_complete_public_paragraph_enriches_a_truncated_discovery_hint(monkeypatch):
+    from types import SimpleNamespace
+    url = 'https://www.theverge.com/tech/123/a-mac'
+    preview = 'Stored publisher excerpt.\nExcerpt:\nApple announced a new Mac, and the […]'
+    richer = 'Public publisher description (not full article text).\nExcerpt:\nApple announced the entry-level MacBook Pro with the M6 chip.'
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'public_article_candidates', AsyncMock(return_value=[]))
+    monkeypatch.setattr(workflow, 'publisher_article_hints', AsyncMock(return_value=[{'title': 'Apple M6 Mac', 'url': url, 'excerpt': preview}]))
+    reader = AsyncMock(return_value={url: richer})
+    monkeypatch.setattr(workflow, 'public_feed_excerpts', reader)
+    paid = AsyncMock(return_value=SimpleNamespace(content=[SimpleNamespace(type='text',
+        text='SELECTED_STORED_CANDIDATE=0\nSUPPORTING_PASSAGE=Apple announced the entry-level MacBook Pro with the M6 chip.')]))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    assert await workflow.search_one_source(Mock(), 'Apple M6 Mac', 'The Verge') == ('The Verge', richer)
+    reader.assert_awaited_once_with([url], 'The Verge', topic='Apple M6 Mac')

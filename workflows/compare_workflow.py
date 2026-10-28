@@ -157,6 +157,41 @@ async def compare_search_parallelism(source_count: int) -> int:
 # --- Node functions ---
 
 
+def _feed_topic_args(source: str, topic: str) -> dict[str, str]:
+    return {'topic': topic} if publisher_search_domains(source) in {('ft.com',), ('theverge.com',)} else {}
+
+
+def _truncated_excerpt(excerpt: str | None) -> bool:
+    return bool(excerpt and re.search(r'\.{3}|…', excerpt.partition('Excerpt:\n')[2]))
+
+
+def _verified_candidate_excerpt(result: str, hints: list[dict], *, require_passage: bool) -> str | None:
+    selected = list(dict.fromkeys(int(m[1]) for m in re.finditer(
+        r'^[`*_]{0,3}SELECTED_STORED_CANDIDATE=(\d+)[`*_]{0,3}\s*$', result, re.M)))
+    passages = re.findall(r'^[`*_]{0,3}SUPPORTING_PASSAGE(?:\s*\(Candidate\s+(\d+)\))?\s*[=:][`*_]{0,3}\s*(.+?)[`*_]{0,3}\s*$', result, re.M)
+    for index in selected:
+        if index >= len(hints) or not hints[index].get('excerpt'):
+            continue
+        excerpt = hints[index]['excerpt']
+        if not require_passage:
+            return excerpt
+        body = excerpt.partition('\nExcerpt:\n')[2]
+        for label, passage in passages:
+            # Multiple selections require explicit passage-to-candidate binding.
+            # Never test another candidate's quotation against this candidate.
+            if (label and int(label) != index) or (not label and len(selected) != 1):
+                continue
+            quote = passage.strip().strip('\"“”')
+            if 6 <= len(quote.split()) <= 300 and verbatim_evidence(quote, body):
+                return excerpt
+    return None
+
+
+def _native_coverage_match(result: str) -> bool:
+    verdicts = re.findall(r'^[`*_]{0,3}COVERAGE_MATCH\s*=\s*[`*_]{0,3}\s*(YES|NO)[`*_]{0,3}\s*$', result, re.M)
+    return bool(verdicts) and set(verdicts) == {'YES'}
+
+
 async def search_one_source(
     client: "anthropic.AsyncAnthropic", topic: str, source: str
 ) -> tuple[str, str | None]:
@@ -167,16 +202,19 @@ async def search_one_source(
     moment each one finishes — the same work, reported live.
     """
     stored = await indexed_coverage(topic, source)
-    if stored and stored["excerpt"]:
+    if stored and stored["excerpt"] and not _truncated_excerpt(stored['excerpt']):
         logger.info("compare indexed coverage: using publisher excerpt for %s", source)
         return (source, stored["excerpt"])
     if stored:
         public_excerpt = (await public_article_excerpt(stored['url'], source)
                           or await public_feed_excerpt(stored['url'], source,
-                                                       **({'topic': stored['title']} if publisher_search_domains(source) == ('ft.com',) else {})))
+                                                       **_feed_topic_args(source, stored['title'])))
         if public_excerpt:
             logger.info('compare public publisher text: using exact original for %s', source)
             return source, public_excerpt
+        if stored['excerpt']:
+            # A failed public lookup must not erase still-usable original text.
+            return source, stored['excerpt']
     article_hint = (f"\nA matching indexed article is {stored['title']} at {stored['url']}. "
                     "Retrieve its reporting; the title alone is not evidence.\n" if stored else "")
     domains = publisher_domains(source)
@@ -210,8 +248,8 @@ async def search_one_source(
     hints = public_candidates or archive_hints or discovered
     originals_only = bool(archive_hints or public_candidates)
     if hints and not archive_hints:
-        descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt')], source,
-                                                   **({'topic': topic} if search_domains == ('ft.com',) else {}))
+        descriptions = await public_feed_excerpts([h['url'] for h in hints if not h.get('excerpt') or _truncated_excerpt(h['excerpt'])], source,
+                                                   **_feed_topic_args(source, topic))
         for hint in hints:
             if hint['url'] in descriptions:
                 hint['excerpt'] = descriptions[hint['url']]
@@ -257,7 +295,8 @@ async def search_one_source(
                              'body after Excerpt, up to 300 words if context requires it. This passage '
                              'must substantively address the same requested event or practice. Do not '
                              'stitch sentences, complete fragments, or borrow a headline. If none exists, '
-                             'do not select that candidate.\n')
+                             'do not select that candidate. Choose exactly ONE candidate and copy one '
+                             'passage unchanged. Do not combine or rewrite sentences.\n')
     search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
     if domains:
         search_tool['allowed_domains'] = list(domains)
@@ -358,6 +397,13 @@ async def search_one_source(
         'Public search-index passages may supply reporting when a direct page is blocked. '
         'A blocked page alone does not establish that no coverage exists. '
         'Headlines, URLs, access messages and another publisher are not evidence. '
+        'For native search reporting, return a standalone COVERAGE_MATCH=YES or COVERAGE_MATCH=NO line. '
+        'YES requires actual reporting about the requested event/action and timing. If the request concerns '
+        'an announced product or completed decision, pre-event rumors, expectations, a scheduled launch, or '
+        'a different product announcement do not substitute for coverage of that actual outcome. '
+        'If only those are accessible, return COVERAGE_MATCH=NO even if they share the company or product name. '
+        'A missing, uncertain or mismatched event must return NO. Provided original candidates instead '
+        'require the explicit candidate number and unchanged supporting passage specified above. '
         f'If no relevant publisher reporting is accessible, return No relevant coverage found from {source}.') }]
     max_output = 2048
     if originals_only:
@@ -415,21 +461,16 @@ async def search_one_source(
 
         selected = re.search(r'^[`*_]{0,3}SELECTED_STORED_CANDIDATE=(\d+)[`*_]{0,3}\s*$', result, re.M)
         if hints and selected and source_found_coverage(result):
-            index = int(selected[1])
-            if index < len(hints) and hints[index].get('excerpt'):
-                if public_candidates or feed_hints and domains != ('nationalreview.com',):
-                    passage = re.search(r'^[`*_]{0,3}SUPPORTING_PASSAGE=[`*_]{0,3}\s*(.+?)[`*_]{0,3}\s*$', result, re.M)
-                    quote = passage[1].strip().strip('\"“”') if passage else ''
-                    body = hints[index]['excerpt'].partition('\nExcerpt:\n')[2]
-                    if (not 6 <= len(quote.split()) <= 300
-                            or not verbatim_evidence(quote, body)):
-                        logger.info('compare relevance selection: source=%s missing original support', source)
-                        return source, None
-                logger.info('search_sources: verified original publisher candidate for %s (%s)', source, hints[index]['url'])
-                return source, hints[index]['excerpt']
+            excerpt = _verified_candidate_excerpt(result, hints,
+                require_passage=bool(public_candidates or feed_hints and domains != ('nationalreview.com',)))
+            if excerpt:
+                logger.info('search_sources: verified original publisher candidate for %s', source)
+                return source, excerpt
+            logger.info('compare relevance selection: source=%s missing original support', source)
+            return source, None
 
         if search_domains:
-            relevant = source_found_coverage(result)
+            relevant = source_found_coverage(result) and _native_coverage_match(result)
             result = (publisher_search_excerpts(response, search_domains, stored['url'] if stored else None)
                       if relevant else None)
             if not result and relevant and reuters and not stored:
@@ -456,7 +497,7 @@ def source_found_coverage(text: str | None) -> bool:
     if not text or not text.strip():
         return False
     missing = r"no (?:relevant )?(?:coverage|articles?) (?:was |were )?found|coverage (?:was |is )?unavailable"
-    return re.search(missing, text, re.I) is None
+    return re.search(missing, text, re.I) is None and not re.search(r'\bCOVERAGE_MATCH\s*=\s*[`*_]{0,3}\s*NO\b', text)
 
 
 async def search_sources_node(state: CompareState) -> dict:
