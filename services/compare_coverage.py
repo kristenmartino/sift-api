@@ -110,10 +110,12 @@ async def publisher_article_hints(topic: str, source: str = 'National Review') -
         async with asyncio.timeout(INDEXED_LOOKUP_TIMEOUT):
             pool = await get_pool()
             rows = await pool.fetch(PUBLISHER_HINTS_SQL, ' OR '.join(words), source.strip(), timeout=INDEXED_LOOKUP_TIMEOUT)
-            if not rows and source.strip().casefold() == 'the hill':
+            if source.strip().casefold() == 'the hill':
                 # Curated alias verified to the same the-hill outlet profile.
-                rows = await pool.fetch(PUBLISHER_HINTS_SQL, ' OR '.join(words), 'The Hill Politics',
-                                        timeout=INDEXED_LOOKUP_TIMEOUT)
+                alias_rows = await pool.fetch(PUBLISHER_HINTS_SQL, ' OR '.join(words), 'The Hill Politics',
+                                              timeout=INDEXED_LOOKUP_TIMEOUT)
+                ranked = sorted([*rows, *alias_rows], key=lambda r: (float(r['title_rank']), r['published_date']), reverse=True)
+                rows = list({r['source_url']: r for r in ranked}.values())[:3]
         best = float(rows[0]['title_rank']) if rows else 0
         hints = []
         for row in rows:
