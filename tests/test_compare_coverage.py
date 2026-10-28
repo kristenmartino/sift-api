@@ -8,6 +8,17 @@ from workflows import compare_workflow
 
 
 @pytest.mark.asyncio
+async def test_discovery_keeps_event_amount_and_drops_generic_calendar_terms(monkeypatch):
+    pool = Mock(fetch=AsyncMock(return_value=[]))
+    monkeypatch.setattr(compare_coverage, 'get_pool', AsyncMock(return_value=pool))
+    assert await compare_coverage.publisher_article_hints(
+        'Meta ordered to pay 25 billion in New Mexico in October 2026', 'Ars Technica') == []
+    query = pool.fetch.await_args.args[1]
+    assert 'meta' in query and 'mexico' in query and '25b' in query
+    assert 'new' not in query and 'october' not in query
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('body', [
     None,
     'A short teaser.',

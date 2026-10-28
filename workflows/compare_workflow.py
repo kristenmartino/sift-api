@@ -165,6 +165,26 @@ def _truncated_excerpt(excerpt: str | None) -> bool:
     return bool(excerpt and re.search(r'\.{3}|…', excerpt.partition('Excerpt:\n')[2]))
 
 
+def _original_passages(excerpt: str) -> list[str]:
+    """Number complete, unchanged original blocks; never repair a preview."""
+    passages = []
+    for block in excerpt.partition('\nExcerpt:\n')[2].split('\n\n'):
+        block = block.strip()
+        # A truncated preview may still contain complete opening sentences.
+        # Only retain a prefix, with punctuation already in the original.
+        prefix = re.split(r'\.{3}|…', block, maxsplit=1)[0]
+        for end in reversed(list(re.finditer(r'(?<![.\s])[.!?](?=\s|$)', prefix))):
+            passage = prefix[:end.end()]
+            if re.search(r'\b[A-Z]\.$|\b(?:Mr|Mrs|Ms|Dr|Prof|St)\.$', passage):
+                continue
+            if 6 <= len(passage.split()) <= 300 and verbatim_evidence(passage, block):
+                passages.append(passage)
+                break
+        if len(passages) == 8:
+            break
+    return passages
+
+
 def _verified_candidate_excerpt(result: str, hints: list[dict], *, require_passage: bool) -> str | None:
     selected = list(dict.fromkeys(int(m[1]) for m in re.finditer(
         r'^[`*_]{0,3}SELECTED_STORED_CANDIDATE=(\d+)[`*_]{0,3}\s*$', result, re.M)))
@@ -174,6 +194,13 @@ def _verified_candidate_excerpt(result: str, hints: list[dict], *, require_passa
             continue
         excerpt = hints[index]['excerpt']
         if not require_passage:
+            return excerpt
+        # Passage IDs refer only to original text supplied for this candidate.
+        # They avoid asking the model to retype typography or finish a teaser.
+        numbered = re.findall(r'^SELECTED_ORIGINAL_PASSAGE=(\d+):(\d+)\s*$', result, re.M)
+        originals = _original_passages(excerpt)
+        if any(int(candidate) == index and int(passage) < len(originals)
+               for candidate, passage in numbered):
             return excerpt
         body = excerpt.partition('\nExcerpt:\n')[2]
         for label, passage in passages:
@@ -258,6 +285,8 @@ async def search_one_source(
         # publisher search to unrelated or inaccessible metadata-only articles.
         hints = [hint for hint in hints if hint.get('excerpt')]
     verified = [h for h in hints if h.get('excerpt')]
+    numbered_originals = (publisher_search_domains(source) in {('arstechnica.com',), ('theverge.com',)}
+                          and bool(verified))
     if verified and not originals_only and settings.ai_cost_guard_enabled:
         try:
             budget = await budget_snapshot()
@@ -274,8 +303,16 @@ async def search_one_source(
         except Exception as exc:
             logger.info('compare candidate budget preflight unavailable (%s); retaining atomic admission', type(exc).__name__)
     if hints:
+        def candidate_text(hint: dict) -> str:
+            excerpt = hint.get('excerpt', '')
+            if not numbered_originals or not excerpt:
+                return excerpt
+            header = excerpt.partition('\nExcerpt:\n')[0]
+            return header + '\nOriginal passages:\n' + '\n'.join(
+                f'Passage {i}: {passage}' for i, passage in enumerate(_original_passages(excerpt)))
+
         article_hint += ('\nPossible publisher articles (discovery hints only; verify the subject and timing):\n'
-                         + '\n'.join(f"Candidate {i}: {h['title']} at {h['url']}\n{h.get('excerpt', '')}" for i, h in enumerate(hints))
+                         + '\n'.join(f"Candidate {i}: {h['title']} at {h['url']}\n{candidate_text(h)}" for i, h in enumerate(hints))
                          + '\nDo not treat a suggested title or URL as reporting.\n')
         article_hint += (
             'First assess the provided original publisher excerpts. A missing web result or blocked full '
@@ -289,7 +326,7 @@ async def search_one_source(
             'Confirm selection with a standalone line SELECTED_STORED_CANDIDATE=N using its candidate number. '
             'Never select a candidate without an excerpt.\n'
         )
-        if feed_hints and domains != ('nationalreview.com',):
+        if feed_hints and domains != ('nationalreview.com',) and not numbered_originals:
             article_hint += ('For a selected original, also return a standalone SUPPORTING_PASSAGE= line '
                              'with one contiguous verbatim self-contained passage of 6-60 words from its '
                              'body after Excerpt, up to 300 words if context requires it. This passage '
@@ -297,6 +334,19 @@ async def search_one_source(
                              'stitch sentences, complete fragments, or borrow a headline. If none exists, '
                              'do not select that candidate. Choose exactly ONE candidate and copy one '
                              'passage unchanged. Do not combine or rewrite sentences.\n')
+        if numbered_originals:
+            article_hint += (
+                'For the supplied original passages, select exactly ONE candidate and ONE of its '
+                'numbered passages only if that passage substantively supports the requested subject '
+                'and same event/action and timing. These are retrieved publisher reporting; full-page '
+                'access is not required. An announced outcome cannot be replaced by pre-event expectations. '
+                'For a match, return exactly two lines: SELECTED_STORED_CANDIDATE=N and '
+                'SELECTED_ORIGINAL_PASSAGE=N:P, replacing N with the candidate number and P with '
+                'its passage number. Use IDs instead of copying or rewriting a quotation. Never select '
+                'a candidate with no numbered passages. First assess these originals; do not search when '
+                'one matches. If none matches and a search tool is available, use the single publisher '
+                'search below for other reporting; an unrelated original must not prevent that search.\n'
+            )
     search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
     if domains:
         search_tool['allowed_domains'] = list(domains)
@@ -361,9 +411,10 @@ async def search_one_source(
             'event, the same event/action and timing. Related background or shared keywords alone '
             'do not match a specific event. For broad ongoing issues, older reporting within the '
             'provided date window may be relevant; never imply it reports a new event. '
-            f'Return only SELECTED_STORED_CANDIDATE=N, or No relevant coverage found from {source}. '
             'Do not search, infer missing facts or use outside knowledge.\n'
         )
+        if not numbered_originals:
+            query_instruction += f'Return only SELECTED_STORED_CANDIDATE=N, or No relevant coverage found from {source}.\n'
         if public_candidates:
             query_instruction = (
                 f'Assess only the verified {source} originals against the full requested topic. '
@@ -378,6 +429,9 @@ async def search_one_source(
                 'of inference about people; a guide to opting out of record collection alone is not. '
                 'Shared keywords or inferred connections still '
                 'do not qualify, and a specific event still requires the same event/action and timing. '
+            )
+        if public_candidates and not numbered_originals:
+            query_instruction += (
                 'Before selecting, locate a verbatim self-contained passage of 6-60 words explicitly '
                 'supporting the requested subject. Prefer a short quotation; longer contiguous passages up to '
                 '300 words are accepted when needed for context. If none exists, return no relevant coverage. '
@@ -388,6 +442,11 @@ async def search_one_source(
                 f'Otherwise return No relevant coverage found from {source}. Do not add reasoning.\n'
             )
         selection_prompt = f'Requested topic: {json.dumps(topic)}\n{article_hint}\n{query_instruction}'
+        if numbered_originals:
+            selection_prompt += (
+                '\nUse only the supplied numbered originals and the two-line ID format above. '
+                f'If none matches, return No relevant coverage found from {source}. Do not search or add reasoning.\n'
+            )
     request_messages = [{"role": "user", "content": selection_prompt or (
         f'Retrieve coverage from {source} about: {json.dumps(topic)}\n'
         f'Current date (UTC): {datetime.now(timezone.utc).date().isoformat()}\n{article_hint}\n{query_instruction}'
@@ -403,11 +462,11 @@ async def search_one_source(
         'a different product announcement do not substitute for coverage of that actual outcome. '
         'If only those are accessible, return COVERAGE_MATCH=NO even if they share the company or product name. '
         'A missing, uncertain or mismatched event must return NO. Provided original candidates instead '
-        'require the explicit candidate number and unchanged supporting passage specified above. '
+        'require the explicit candidate evidence selection specified above. '
         f'If no relevant publisher reporting is accessible, return No relevant coverage found from {source}.') }]
     max_output = 2048
     if originals_only:
-        max_output = 1024
+        max_output = 256 if numbered_originals else 1024
     elif settings.ai_cost_guard_enabled:
         try:
             budget = await budget_snapshot()

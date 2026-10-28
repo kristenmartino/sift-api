@@ -360,14 +360,62 @@ async def test_alternate_publisher_headline_needs_original_text_and_relevance_se
     assert (await workflow.search_one_source(Mock(), topic, 'Ars Technica'))[1] == (excerpt if accepted else None)
     discover.assert_awaited_once_with(topic, 'Ars Technica')
     prompt = paid.await_args.kwargs['messages'][0]['content']
-    assert 'Topic cue: ' + topic in prompt
+    assert topic in prompt
     if supported:
         assert 'SAME event/action and timing' in prompt
-    assert 'Current date (UTC): ' in prompt
     assert paid.await_args.kwargs['temperature'] == 0
-    assert paid.await_args.kwargs['tools'][0]['max_uses'] == 1
+    if supported:
+        assert 'SELECTED_ORIGINAL_PASSAGE=N:P' in prompt
+    else:
+        assert 'Current date (UTC): ' in prompt
+        assert paid.await_args.kwargs['tools'][0]['max_uses'] == 1
     if not supported:
         assert 'Some iPhone Duo screens' not in paid.await_args.kwargs['messages'][0]['content']
+
+
+def test_numbered_originals_preserve_html_typography_and_drop_unfinished_tail():
+    first = "The Securities and Exchange Commission 's publication of the S-1 form —ahead of an IPO—prompted discussion."
+    excerpt = 'Stored publisher excerpt.\nExcerpt:\n' + first + ' The company plans to […]'
+    assert workflow._original_passages(excerpt) == [first]
+    hint = {'excerpt': excerpt}
+    result = 'SELECTED_STORED_CANDIDATE=0\nSELECTED_ORIGINAL_PASSAGE=0:0'
+    assert workflow._verified_candidate_excerpt(result, [hint], require_passage=True) == excerpt
+    assert workflow._verified_candidate_excerpt(result.replace('=0:0', '=0:1'), [hint], require_passage=True) is None
+    assert workflow._verified_candidate_excerpt(result.replace('=0:0', '=1:0'), [hint], require_passage=True) is None
+
+
+@pytest.mark.parametrize('body', [
+    'A new product was announced by the company toda...',
+    'Subscribe to receive our latest product news and announcements',
+    'The new product costs 2 . 5',
+])
+def test_numbered_originals_cannot_complete_truncated_or_unpunctuated_reporting(body):
+    assert workflow._original_passages('Original.\nExcerpt:\n' + body) == []
+
+
+@pytest.mark.asyncio
+async def test_verified_verge_original_uses_numbered_selection_with_search_for_nonmatches(monkeypatch):
+    original = 'Stored publisher excerpt.\nExcerpt:\nAnthropic has filed its S-1 prospectus with the Securities and Exchange Commission.'
+    monkeypatch.setattr(workflow, 'indexed_coverage', AsyncMock(return_value=None))
+    monkeypatch.setattr(workflow, 'publisher_article_hints', AsyncMock(return_value=[
+        {'title': 'Anthropic files its IPO prospectus', 'url': 'https://www.theverge.com/ai/a-filing', 'excerpt': original}]))
+    paid = AsyncMock(return_value=Obj(stop_reason='end_turn', content=[Obj(type='text',
+        text='SELECTED_STORED_CANDIDATE=0\nSELECTED_ORIGINAL_PASSAGE=0:0')]))
+    monkeypatch.setattr(workflow, 'budgeted_message', paid)
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    assert await workflow.search_one_source(Mock(), 'Anthropic IPO filing', 'The Verge') == ('The Verge', original)
+    paid.assert_awaited_once()
+    assert paid.await_args.kwargs['tools'][0]['max_uses'] == 1
+    prompt = paid.await_args.kwargs['messages'][0]['content']
+    assert 'Passage 0: Anthropic has filed its S-1' in prompt
+    assert 'same event/action and timing' in prompt
+    assert 'do not search when one matches' in prompt
+    assert 'an unrelated original must not prevent that search' in prompt
+
+
+def test_numbered_original_does_not_complete_a_truncated_person_name():
+    original = 'In his opinion Wednesday, US district court judge Francis J. […]'
+    assert workflow._original_passages('Original.\nExcerpt:\n' + original) == []
 
 
 def test_nested_quotation_style_is_cosmetic_but_possessives_and_words_are_preserved():
