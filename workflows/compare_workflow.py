@@ -634,6 +634,18 @@ def _drops_numeric_estimate(claim: str, quote: str, body: str) -> bool:
     return False
 
 
+def _adds_unsupported_speech_act(claim: str, body: str) -> bool:
+    # Reporting ongoing work is not an offer or promise by the speaker.
+    if re.search(r'\boffer(?:s|ed|ing)?\s+to\b', claim, re.I):
+        if not re.search(r'\b(?:offer(?:s|ed|ing)?|volunteer(?:s|ed|ing)?|willing|ready)\b|'
+                         r'\b(?:can|could)\s+(?:provide|share|supply|help)\b', body, re.I):
+            return True
+    if re.search(r'\b(?:promise[ds]?|pledge[ds]?|vow(?:s|ed)?)\b', claim, re.I):
+        if not re.search(r'\b(?:promise[ds]?|pledge[ds]?|vow(?:s|ed)?|commit(?:s|ted|ment)?)\b', body, re.I):
+            return True
+    return False
+
+
 def _missing_named_law(claim: str, body: str) -> bool:
     aliases = (
         r'\b(?:hipaa|health insurance portability and accountability act)\b',
@@ -686,7 +698,8 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, inclu
                 if (source_key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
                         and normalize(quote) in bodies[source_key][1]
                         and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[source_key][1])
-                        and not _missing_named_law(claim['claim'], bodies[source_key][1])):
+                        and not _missing_named_law(claim['claim'], bodies[source_key][1])
+                        and not _adds_unsupported_speech_act(claim['claim'], bodies[source_key][1])):
                     name = bodies[source_key][0]
                     if name not in cleaned[field]:
                         cleaned[field].append(name)

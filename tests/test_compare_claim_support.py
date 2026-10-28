@@ -142,3 +142,20 @@ async def test_successfully_rejected_literal_backup_cannot_reenter_after_review(
     assert result['claims'] == []
     assert verifier.await_args.kwargs['topic'] == 'AI personal profiling'
     assert result['capacity_limited'] is False
+
+
+@pytest.mark.parametrize('verb', ['offered', 'promised'])
+def test_reporting_ongoing_work_does_not_establish_an_offer_or_promise(verb):
+    cbs = 'The director said the intelligence community is working to downgrade sensitive material.'
+    axios = f'The director {verb} to downgrade sensitive material for personnel at risk.'
+    candidate = {'claim': f'The director {verb} to downgrade sensitive material.',
+                 'sources': ['CBS', 'Axios'], 'evidence': {'CBS': cbs, 'Axios': axios}}
+    result = workflow._ground_claim_attributions([candidate], {'CBS': cbs, 'Axios': axios})
+    assert result[0]['sources'] == ['Axios']
+
+
+def test_explicit_willingness_can_support_an_offer_without_literal_same_verb():
+    text = 'The director said he was willing to share downgraded material with personnel at risk.'
+    candidate = {'claim': 'The director offered to share downgraded material.', 'sources': ['CBS'],
+                 'evidence': {'CBS': text}}
+    assert workflow._ground_claim_attributions([candidate], {'CBS': text})[0]['sources'] == ['CBS']
