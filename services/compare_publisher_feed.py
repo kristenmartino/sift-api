@@ -26,6 +26,7 @@ _FEEDS = {
     'theverge.com': 'https://www.theverge.com/rss/index.xml',
     'arstechnica.com': 'https://feeds.arstechnica.com/arstechnica/index',
     'npr.org': 'https://feeds.npr.org/1001/rss.xml',
+    'cbsnews.com': 'https://www.cbsnews.com/latest/rss/main',
 }
 # Public topic feed verified against FT's exact Iran memo. Choose it from
 # article/topic words only; callers cannot supply a URL.
@@ -210,6 +211,8 @@ async def public_feed_excerpts(article_urls: list[str], source: str, *, topic: s
         selected = dict.fromkeys(feed for url in article_urls[:3] for path, feed in _ARS_SECTION_FEEDS.items()
                                  if urlparse(url).path.startswith(path))
         feeds = [*selected, *feeds]
+    elif host == 'thehill.com' and any(urlparse(url).path.startswith('/policy/defense/') for url in article_urls[:3]):
+        feeds.insert(0, 'https://thehill.com/policy/defense/feed/')
     elif host == 'theverge.com':
         selected = next((url for pattern, url in _VERGE_TOPIC_FEEDS.items()
                          if re.search(pattern, topic, re.I)), None)
