@@ -6,6 +6,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from html import unescape
+from urllib.parse import urlparse
 
 import feedparser
 import httpx
@@ -28,6 +29,9 @@ _FEEDS = {
 # Public topic feed verified against FT's exact Iran memo. Choose it from
 # article/topic words only; callers cannot supply a URL.
 _FT_TOPIC_FEEDS = {r'\biran(?:ian)?\b': 'https://www.ft.com/iran?format=rss'}
+# Ars documents public /tag/<topic>/feed/ routes. This sparse topic feed
+# retains older reporting absent from its general feed; no subscriber token.
+ARS_DATA_BROKERS_FEED = 'https://arstechnica.com/tag/data-brokers/feed/'
 MAX_FEED_BYTES = 2_000_000
 FEED_TIMEOUT = 2
 PUBLIC_DESCRIPTION_PREFIX = 'Public publisher description (not full article text).'
@@ -46,16 +50,17 @@ def complete_description(body: str) -> bool:
                              r'already have an account\b|unlock\b|get full access\b)', body, re.I))
 
 
-def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_url: str = PUBLIC_FEED) -> str | None:
+def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_url: str = PUBLIC_FEED,
+                          max_age_days: int = 14, entries: list | None = None) -> str | None:
     identity = _article_identity(article_url)
-    for entry in feedparser.parse(data).entries[:50]:
+    for entry in (feedparser.parse(data).entries if entries is None else entries)[:50]:
         if _article_identity(entry.get('link', '')) != identity:
             continue
         published = entry.get('published_parsed')
         if not published:
             continue
         stamp = datetime(*published[:6], tzinfo=timezone.utc)
-        if not now - timedelta(days=14) <= stamp <= now:
+        if not now - timedelta(days=max_age_days) <= stamp <= now:
             continue
         title = unescape(re.sub(r'<[^>]*>', ' ', entry.get('title', '')))
         title = re.sub(r'\s+', ' ', title).strip()
@@ -108,6 +113,60 @@ def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_
                 f'Original: {entry["link"]}\nPublic RSS: {feed_url}\n'
                 f'Published: {stamp.isoformat()}\nExcerpt:\n{body[:12000]}')
     return None
+
+
+async def public_topic_candidates(topic: str, source: str) -> list[dict]:
+    """Discover dated originals from one verified sparse publisher topic feed.
+
+    These are candidates, never an automatic topic match. The existing paid
+    search stage must select a supporting passage before any claim extraction.
+    Keep the ordinary 14-day exact-feed path unchanged; broad-topic discovery
+    shares search's one-year window, including the original publication date.
+    """
+    if (publisher_search_domains(source) != ('arstechnica.com',)
+            or not re.search(r'\bdata[ -]brokers?\b', topic, re.I)):
+        return []
+    try:
+        async with asyncio.timeout(FEED_TIMEOUT):
+            async with httpx.AsyncClient(timeout=FEED_TIMEOUT, follow_redirects=False) as client:
+                async with client.stream('GET', ARS_DATA_BROKERS_FEED) as response:
+                    kind = response.headers.get('content-type', '').split(';')[0].strip().lower()
+                    if response.status_code != 200 or not kind.endswith(('/xml', '+xml')):
+                        return []
+                    data = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        data.extend(chunk)
+                        if len(data) > MAX_FEED_BYTES:
+                            return []
+        now = datetime.now(timezone.utc)
+        candidates, seen = [], set()
+        for entry in feedparser.parse(bytes(data)).entries[:50]:
+            url = entry.get('link', '')
+            identity = _article_identity(url)
+            try:
+                parsed = urlparse(url)
+                valid_origin = (parsed.scheme == 'https' and parsed.port in (None, 443)
+                                and not parsed.username and not parsed.password)
+            except ValueError:
+                continue
+            if (not identity or not url.startswith('https://') or identity[0] != 'arstechnica.com'
+                    or not valid_origin
+                    or not identity[1] or identity[1].startswith('/civis/') or identity[2] or identity in seen):
+                continue
+            excerpt = _feed_article_excerpt(bytes(data), url, now, feed_url=ARS_DATA_BROKERS_FEED,
+                                            max_age_days=365, entries=[entry])
+            if not excerpt or not re.search(r'\bdata[ -]brokers?\b', excerpt.partition('Excerpt:\n')[2], re.I):
+                continue
+            seen.add(identity)
+            candidates.append({'title': unescape(re.sub(r'<[^>]*>', ' ', entry.get('title', ''))),
+                               'url': url, 'excerpt': excerpt})
+            if len(candidates) == 3:
+                break
+        logger.info('compare public topic feed: source=%s candidates=%d', source, len(candidates))
+        return candidates
+    except Exception as exc:
+        logger.info('compare public topic feed unavailable (%s); using search', type(exc).__name__)
+        return []
 
 
 async def public_feed_excerpt(article_url: str, source: str, *, topic: str = '') -> str | None:
