@@ -662,9 +662,9 @@ Stored publisher excerpts may be incomplete. Use only facts or explicitly attrib
 For a concrete case study, scope the claim to that named example rather than generalizing to an entire industry. Resolve relative publication times from the provided publication date; do not present an older launch as happening today. Preserve the starting event of a time interval: failing within hours of use does not establish failing within hours of launch.
 If no Published timestamp or calendar date is supplied in the publisher body, do not infer one from the requested topic or the article URL. Keep a reported relative date such as Wednesday unchanged in a literal quotation, or omit the unsupported calendar date from the paraphrase. A requested date filters discovery; it is not publisher evidence.
 Preserve attribution, uncertainty, timing and scope: an economist's estimate is not an official result; a forecast is not a released measurement; an allegation is not an established act. Retain words such as estimated, forecast, expected, could, only, remaining and up to when they qualify the proposition. Include the qualifier in both the supporting quotation and the claim; never trim it away to make a stronger statement.
-First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
+First assess EACH available outlet independently in outlet_passages: select one verbatim passage of 6-30 words, up to 60 when needed to preserve context or qualifiers, expressing a relevant, self-contained fact or opinion. Use null when none exists. A complete subject-and-predicate clause within a truncated excerpt is usable; select only that intact clause. Never return an unfinished word or trailing ellipsis, complete missing words, or infer the missing context. Do not use headline/URL metadata, teasers, or fragments without a complete proposition. This assessment comes BEFORE grouping claims, so richer articles do not crowd out a short editorial excerpt.
 An article's headline may establish the topic of its excerpt, but cannot supply evidence for a claim. An editorial view about the underlying issue is a relevant contribution even when its excerpt does not repeat the event name. Retain it as that outlet's view without inferring a stance on specific policy details.
-For EVERY outlet attributed to a grouped claim, provide a verbatim supporting quotation of 6-30 words from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not support that fact or attributed opinion, do not credit that outlet with it, even when other outlets confirm it.
+For EVERY outlet attributed to a grouped claim, provide a verbatim supporting quotation of 6-30 words, up to 60 when needed for qualifiers, from that outlet's supplied reporting. The quotation must support that specific claim. Never borrow evidence from another outlet or from headline/URL metadata. If an excerpt does not support that fact or attributed opinion, do not credit that outlet with it, even when other outlets confirm it.
 Use atomic claims. Do not blend different publishers’ descriptions using alternatives such as A or B. Each credited publisher must explicitly support BOTH alternatives; one observed symptom does not justify adding another. A crease is not a crack. For a shared claim, EVERY credited outlet must support every named law, list member, number and substantive clause. If support differs, split the claims rather than combining one outlet’s details into a common statement.
 Select the verbatim supporting passage first, then write only the claim it supports. Do not invent or paraphrase a quotation to fit a claim already written. Where the text supports it, include a factual claim or clearly attributed position from each available outlet; do not silently omit an outlet's supported perspective. An outlet with no supportable passage may be omitted.
 1. Extract up to 8 supportable claims. A short excerpt may support only one claim; that is valid. Do not pad to a minimum. Keep an opinion or interpretation explicitly attributed to its outlet instead of presenting it as an established fact. Return no claims only when none is supported by the supplied reporting.
@@ -727,7 +727,8 @@ Return ONLY the JSON, no other text.""",
     original_count = len(claims)
     claims = _ground_claim_attributions(claims, model_reporting, include_evidence=True)
     claims = _retain_outlet_passages(claims, parsed.get("outlet_passages"), search_results,
-                                    include_evidence=True, include_represented=True, max_claims=None)
+                                    include_evidence=True, include_represented=True, max_claims=None,
+                                    evidence_candidates=parsed.get('claims', []))
     backups = [c for c in claims if c.get('_quote_backup')]
     unreviewed_sources = set()
     if claims or model_reporting:
@@ -781,6 +782,16 @@ def _drops_numeric_estimate(claim: str, quote: str, body: str) -> bool:
         r'predicted|predictions?|anticipate[ds]?|would|could|may|might)\b', claim, re.I
     ):
         return False
+    # Reporting can put the estimate attribution AFTER the numerical clause.
+    # Do not let a quotation trim that postfix and turn it into an actual result.
+    postfix = r'\baccording to (?:an? |the )?(?:(?:new|latest|recent|initial|preliminary) )?estimates?\b'
+    for attribution in re.finditer(postfix, quote):
+        if re.search(r'\d[^.!?]*$', quote[:attribution.start()]):
+            return True
+    if not quote.endswith(('.', '!', '?')):
+        for match in re.finditer(re.escape(quote), body):
+            if re.match(r'[^.!?]{0,180}' + postfix, body[match.end():]):
+                return True
     for sentence in re.finditer(
         r'\b(?:economists?|analysts?|report|company|firm|it)\s+'
         r'(?:estimate[ds]?|forecast(?:s|ed)?|project(?:s|ed)?|expect(?:s|ed)?|predict(?:s|ed)?|anticipate[ds]?)\b'
@@ -827,6 +838,35 @@ def _source_evidence_key(source):
     return {'ft': 'financialtimes', 'cbs': 'cbsnews', 'fox': 'foxnews'}.get(value, value)
 
 
+def _publisher_years(text: str, body: str) -> set[str]:
+    years = set(re.findall(r'\b(?:19|20)\d{2}\b', body))
+    years.update(re.findall(r'\b(?:FY|Q[1-4])\s*((?:19|20)\d{2})\b', body, re.I))
+    for first, last in re.findall(r'\b((?:19|20)\d{2})[-–](\d{2})\b', body):
+        if (int(first) + 1) % 100 == int(last):
+            years.add(str(int(first) + 1))
+    stamp = re.search(r'^Published:\s*((?:19|20)\d{2})-', text, re.M)
+    if stamp:
+        years.add(stamp[1])
+        if re.search(r'\b(?:last year|a year ago|one year ago)\b', body, re.I):
+            years.add(str(int(stamp[1]) - 1))
+        if re.search(r'\bnext year\b', body, re.I):
+            years.add(str(int(stamp[1]) + 1))
+    return years
+
+
+def _named_periods(text: str) -> set[str]:
+    months = {'jan': 'january', 'feb': 'february', 'mar': 'march', 'apr': 'april',
+              'jun': 'june', 'jul': 'july', 'aug': 'august', 'sep': 'september',
+              'sept': 'september', 'oct': 'october', 'nov': 'november', 'dec': 'december'}
+    text = re.sub(r'\bmiddle of\s+', 'mid-', normalize_evidence_text(text))
+    periods = set()
+    for modifier, value in re.findall(r'\b(early|mid|late)[ -]+([a-z]+|(?:19|20)\d{2})\b', text):
+        value = months.get(value, value)
+        if value in {*months.values(), 'may'} or re.fullmatch(r'(?:19|20)\d{2}', value):
+            periods.add(modifier + '-' + value)
+    return periods
+
+
 def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, include_evidence: bool = False) -> list[dict]:
     """Reject borrowed/invented quotes before counting an outlet for a claim.
 
@@ -838,10 +878,15 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, inclu
         return normalize_evidence_text(text)
 
     bodies = {}
+    years = {}
+    periods = {}
     for source, text in reporting.items():
+        original = text
         if text.startswith(("Stored publisher excerpt", "Retrieved publisher excerpts", PUBLIC_DESCRIPTION_PREFIX)):
             text = text.partition("\nExcerpt:\n")[2]
         bodies[_source_evidence_key(source)] = (source, normalize(text))
+        years[_source_evidence_key(source)] = _publisher_years(original, text)
+        periods[_source_evidence_key(source)] = _named_periods(text)
     grounded = []
     for claim in claims:
         if not isinstance(claim, dict) or not isinstance(claim.get("claim"), str):
@@ -862,6 +907,8 @@ def _ground_claim_attributions(claims: list, reporting: dict[str, str], *, inclu
                 source_key = _source_evidence_key(source)
                 quote = quotes.get(source_key)
                 if (source_key in bodies and isinstance(quote, str) and len(quote.split()) >= 6
+                        and set(re.findall(r'\b(?:19|20)\d{2}\b', claim['claim'])) <= years[source_key]
+                        and _named_periods(claim['claim']) <= periods[source_key]
                         and verbatim_evidence(quote, bodies[source_key][1])
                         and not _drops_numeric_estimate(claim['claim'], normalize(quote), bodies[source_key][1])
                         and not _missing_named_law(claim['claim'], bodies[source_key][1])
@@ -890,7 +937,7 @@ def _complete_short_excerpt(text: str) -> str | None:
 
 def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, str], *,
                             include_evidence: bool = False, include_represented: bool = False,
-                            max_claims: int | None = 8) -> list[dict]:
+                            max_claims: int | None = 8, evidence_candidates: list | None = None) -> list[dict]:
     """Retain a checked quotation when grouping omitted an outlet entirely.
 
     Quote the passage itself, rather than inventing a fallback paraphrase or
@@ -919,7 +966,10 @@ def _retain_outlet_passages(claims: list[dict], passages, reporting: dict[str, s
             body = (text.partition('\nExcerpt:\n')[2] if text.startswith((
                 'Stored publisher excerpt', 'Retrieved publisher excerpts', PUBLIC_DESCRIPTION_PREFIX)) else text)
             if not (isinstance(quote, str) and 6 <= len(quote.split()) <= 60 and verbatim_evidence(quote, body)):
-                alternatives = [c.get('evidence', {}).get(source) for c in claims]
+                alternatives = [value for c in (claims if evidence_candidates is None else evidence_candidates)
+                                if isinstance(c, dict) and isinstance(c.get('evidence'), dict)
+                                for name, value in c['evidence'].items() if isinstance(name, str)
+                                and _source_evidence_key(name) == _source_evidence_key(source)]
                 quote = next((restored for value in alternatives if isinstance(value, str)
                               if (restored := _restore_repair_context(value, body))), None)
         if (source in represented or not isinstance(quote, str)
