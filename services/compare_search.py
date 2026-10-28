@@ -143,7 +143,7 @@ def publisher_search_excerpts(response, domains: tuple[str, ...], preferred_url:
             # Headings and dated bylines are metadata, never reporting.
             quote = '\n'.join(line for line in quote.splitlines()
                               if not re.match(r'^\s*#{1,6}\s', line)
-                              and not re.match(r'^\s*by\s+.+\b\d{1,2}/\d{1,2}/\d{2,4}\b', line, re.I)).strip()
+                              and not re.match(r'^\s*by\s+[^\n\d]{2,100}\s[-|–—]\s*\d{1,2}/\d{1,2}/\d{2,4}\b', line, re.I)).strip()
             if len(quote.split()) < 8:
                 continue
             normalized = ' '.join(re.findall(r'\w+', quote.casefold()))

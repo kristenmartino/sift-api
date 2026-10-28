@@ -98,6 +98,13 @@ def test_headline_filter_preserves_reporting_that_extends_headline_with_a_qualif
     assert result.partition('Excerpt:\n')[2] == body
 
 
+def test_dated_byline_filter_preserves_a_real_sentence_beginning_with_by():
+    body = 'By extending the deadline, the committee moved the final vote to 10/28/26.'
+    result = publisher_search_excerpts(response(quote='by Rachel Frazin - 10/27/26 8:35 PM ET\n' + body),
+                                     ('nationalreview.com',))
+    assert result.partition('Excerpt:\n')[2] == body
+
+
 def test_known_article_does_not_substitute_neighboring_publisher_search_results():
     assert publisher_search_excerpts(response(), ('nationalreview.com',),
                                      'https://www.nationalreview.com/2026/10/different-event/') is None
