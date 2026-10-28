@@ -24,6 +24,95 @@ def reply(value, **extra):
     return Obj(content=[Obj(type='text', text=json.dumps(value))], **extra)
 
 
+CNBC_CLAUSE = ('The software maker announced a new voluntary exit offer for certain workers '
+               'in the U.S., Canada, India and the United Kingdom')
+CNBC_PREVIEW = ('Retrieved publisher excerpts (may be incomplete).\n'
+                'Original: https://www.cnbc.com/2026/10/26/microsoft-msft-voluntary-buyouts.html\n'
+                'Excerpt:\n' + CNBC_CLAUSE + ' at its experience level ...')
+
+
+@pytest.mark.asyncio
+async def test_missing_outlet_can_recover_only_its_own_intact_clause(monkeypatch):
+    async def respond(*args, **kwargs):
+        prompt = kwargs['messages'][0]['content']
+        assert CNBC_CLAUSE in prompt
+        assert '60000' not in prompt
+        assert WIRED not in prompt
+        assert 'certain workers' in prompt
+        assert json.loads(prompt.split('Pairs:\n')[1]) == []
+        return reply({'supported': [], 'outlet_passage': CNBC_CLAUSE})
+    paid = AsyncMock(side_effect=respond)
+    monkeypatch.setattr(support, 'budgeted_message', paid)
+    monkeypatch.setattr(support, 'log_usage', Mock())
+    result, limited = await support.verify_claim_support(Mock(), [], {'CNBC': CNBC_PREVIEW},
+        topic='Microsoft voluntary exit offer', repair_missing=True)
+    assert not limited
+    assert result[0]['claim'] == f'CNBC writes: “{CNBC_CLAUSE}”'
+    assert result[0]['sources'] == ['CNBC']
+    assert '60,000' not in result[0]['claim']
+    assert 'level 70' not in result[0]['claim']
+    assert paid.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('passage', [
+    CNBC_CLAUSE + '.', CNBC_CLAUSE.replace('certain workers', '60,000 workers'),
+    CNBC_CLAUSE + ' at its experience level', CNBC_CLAUSE + ' at its experience level ...',
+    CNBC_CLAUSE.removeprefix('The software maker '),
+    'Microsoft offers voluntary buyouts to 60,000 employees.', True,
+])
+async def test_repair_rejects_completed_fragments_changed_words_and_borrowed_claims(monkeypatch, passage):
+    monkeypatch.setattr(support, 'budgeted_message', AsyncMock(return_value=reply({
+        'supported': [], 'outlet_passage': passage})))
+    monkeypatch.setattr(support, 'log_usage', Mock())
+    result, limited = await support.verify_claim_support(Mock(), [], {'CNBC': CNBC_PREVIEW},
+        topic='Microsoft voluntary exit offer', repair_missing=True)
+    assert result == []
+    assert limited == {'CNBC'}
+
+
+@pytest.mark.asyncio
+async def test_null_repair_is_successful_review_without_manufacturing_a_claim(monkeypatch):
+    monkeypatch.setattr(support, 'budgeted_message', AsyncMock(return_value=reply({
+        'supported': [], 'outlet_passage': None})))
+    monkeypatch.setattr(support, 'log_usage', Mock())
+    assert await support.verify_claim_support(Mock(), [], {'CNBC': CNBC_PREVIEW},
+        topic='Microsoft voluntary exit offer', repair_missing=True) == ([], set())
+
+
+@pytest.mark.asyncio
+async def test_successfully_rejected_pair_cannot_be_reintroduced_as_a_repair(monkeypatch):
+    monkeypatch.setattr(support, 'budgeted_message', AsyncMock(return_value=reply({
+        'supported': [], 'outlet_passage': WIRED})))
+    monkeypatch.setattr(support, 'log_usage', Mock())
+    result, limited = await support.verify_claim_support(Mock(), [claims()[1]], {'WIRED': WIRED},
+        topic='AI personal profiling', repair_missing=True)
+    assert result == []
+    assert not limited
+
+
+@pytest.mark.asyncio
+async def test_null_first_extraction_still_runs_isolated_repair_and_context_guards(monkeypatch):
+    monkeypatch.setattr(workflow, 'budgeted_message', AsyncMock(return_value=reply({
+        'claims': [], 'outlet_passages': {'CNBC': None}})))
+    monkeypatch.setattr(support, 'budgeted_message', AsyncMock(return_value=reply({
+        'supported': [], 'outlet_passage': CNBC_CLAUSE})))
+    monkeypatch.setattr(workflow, 'log_usage', Mock())
+    monkeypatch.setattr(support, 'log_usage', Mock())
+    result = await workflow.extract_and_compare_node({'topic': 'Microsoft voluntary exit offer',
+        'sources': ['CNBC'], 'search_results': {'CNBC': CNBC_PREVIEW}})
+    assert result['claims'][0]['claim'] == f'CNBC writes: “{CNBC_CLAUSE}”'
+    assert '_quote_repair' not in result['claims'][0]
+    assert not result['capacity_limited']
+
+
+def test_repair_cannot_treat_abbreviation_as_sentence_boundary():
+    quote = 'announced a voluntary exit offer for certain workers'
+    assert not support._repair_clause_from_original(quote, 'The company in the U.S. ' + quote + '.')
+    assert support._repair_clause_from_original('The company ' + quote,
+        'An earlier report was unrelated. The company ' + quote + ' at level ...')
+
+
 @pytest.mark.asyncio
 async def test_review_isolates_publishers_and_removes_wrong_law_without_rewriting_claims(monkeypatch):
     async def respond(*args, **kwargs):
