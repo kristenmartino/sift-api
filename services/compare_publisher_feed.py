@@ -143,9 +143,14 @@ async def public_topic_candidates(topic: str, source: str) -> list[dict]:
         for entry in feedparser.parse(bytes(data)).entries[:50]:
             url = entry.get('link', '')
             identity = _article_identity(url)
-            parsed = urlparse(url)
+            try:
+                parsed = urlparse(url)
+                valid_origin = (parsed.scheme == 'https' and parsed.port in (None, 443)
+                                and not parsed.username and not parsed.password)
+            except ValueError:
+                continue
             if (not identity or not url.startswith('https://') or identity[0] != 'arstechnica.com'
-                    or parsed.port not in (None, 443) or parsed.username or parsed.password
+                    or not valid_origin
                     or not identity[1] or identity[1].startswith('/civis/') or identity[2] or identity in seen):
                 continue
             excerpt = _feed_article_excerpt(bytes(data), url, now, feed_url=ARS_DATA_BROKERS_FEED,

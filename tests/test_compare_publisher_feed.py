@@ -476,3 +476,13 @@ async def test_topic_candidate_requires_the_existing_relevance_selection_even_wi
     assert ARS_PUBLIC in prompt
     assert 'opting out of record collection alone is not' in prompt
     assert 'SUPPORTING_PASSAGE=' in prompt
+
+
+@pytest.mark.asyncio
+async def test_malformed_later_topic_entry_does_not_erase_verified_reporting(monkeypatch):
+    data = ars_topic_rss(stamp=datetime.now(timezone.utc) - timedelta(days=30))
+    invalid = data.replace(ARS_REPORT.encode(), b'https://arstechnica.com:bad/another-report/')
+    data = data.replace(b'</channel>', invalid.split(b'<channel>')[1].split(b'</channel>')[0] + b'</channel>')
+    mock_http(monkeypatch, lambda request: httpx.Response(200, headers={'content-type': 'application/rss+xml'}, content=data))
+    candidates = await feed.public_topic_candidates('Data brokers', 'Ars Technica')
+    assert [c['url'] for c in candidates] == [ARS_REPORT]
