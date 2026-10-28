@@ -196,6 +196,17 @@ def test_explicit_fiscal_and_quarter_year_labels_are_valid_publisher_evidence():
     assert workflow._publisher_years('', 'The report covers FY2026 and Q32025.') == {'2026', '2025'}
 
 
+def test_postfix_estimate_cannot_be_trimmed_into_an_unqualified_cost_result():
+    quote = 'The war has cost the military at least $47.1 billion as of mid-October'
+    body = quote + ', according to a new estimate from Central Command.'
+    assert workflow._drops_numeric_estimate('The war cost at least $47.1 billion.', quote, body)
+    assert workflow._drops_numeric_estimate('The war cost at least $47.1 billion.', body, body)
+    assert not workflow._drops_numeric_estimate('Estimated war costs reached at least $47.1 billion.', quote, body)
+    actual = 'The published cost was $29 billion.'
+    assert not workflow._drops_numeric_estimate('The cost was $29 billion.', actual,
+        actual + ' According to a new estimate, next year will cost more.')
+
+
 def test_restoring_a_dependent_opening_cannot_create_an_unfinished_clause():
     body = 'No matter how often the candidate invokes Kennedy, the comparison misses the point.'
     assert support._restore_repair_context('the candidate invokes Kennedy', body) is None

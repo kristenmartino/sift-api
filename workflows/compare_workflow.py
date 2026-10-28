@@ -782,6 +782,16 @@ def _drops_numeric_estimate(claim: str, quote: str, body: str) -> bool:
         r'predicted|predictions?|anticipate[ds]?|would|could|may|might)\b', claim, re.I
     ):
         return False
+    # Reporting can put the estimate attribution AFTER the numerical clause.
+    # Do not let a quotation trim that postfix and turn it into an actual result.
+    postfix = r'\baccording to (?:an? |the )?(?:(?:new|latest|recent|initial|preliminary) )?estimates?\b'
+    for attribution in re.finditer(postfix, quote):
+        if re.search(r'\d[^.!?]*$', quote[:attribution.start()]):
+            return True
+    if not quote.endswith(('.', '!', '?')):
+        for match in re.finditer(re.escape(quote), body):
+            if re.match(r'[^.!?]{0,180}' + postfix, body[match.end():]):
+                return True
     for sentence in re.finditer(
         r'\b(?:economists?|analysts?|report|company|firm|it)\s+'
         r'(?:estimate[ds]?|forecast(?:s|ed)?|project(?:s|ed)?|expect(?:s|ed)?|predict(?:s|ed)?|anticipate[ds]?)\b'
