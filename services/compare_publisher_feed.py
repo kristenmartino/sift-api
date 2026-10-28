@@ -16,7 +16,15 @@ from services.compare_search import _article_identity, publisher_search_domains
 logger = logging.getLogger('sift-api.compare')
 PUBLIC_FEED = 'https://www.nationalreview.com/feed/'
 AXIOS_FEED = 'https://api.axios.com/feed/'
-_FEEDS = {'nationalreview.com': PUBLIC_FEED, 'axios.com': AXIOS_FEED}
+# Fixed feeds exercised with ordinary public HTTP; CNBC's rejected feed is
+# intentionally excluded. FT's configured home feed redirects to this URL.
+_FEEDS = {
+    'nationalreview.com': PUBLIC_FEED, 'axios.com': AXIOS_FEED,
+    'ft.com': 'https://www.ft.com/rss/home/international',
+    'thehill.com': 'https://thehill.com/news/feed/',
+    'theverge.com': 'https://www.theverge.com/rss/index.xml',
+    'arstechnica.com': 'https://feeds.arstechnica.com/arstechnica/index',
+}
 MAX_FEED_BYTES = 2_000_000
 FEED_TIMEOUT = 2
 PUBLIC_DESCRIPTION_PREFIX = 'Public publisher description (not full article text).'
@@ -48,10 +56,16 @@ def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_
         summary = entry.get('summary', '')
         body = unescape(re.sub(r'<[^>]*>', ' ', summary))
         body = re.sub(r'\s+', ' ', body).strip()
-        if feed_url == AXIOS_FEED:
-            # Axios publishes article paragraphs followed by an unpunctuated
-            # document/image caption. Do not discard the reporting or turn
-            # that caption into a statement. Keep only whole public blocks.
+        if feed_url not in {PUBLIC_FEED, AXIOS_FEED} and not complete_description(body):
+            # Some public Atom/RSS feeds put a truncated teaser in summary
+            # and complete paragraphs in content. Only the feed's own content
+            # is eligible; the article page and any gated schema are untouched.
+            public_content = next((item.get('value', '') for item in entry.get('content', [])
+                                   if item.get('type', '') in {'text/html', 'application/xhtml+xml'}), '')
+            summary = public_content or summary
+        if feed_url == AXIOS_FEED or (feed_url != PUBLIC_FEED and re.search(r'<(?:p|li)\b', summary, re.I)):
+            # Keep whole public blocks, excluding trailing captions, teasers
+            # and incomplete paragraphs. NR retains its summary-only rule.
             paragraphs = []
             for block in re.findall(r'<(?:p|li)\b[^>]*>(.*?)</(?:p|li)>', summary, re.I | re.S):
                 text = ' '.join(unescape(re.sub(r'<[^>]*>', ' ', block)).split())
@@ -61,7 +75,24 @@ def _feed_article_excerpt(data: bytes, article_url: str, now: datetime, *, feed_
                     paragraphs.append(text)
             body = '\n\n'.join(paragraphs)
 
-        if not _has_publisher_reporting(body, title, minimum_words=6) or not complete_description(body):
+        if feed_url not in {PUBLIC_FEED, AXIOS_FEED} and body.rstrip().endswith(('...', '…')):
+            # Plain RSS teasers can contain complete reporting followed by a
+            # cut-off last sentence. Keep an unchanged complete prefix only.
+            endings = list(re.finditer(r'(?<!\.)[.!?](?=\s)', body))
+            for ending in reversed(endings):
+                prefix = body[:ending.end()]
+                if re.search(r'\b(?:[A-Z]\.){2,}$|\b(?:Mr|Mrs|Ms|Dr|Prof|St)\.$', prefix):
+                    continue
+                if len(prefix.split()) >= 6:
+                    body = prefix
+                    break
+        # FT's public RSS standfirsts omit terminal punctuation by style.
+        # Preserve the verbatim text; it must go through model extraction and
+        # isolated claim review, never the complete-short-quotation shortcut.
+        ft_standfirst = (feed_url == _FEEDS['ft.com'] and len(body.split()) >= 20
+                         and not re.search(r'(?:\.\s*){3}|…', body)
+                         and not re.match(r'^(read|subscribe|sign in|click)\b', body, re.I))
+        if not _has_publisher_reporting(body, title, minimum_words=6) or not (complete_description(body) or ft_standfirst):
             continue
         return (f'{PUBLIC_DESCRIPTION_PREFIX}\nHeadline: {title}\n'
                 f'Original: {entry["link"]}\nPublic RSS: {feed_url}\n'

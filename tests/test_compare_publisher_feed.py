@@ -227,3 +227,64 @@ def test_axios_keeps_complete_reporting_but_not_a_trailing_document_caption():
     assert 'Unclassified document' not in result
     assert AXIOS_FEED in result
     assert 'nationalreview.com/feed' not in result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('source', 'url', 'feed_url'), [
+    ('Financial Times', 'https://www.ft.com/content/e2e82393-c7ca-4bc1-b270-022b3702d9e7?syn-25a6b1a6=1', 'https://www.ft.com/rss/home/international'),
+    ('The Hill', 'https://thehill.com/policy/international/a-memo/', 'https://thehill.com/news/feed/'),
+    ('The Verge', 'https://www.theverge.com/tech/123/a-report', 'https://www.theverge.com/rss/index.xml'),
+    ('Ars Technica', 'https://arstechnica.com/tech-policy/2026/10/a-report/', 'https://feeds.arstechnica.com/arstechnica/index'),
+])
+async def test_verified_publisher_feeds_recover_only_the_exact_article(monkeypatch, source, url, feed_url):
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, headers={'content-type': 'application/rss+xml'},
+                              content=rss(url=url, stamp=datetime.now(timezone.utc) - timedelta(days=1)))
+    mock_http(monkeypatch, handler)
+    excerpt = await feed.public_feed_excerpt(url, source)
+    assert DESCRIPTION in excerpt and feed_url in excerpt
+    assert CAPTION not in excerpt
+    assert calls == [feed_url]
+    assert await feed.public_feed_excerpt(url.replace('a-report', 'a-different-report').replace('a-memo', 'a-different-memo').replace('e2e82393', 'aaaaaaaa'), source) is None
+
+
+@pytest.mark.parametrize('domain', ['theverge.com', 'arstechnica.com'])
+def test_public_feed_content_can_supply_complete_paragraphs_after_a_truncated_teaser(domain):
+    url = f'https://www.{domain}/a-report/'
+    body = '<p>The researchers found a fault in the hinge after testing six phones.</p><p>Read the full article for more.</p><p>Photograph from the laboratory</p>'
+    data = rss(url=url, description='The researchers found a problem but...', title='A hinge report').replace(CAPTION.encode(), body.encode())
+    excerpt = feed._feed_article_excerpt(data, url, NOW, feed_url=feed._FEEDS[domain])
+    assert excerpt.endswith('The researchers found a fault in the hinge after testing six phones.')
+    assert 'Photograph' not in excerpt and 'Read the full' not in excerpt
+    assert feed._feed_article_excerpt(data.replace(body.encode(), b'<p>A problem was found but...</p>'), url, NOW, feed_url=feed._FEEDS[domain]) is None
+
+
+@pytest.mark.asyncio
+async def test_cnbc_does_not_call_a_feed_that_rejected_public_access(monkeypatch):
+    def handler(request):
+        raise AssertionError('Blocked feed must not be requested')
+    mock_http(monkeypatch, handler)
+    assert await feed.public_feed_excerpt('https://www.cnbc.com/a-report/', 'CNBC') is None
+
+
+def test_hill_truncated_teaser_keeps_only_unchanged_complete_prefix():
+    url = 'https://thehill.com/a-report/'
+    intact = 'The committee approved the measure after a public hearing on Monday.'
+    data = rss(url=url, description=intact + ' Its next step depends on...', title='A committee vote')
+    excerpt = feed._feed_article_excerpt(data, url, NOW, feed_url=feed._FEEDS['thehill.com'])
+    assert excerpt.endswith(intact)
+    assert 'Its next step' not in excerpt
+    abbreviation = 'The committee received testimony from officials in the U.S. The next step depends on...'
+    assert feed._feed_article_excerpt(rss(url=url, description=abbreviation), url, NOW, feed_url=feed._FEEDS['thehill.com']) is None
+
+
+def test_ft_unpunctuated_standfirst_is_verbatim_and_requires_claim_review():
+    url = 'https://www.ft.com/content/e2e82393-c7ca-4bc1-b270-022b3702d9e7'
+    text = 'The committee chair said the proposed measure could take effect next year if lawmakers approve it after a further round of public hearings'
+    excerpt = feed._feed_article_excerpt(rss(url=url, description=text), url, NOW, feed_url=feed._FEEDS['ft.com'])
+    assert excerpt.endswith(text)
+    assert workflow._complete_short_excerpt(excerpt) is None
+    assert workflow._retain_outlet_passages([], None, {'Financial Times': excerpt}) == []
+    assert feed._feed_article_excerpt(rss(url=url, description=text + '...'), url, NOW, feed_url=feed._FEEDS['ft.com']) is None

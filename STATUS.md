@@ -6,6 +6,8 @@
 
 ## Active focus
 
+2026-10-27 public-feed retrieval follow-up: check verified fixed FT, Hill, Verge and Ars public feeds for exact indexed article URLs when original text is missing. Use complete publisher-provided paragraphs from public Atom/RSS content when a teaser is truncated; preserve NR caption protection, exact identity, 14-day recency, bounded/no-redirect requests and the normal search fallback for missing entries. CNBC’s blocked feed is excluded. No additional paid stage, cap, outlet-limit or frontend change.
+
 2026-10-27 five-outlet retrieval audit: enable live-verified provider domain filters for The Hill and CNBC, use the indexed publisher headline for exact article discovery, and strip rhetorical tails from recognizable explanatory queries while retaining full topic/event/timing review. Treat FT syndication query parameters as tracking only on canonical content UUIDs, exclude Ars reader forums from newsroom evidence, and enforce the existing one-year discovery window when the search provider supplies an older result age. Unsupported publisher filters remain disabled; missing or incomplete reporting cannot supply claims. No extra paid search stage, five-outlet limit, budget-policy or frontend change.
 
 2026-10-27 source-action follow-up: CBS reporting that officials were working to downgrade intelligence did not establish an offer by its speaker. Reject unsupported offer/promise speech acts before attribution review, preserve explicit willingness/pledges, and check the action’s agent and stage in isolated review. No added calls, budget/outlet-limit or frontend changes.
