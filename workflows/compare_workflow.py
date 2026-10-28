@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from typing import NotRequired, TypedDict
 
 import anthropic
@@ -235,12 +236,24 @@ async def search_one_source(
                          + '\n'.join(f"Candidate {i}: {h['title']} at {h['url']}\n{h.get('excerpt', '')}" for i, h in enumerate(hints))
                          + '\nDo not treat a suggested title or URL as reporting.\n')
         article_hint += (
+            'First assess the provided original publisher excerpts. A missing web result or blocked full '
+            'page does not erase usable reporting already supplied here. '
+            'When a headline asks why or how, reporting about the SAME event/action and timing may '
+            'contribute its own observations without answering that question. Never infer a cause or '
+            'claim that the publisher explains it when the excerpt does not. '
             'Some candidates include original publisher excerpts. If such a candidate genuinely covers '
             'the requested subject and timing, its excerpt can supply limited reporting or an attributed '
             'opinion even when the page is blocked. Do not select a merely related event or passing reference. '
             'Confirm selection with a standalone line SELECTED_STORED_CANDIDATE=N using its candidate number. '
             'Never select a candidate without an excerpt.\n'
         )
+        if feed_hints and domains != ('nationalreview.com',):
+            article_hint += ('For a selected original, also return a standalone SUPPORTING_PASSAGE= line '
+                             'with one contiguous verbatim self-contained passage of 6-60 words from its '
+                             'body after Excerpt, up to 300 words if context requires it. This passage '
+                             'must substantively address the same requested event or practice. Do not '
+                             'stitch sentences, complete fragments, or borrow a headline. If none exists, '
+                             'do not select that candidate.\n')
     search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 1}
     if domains:
         search_tool['allowed_domains'] = list(domains)
@@ -333,7 +346,8 @@ async def search_one_source(
             )
         selection_prompt = f'Requested topic: {json.dumps(topic)}\n{article_hint}\n{query_instruction}'
     request_messages = [{"role": "user", "content": selection_prompt or (
-        f'Retrieve coverage from {source} about: {json.dumps(topic)}\n{article_hint}\n{query_instruction}'
+        f'Retrieve coverage from {source} about: {json.dumps(topic)}\n'
+        f'Current date (UTC): {datetime.now(timezone.utc).date().isoformat()}\n{article_hint}\n{query_instruction}'
         'Match the subject and timing. For a broad ongoing issue, dated reporting within the past year may be relevant; '
         'never substitute a related event for a specific event. Return one or two brief verbatim publisher passages '
         '(8-30 words each) with citations, preserving attribution and uncertainty. Do not paraphrase quotations. '
@@ -366,6 +380,7 @@ async def search_one_source(
                 stream_response=True,
                 model=resolve(SEARCH_OPERATION).model,
                 max_tokens=max_output,
+                temperature=0,
                 **call_tools,
                 messages=request_messages,
             ),
@@ -394,12 +409,12 @@ async def search_one_source(
             if stop == 'max_tokens':
                 return source, None
 
-        selected = re.search(r'^`{0,3}SELECTED_STORED_CANDIDATE=(\d+)`{0,3}\s*$', result, re.M)
+        selected = re.search(r'^[`*_]{0,3}SELECTED_STORED_CANDIDATE=(\d+)[`*_]{0,3}\s*$', result, re.M)
         if hints and selected and source_found_coverage(result):
             index = int(selected[1])
             if index < len(hints) and hints[index].get('excerpt'):
-                if public_candidates:
-                    passage = re.search(r'^SUPPORTING_PASSAGE=(.+)$', result, re.M)
+                if public_candidates or feed_hints and domains != ('nationalreview.com',):
+                    passage = re.search(r'^[`*_]{0,3}SUPPORTING_PASSAGE=[`*_]{0,3}\s*(.+?)[`*_]{0,3}\s*$', result, re.M)
                     quote = passage[1].strip().strip('\"“”') if passage else ''
                     body = hints[index]['excerpt'].partition('\nExcerpt:\n')[2]
                     if (not 6 <= len(quote.split()) <= 300
