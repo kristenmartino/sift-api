@@ -286,7 +286,7 @@ async def search_one_source(
         hints = [hint for hint in hints if hint.get('excerpt')]
     verified = [h for h in hints if h.get('excerpt')]
     numbered_originals = (publisher_search_domains(source) in {('arstechnica.com',), ('theverge.com',),
-                                                             ('thehill.com',), ('npr.org',)}
+                                                             ('thehill.com',), ('npr.org',), ('cbsnews.com',)}
                           and bool(verified))
     if verified and not originals_only and settings.ai_cost_guard_enabled:
         try:

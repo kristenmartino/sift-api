@@ -512,6 +512,8 @@ async def test_topic_archive_has_its_own_bounded_deadline_and_retains_fallback(m
     ('The Verge', 'https://www.theverge.com/ai/101/filing', 'Anthropic IPO filing', 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml'),
     ('The Verge', 'https://www.theverge.com/policy/102/a-fine', 'Meta penalty', 'https://www.theverge.com/rss/facebook/index.xml'),
     ('NPR', 'https://www.npr.org/2026/10/28/g-s1-150299/trump-methane-restrictions', '', 'https://feeds.npr.org/1001/rss.xml'),
+    ('CBS News', 'https://www.cbsnews.com/news/iran-war-cost-centcom-47-billion/', '', 'https://www.cbsnews.com/latest/rss/main'),
+    ('The Hill', 'https://thehill.com/policy/defense/6176624-us-iran-war-costs-rise/', '', 'https://thehill.com/policy/defense/feed/'),
 ])
 async def test_section_feeds_recover_exact_originals_absent_from_homepage(monkeypatch, source, url, topic, section):
     calls = []
